@@ -23,11 +23,11 @@ CLL_p1_D8_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J8/
 CLL_p1_D11_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J11/outs/filtered_feature_bc_matrix.h5")
 CLL_p1_D14_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J14/outs/filtered_feature_bc_matrix.h5")
 
-CLL_p1_D1_filtered <- CreateSeuratObject(counts = CLL_p1_D1_filtered.data, project = "P1_D1_filtered")
-CLL_p1_D4_filtered <- CreateSeuratObject(counts = CLL_p1_D4_filtered.data, project = "P1_D4_filtered")
-CLL_p1_D8_filtered <- CreateSeuratObject(counts = CLL_p1_D8_filtered.data, project = "P1_D8_filtered")
-CLL_p1_D11_filtered <- CreateSeuratObject(counts = CLL_p1_D11_filtered.data, project = "P1_D11_filtered")
-CLL_p1_D14_filtered <- CreateSeuratObject(counts = CLL_p1_D14_filtered.data, project = "P1_D14_filtered")
+CLL_p1_D1_filtered <- CreateSeuratObject(counts = CLL_p1_D1_filtered.data$`Gene Expression`, project = "P1_D1_filtered")
+CLL_p1_D4_filtered <- CreateSeuratObject(counts = CLL_p1_D4_filtered.data$`Gene Expression`, project = "P1_D4_filtered")
+CLL_p1_D8_filtered <- CreateSeuratObject(counts = CLL_p1_D8_filtered.data$`Gene Expression`, project = "P1_D8_filtered")
+CLL_p1_D11_filtered <- CreateSeuratObject(counts = CLL_p1_D11_filtered.data$`Gene Expression`, project = "P1_D11_filtered")
+CLL_p1_D14_filtered <- CreateSeuratObject(counts = CLL_p1_D14_filtered.data$`Gene Expression`, project = "P1_D14_filtered")
 ```
 Add an identity with the time point
 ```{r}
@@ -37,28 +37,92 @@ CLL_p1_D8_filtered$timepoint <- "D8"
 CLL_p1_D11_filtered$timepoint <- "D11"
 CLL_p1_D14_filtered$timepoint <- "D14"
 ```
+Number of cell and genes
+```{r}
+ncol(CLL_p1_D1_filtered) # number of cell 
+nrow(CLL_p1_D1_filtered) # number of genes
+
+ncol(CLL_p1_D4_filtered)
+nrow(CLL_p1_D4_filtered)
+
+ncol(CLL_p1_D8_filtered)
+nrow(CLL_p1_D8_filtered)
+
+ncol(CLL_p1_D11_filtered)
+nrow(CLL_p1_D11_filtered)
+
+ncol(CLL_p1_D14_filtered)
+nrow(CLL_p1_D14_filtered)
+```
+
 Merge all the data filtered, in order to have one SeuratObject with all the time point for one patient
 ```{r}
 CLL_p1_merged <- merge(CLL_p1_D1_filtered, y = list(CLL_p1_D4_filtered, CLL_p1_D8_filtered, CLL_p1_D11_filtered, CLL_p1_D14_filtered), add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), merge.data =TRUE, project = "TimeCourse")
+
+ncol(CLL_p1_merged)
+nrow(CLL_p1_merged)
 ```
+Before filtering : 36601 genes and 22141 cells
 
 ## Pre-processing
 
 # QC and filtering 
 This step in done on the data days merged (same threshold for the 5 time points).
+Damaged cells elimination (mitochondrial gene percentage), related to the cell quality
 
-Damaged cells elimination (mitochondrial gene percentage vs nuclear function)
+Mitochondrial gene percentage calculation
 ```{r}
 CLL_p1_merged[["percent.mt"]] <- PercentageFeatureSet(CLL_p1_merged, pattern = "^MT-")
 ```
-Observe the distribution on violon plot, in order to adapt the threshold 
+Observe the distribution on violin plot, in order to adapt the threshold 
 ```{r}
-VlnPlot(CLL_p1_merged, features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3)
+VlnPlot(CLL_p1_merged, features = c("nFeature_RNA"))
+VlnPlot(CLL_p1_merged, features = c("nCount_RNA"))
+VlnPlot(CLL_p1_merged, features = c("percent.mt"))
+```
+Filtering
+```{r}
+CLL_p1_merged<-subset(CLL_p1_merged, subset= nFeature_RNA > 100 & nFeature_RNA < 6000 & percent.mt < 10)
+
+ncol(CLL_p1_merged)
+nrow(CLL_p1_merged)
+```
+After filtering : 36601 genes and 14277 cells (Before filtering : 36601 genes and 22141 cells)
+
+Violin plot after filtering
+```{r}
+VlnPlot(CLL_p1_merged, features = c("nFeature_RNA"))
+VlnPlot(CLL_p1_merged, features = c("nCount_RNA"))
 VlnPlot(CLL_p1_merged, features = c("percent.mt"))
 ```
 
 
+# Normalization, scaling and most variable features
+
+Normalization 
+```{r}
+CLL_p1_merged<-NormalizeData(CLL_p1_merged)
+```
+
+
+
+Variable features
+```{r}
+CLL_p1_merged<-FindVariableFeatures(CLL_p1_merged,selection.method = "vst", nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(CLL_p1_merged[["RNA"]], layer = "counts.P1_D1_filtered"),10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(CLL_p1_merged[["RNA"]], layer = "counts.P1_D1_filtered")
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+```
+
+Scaling 
+
 # Doublet elimination
+Important to do this step on normalized and scaled data
 
 1- Finding the optimal arguments, PCs, pK, and nExp, (keep pN=0,25)  for the function DoubletFinder
 ```{r cars}
