@@ -57,7 +57,9 @@ nrow(CLL_p1_D14_filtered)
 
 Merge all the data filtered, in order to have one SeuratObject with all the time point for one patient
 ```{r}
-CLL_p1_merged <- merge(CLL_p1_D1_filtered, y = list(CLL_p1_D4_filtered, CLL_p1_D8_filtered, CLL_p1_D11_filtered, CLL_p1_D14_filtered), add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), merge.data =TRUE, project = "TimeCourse")
+CLL_p1_merged <- merge(CLL_p1_D1_filtered, y = list(CLL_p1_D4_filtered, CLL_p1_D8_filtered, CLL_p1_D11_filtered, CLL_p1_D14_filtered), add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), project = "TimeCourse")
+
+CLL_p1_merged[["RNA"]] <- JoinLayers(CLL_p1_merged[["RNA"]])
 
 ncol(CLL_p1_merged)
 nrow(CLL_p1_merged)
@@ -111,15 +113,21 @@ Variable features
 CLL_p1_merged<-FindVariableFeatures(CLL_p1_merged,selection.method = "vst", nfeatures = 2000)
 
 # Identify the 10 most highly variable genes
-top10 <- head(VariableFeatures(CLL_p1_merged[["RNA"]], layer = "counts.P1_D1_filtered"),10)
+top10 <- head(VariableFeatures(CLL_p1_merged), 10)
 
 # plot variable features with and without labels
-plot1 <- VariableFeaturePlot(CLL_p1_merged[["RNA"]], layer = "counts.P1_D1_filtered")
+plot1 <- VariableFeaturePlot(CLL_p1_merged)
 plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
 plot2
 ```
 
 Scaling 
+
+```{r}
+all.genes <- rownames(CLL_p1_merged)
+CLL_p1_merged <- ScaleData(CLL_p1_merged, features = all.genes)
+```
+
 
 # Doublet elimination
 Important to do this step on normalized and scaled data
