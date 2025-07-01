@@ -12,6 +12,8 @@ library(Seurat)
 library(hdf5r)
 library(dplyr)
 library(patchwork)
+library(scDblFinder)
+library(SingleCellExperiment)
 #library(tidyverse)
 ```
 
@@ -22,13 +24,16 @@ CLL_p1_D4_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J4/
 CLL_p1_D8_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J8/outs/filtered_feature_bc_matrix.h5")
 CLL_p1_D11_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J11/outs/filtered_feature_bc_matrix.h5")
 CLL_p1_D14_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J14/outs/filtered_feature_bc_matrix.h5")
-
-CLL_p1_D1_filtered <- CreateSeuratObject(counts = CLL_p1_D1_filtered.data$`Gene Expression`, project = "P1_D1_filtered")
-CLL_p1_D4_filtered <- CreateSeuratObject(counts = CLL_p1_D4_filtered.data$`Gene Expression`, project = "P1_D4_filtered")
-CLL_p1_D8_filtered <- CreateSeuratObject(counts = CLL_p1_D8_filtered.data$`Gene Expression`, project = "P1_D8_filtered")
-CLL_p1_D11_filtered <- CreateSeuratObject(counts = CLL_p1_D11_filtered.data$`Gene Expression`, project = "P1_D11_filtered")
-CLL_p1_D14_filtered <- CreateSeuratObject(counts = CLL_p1_D14_filtered.data$`Gene Expression`, project = "P1_D14_filtered")
 ```
+Seurat Object creation 
+```{r}
+CLL_p1_D1_filtered <- CreateSeuratObject(counts = CLL_p1_D1_filtered.data$`Gene Expression`, project = "P1_D1_filtered",min.cells = 2, min.features = 100)
+CLL_p1_D4_filtered <- CreateSeuratObject(counts = CLL_p1_D4_filtered.data$`Gene Expression`, project = "P1_D4_filtered", min.cells = 2, min.features = 100)
+CLL_p1_D8_filtered <- CreateSeuratObject(counts = CLL_p1_D8_filtered.data$`Gene Expression`, project = "P1_D8_filtered", min.cells = 2, min.features = 100)
+CLL_p1_D11_filtered <- CreateSeuratObject(counts = CLL_p1_D11_filtered.data$`Gene Expression`, project = "P1_D11_filtered", min.cells = 2, min.features = 100)
+CLL_p1_D14_filtered <- CreateSeuratObject(counts = CLL_p1_D14_filtered.data$`Gene Expression`, project = "P1_D14_filtered", min.cells = 2, min.features = 100)
+```
+
 Add an identity with the time point
 ```{r}
 CLL_p1_D1_filtered$timepoint <- "D1"
@@ -65,6 +70,23 @@ ncol(CLL_p1_merged)
 nrow(CLL_p1_merged)
 ```
 Before filtering : 36601 genes and 22141 cells
+
+## Doublet removal
+
+The tool used is scDblFinder, is important to do this step on empty drops filtered data. The input data does not contain any empty drops, but hasn't been further filtered.
+The tool scDblFinder can be applied on aggregated data.
+
+The input needs to be in the format SingleCellExperiment
+```{r}
+input<-as.SingleCellExperiment(CLL_p1_merged)
+sample_vector <- CLL_p1_merged$orig.ident
+input<-scDblFinder(input,sample=sample_vector)
+table(input$scDblFinder.class)
+```
+
+```{r}
+
+```
 
 ## Pre-processing
 
@@ -130,7 +152,7 @@ CLL_p1_merged <- ScaleData(CLL_p1_merged, features = all.genes)
 
 # 1st exploring 
 ```{r}
-pbmc <- RunPCA(CLL_p1_merged, features = VariableFeatures(object = CLL_p1_merged))
+CLL_p1_merged <- RunPCA(CLL_p1_merged, features = VariableFeatures(object = CLL_p1_merged))
 ```
 Ranking of principle components based on the percentage of variance explained by each one, in order to choose how many components for the representation
 ```{r}
@@ -144,15 +166,6 @@ DimHeatmap(CLL_p1_merged, dims = 1, cells = 500, balanced = TRUE)
 ```
 
 
-## Doublet removal
-Important to do this step on normalized and scaled data. The tool DoubletFinder can't be applied on aggregated data. The samples (here the days) should be unmerged.
-
-1-Unmerge the data
-```{r}
-
-```
-
-2- Finding the optimal arguments, PCs, pK, and nExp, (keep pN=0,25)  for the function DoubletFinder
 ```{r cars}
 
 ```
