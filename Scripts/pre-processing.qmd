@@ -66,7 +66,9 @@ CLL_p1_D14_filtered$timepoint <- "D14"
 Merge all the data filtered, in order to have one SeuratObject with all the time point for one patient (and the total cells and genes number).
 
 ```{r}
-CLL_p1_merged <- merge(CLL_p1_D1_filtered, y = list(CLL_p1_D4_filtered, CLL_p1_D8_filtered, CLL_p1_D11_filtered, CLL_p1_D14_filtered), add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), project = "TimeCourse")
+CLL_p1_merged <- merge(CLL_p1_D1_filtered, y = list(CLL_p1_D4_filtered, CLL_p1_D8_filtered,
+                                                    CLL_p1_D11_filtered, CLL_p1_D14_filtered),
+                       add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), project = "TimeCourse")
 
 CLL_p1_merged[["RNA"]] <- JoinLayers(CLL_p1_merged[["RNA"]])
 ```
@@ -101,11 +103,18 @@ nrow(CLL_p1_merged)
 
 ## Doublet removal
 
+Number of cell before doublet removal
+
+```{r}
+ncol(CLL_p1_merged)
+```
+
 The tool used is DoubletFinder, and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a data frame where each row corresponds to a cell ID, and the column indicates whether the cell is classified as a singlet or doublet.
 
 ```{r}
 #| message: false
 #| warning: false
+#| include: false
 res.D1<-complete_DoubletFinder(CLL_p1_D1_filtered)
 res.D1$row_names <- paste0("D1_", res.D1$row_names)
 res.D4<-complete_DoubletFinder(CLL_p1_D4_filtered)
@@ -117,13 +126,15 @@ res.D11$row_names <- paste0("D11_", res.D11$row_names)
 res.D14<-complete_DoubletFinder(CLL_p1_D14_filtered)
 res.D14$row_names <- paste0("D14_", res.D14$row_names)
 results_multiplet <-bind_rows(res.D1, res.D4, res.D8, res.D11, res.D14)
+rownames(results_multiplet) <- results_multiplet$row_names
+results_multiplet$row_names <- NULL
 ```
 
 Doublet/Singlet class addition in the Seurat Object metadata and removal doublet
 
 ```{r}
-CLL_p1_merged <- AddMetaData(CLL_p1_merged, results_multiplet, col.names=multiplet)
-CLL_p1_merged <- subset(CLL_p1_merged, multiplet == 'singlet')
+CLL_p1_merged <- AddMetaData(CLL_p1_merged, results_multiplet)
+CLL_p1_merged <- subset(CLL_p1_merged, doublet_finder == 'Singlet')
 ```
 
 Cell number after doublets removal
@@ -145,6 +156,7 @@ CLL_p1_merged[["percent.mt"]] <- PercentageFeatureSet(CLL_p1_merged, pattern = "
 Observe the distribution on violin plot, in order to adapt the threshold
 
 ```{r}
+#| warning: false
 VlnPlot(CLL_p1_merged, features = c("nFeature_RNA"))
 VlnPlot(CLL_p1_merged, features = c("nCount_RNA"))
 VlnPlot(CLL_p1_merged, features = c("percent.mt"))
@@ -153,17 +165,22 @@ VlnPlot(CLL_p1_merged, features = c("percent.mt"))
 Filtering
 
 ```{r}
-CLL_p1_merged<-subset(CLL_p1_merged, subset= nFeature_RNA > 100 & nFeature_RNA < 6000 & percent.mt < 10)
+CLL_p1_merged<-subset(CLL_p1_merged, subset= nFeature_RNA > 100 
+                      & nFeature_RNA < 6000 & percent.mt < 10)
 
+```
+
+Cell and features number after filtering
+
+```{r}
 ncol(CLL_p1_merged)
 nrow(CLL_p1_merged)
 ```
 
-After filtering : 36601 genes and 14277 cells (Before filtering : 36601 genes and 22141 cells)
-
 Violin plot after filtering
 
 ```{r}
+#| warning: false
 VlnPlot(CLL_p1_merged, features = c("nFeature_RNA")) 
 VlnPlot(CLL_p1_merged, features = c("nCount_RNA")) 
 VlnPlot(CLL_p1_merged, features = c("percent.mt"))
@@ -174,15 +191,16 @@ VlnPlot(CLL_p1_merged, features = c("percent.mt"))
 Normalization
 
 ```{r}
+#| include: false
 CLL_p1_merged<-NormalizeData(CLL_p1_merged)
 ```
 
-Variable features
-
-We keep only the genes with variability
+Variable features. Only genes with variability are kept.
 
 ```{r}
-CLL_p1_merged<-FindVariableFeatures(CLL_p1_merged,selection.method = "vst", nfeatures = 2000)
+#| warning: false
+CLL_p1_merged<-FindVariableFeatures(CLL_p1_merged,selection.method = "vst", 
+                                    nfeatures = 2000)
 
 # Identify the 10 most highly variable genes
 top10 <- head(VariableFeatures(CLL_p1_merged), 10)
@@ -196,6 +214,7 @@ plot2
 Scaling
 
 ```{r}
+#| warning: false
 all.genes <- rownames(CLL_p1_merged)
 CLL_p1_merged <- ScaleData(CLL_p1_merged, features = all.genes)
 ```
@@ -203,12 +222,14 @@ CLL_p1_merged <- ScaleData(CLL_p1_merged, features = all.genes)
 # Exploring
 
 ```{r}
+#| warning: false
 CLL_p1_merged <- RunPCA(CLL_p1_merged, features = VariableFeatures(object = CLL_p1_merged))
 ```
 
 Ranking of principle components based on the percentage of variance explained by each one, in order to choose how many components for the representation
 
 ```{r}
+#| warning: false
 ElbowPlot(CLL_p1_merged)
 ```
 
@@ -220,22 +241,23 @@ DimHeatmap(CLL_p1_merged, dims = 1, cells = 500, balanced = TRUE)
 
 ## Cluster the cell
 
-which resolution
+which resolution?
 
 ```{r}
 CLL_p1_merged <- FindNeighbors(CLL_p1_merged, dims = 1:10)
-CLL_p1_merged <- FindClusters(CLL_p1_merged, resolution = 0.5)
+CLL_p1_merged <- FindClusters(CLL_p1_merged, resolution = 0.2)
 ```
 
 ## UMAP
 
 ```{r}
-pbmc <- RunUMAP(pbmc, dims = 1:10)
-DimPlot(pbmc, reduction = "umap")
+#| warning: false
+CLL_p1_merged <- RunUMAP(CLL_p1_merged, dims = 1:10)
+DimPlot(CLL_p1_merged, reduction = "umap")
 ```
 
 Save the object after the pre-processing
 
 ```{r}
-saveRDS(CLL_p1_merged, file = "./pbmc_tutorial.rds")
+saveRDS(CLL_p1_merged, file = "./CLL_p1_merged.rds")
 ```
