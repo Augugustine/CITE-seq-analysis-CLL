@@ -1,5 +1,53 @@
 ## File with the function definition used in all the scripts for the single cell analysis 
 
+# This function is created to load filtered data for one patient 
+# Input : patient number, data path, days 
+# Output : seurat object list loaded 
+load_data_filtered <- function(patient_id, jours, base_dir = "~/Documents/Singlecell-R/") {
+  # Construct the path
+  paths <- file.path(base_dir, patient_id, paste0("/run_count_J", jours,"/"), "/outs", "/filtered_feature_bc_matrix.h5")
+  # Data load
+  data_list <- lapply(paths, Read10X_h5)
+  names(data_list) <- paste0("CLL", "_D", jours, "_filtered.data")
+  # Seurat Object creation ('Gene Expression')
+  seurat_list <- lapply(seq_along(data_list), function(i) {
+    CreateSeuratObject(
+      counts = data_list[[i]]$`Gene Expression`,
+      project = paste0(patient_id, "_D", jours[i], "_filtered"),
+      min.cells = 2,
+      min.features = 100
+    )
+  })
+  
+  # Name the data
+  names(seurat_list) <- paste0("CLL", "_D", jours, "_filtered")
+  return(seurat_list)
+}
+
+# This function is created to load raw data for one patient 
+# Input : patient number, data path, days 
+# Output : seurat object list loaded 
+load_data_raw <- function(patient_id, jours, base_dir = "~/Documents/Singlecell-R/") {
+  # Construct the path
+  paths <- file.path(base_dir, patient_id, paste0("/run_count_J", jours,"/"), "/outs", "/raw_feature_bc_matrix.h5")
+  # Data load
+  data_list <- lapply(paths, Read10X_h5)
+  names(data_list) <- paste0("CLL_", patient_id, "_D", jours, "_raw.data")
+  # Seurat Object creation ('Gene Expression')
+  seurat_list <- lapply(seq_along(data_list), function(i) {
+    CreateSeuratObject(
+      counts = data_list[[i]]$`Gene Expression`,
+      project = paste0(patient_id, "_D", jours[i], "_raw"),
+      min.cells = 2,
+      min.features = 100
+    )
+  })
+  
+  # Name the data
+  names(seurat_list) <- paste0("CLL_", patient_id, "_D", jours, "_raw")
+  return(seurat_list)
+}
+
 # This function takes a single-cell RNA-seq sample (in Seurat object format) as input and performs all the necessary preprocessing steps required 
 # by DoubletFinder, including normalization, identification of variable features, scaling, and PCA.
 # It then determines the optimal parameters for DoubletFinder (PCs, pN, pK, and nExp), runs the tool, and returns a data frame containing the IDs 
