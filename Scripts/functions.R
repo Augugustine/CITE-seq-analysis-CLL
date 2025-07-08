@@ -3,9 +3,9 @@
 # This function is created to load filtered data for one patient 
 # Input : patient number, data path, days 
 # Output : seurat object list loaded 
-load_data_filtered <- function(patient_id, jours, base_dir = "~/Documents/Singlecell-R/") {
+load_data_filtered <- function(patient_id, jours, base_dir = "~/Documents/Singlecell-R/", name_file) {
   # Construct the path
-  paths <- file.path(base_dir, patient_id, paste0("/run_count_J", jours,"/"), "/outs", "/filtered_feature_bc_matrix.h5")
+  paths <- file.path(base_dir, patient_id, paste0("/run_count_J", jours,"/"), "/outs/", name_file)
   # Data load
   data_list <- lapply(paths, Read10X_h5)
   names(data_list) <- paste0("CLL", "_D", jours, "_filtered.data")
