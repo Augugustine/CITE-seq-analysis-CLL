@@ -49,7 +49,7 @@ Download the data and Seurat Object creation
 
 ```{r}
 #| include: false
-seurat <- load_data_filtered(params$patient, c(1,4,8,11,14), base_dir = "~/Documents/Singlecell-R/")
+seurat <- load_data_filtered(params$patient, c(1,4,8,11,14), base_dir = "~/Documents/Singlecell-R/", "filtered_feature_bc_matrix.h5")
 list2env(seurat, envir = .GlobalEnv)
 ```
 
