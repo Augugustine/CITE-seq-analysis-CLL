@@ -1,0 +1,276 @@
+---
+title: "Pre-processing DDQC"
+params: 
+  patient: "P1"
+  resolution: 0.1
+  mito_gene_percent: 10
+  directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
+  file: "filtered_feature_bc_matrix.h5"
+format: html
+editor: visual
+---
+
+Steps of this pre-processing, Seurat, DoubletFinder and DDCQ (Python) (all days merged)
+
+-   Downloading the data filtered by CellBender or 10X Genomics pipeline CellRanger and merging all days into one Seurat object.
+
+-   Removing non-coding genes using **Ensembl** gene annotations (via a reusable custom function).
+
+-   Detecting doublets (Singlet or Doublet) using **DoubletFinder** on each day separately, then adding this metadata to the merged object and removing doublets (also done via a reusable function).
+
+-   Quality control using **DDQC** (Python).
+
+-   Selecting the top 2000 variable genes, normalization, and scaling using **Seurat**.
+
+-   Visualizations: PCA, Heatmap, and UMAP (resolution 0.1)
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+#library(scDblFinder)
+library(DoubletFinder)
+#library(SingleCellExperiment)
+library(tibble)
+library(biomaRt)
+library(ggplot2)
+source("functions.R")
+```
+
+```{r}
+#| include: false
+seurat <- load_data(params$patient, c(1,4,8,11,14), params$directory, params$file)
+list2env(seurat, envir = .GlobalEnv)
+```
+
+Merge all the data filtered, in order to have one SeuratObject with all the time point for one patient (and the total cells and genes number).
+
+```{r}
+CLL_p1_merged <- merge(CLL_p1_D1_filtered, y = list(CLL_p1_D4_filtered, CLL_p1_D8_filtered,
+                                                    CLL_p1_D11_filtered, CLL_p1_D14_filtered),
+                       add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), project = "TimeCourse")
+
+CLL_p1_merged[["RNA"]] <- JoinLayers(CLL_p1_merged[["RNA"]])
+```
+
+Total number of cells at the beginning.
+
+```{r}
+ncol(CLL_p1_merged)
+```
+
+## Non coding genes removal
+
+Features number before non-coding genes removal
+
+```{r}
+nrow(CLL_p1_merged)
+```
+
+The non-coding genes removal is based on the database Ensembl in order to select the genes coding for proteins. The function used is explain on the file functions.R
+
+This function accepts a Seurat object at any stage (pre- or post-processing) and returns a version of the object with all non-coding genes filtered out.
+
+```{r}
+CLL_p1_merged <- removal_noncoding_gene(CLL_p1_merged)
+```
+
+Features number after non-coding genes removal
+
+```{r}
+nrow(CLL_p1_merged)
+```
+
+## Doublet removal
+
+Number of cell before doublet removal
+
+```{r}
+ncol(CLL_p1_merged)
+```
+
+The tool used is DoubletFinder, and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a data frame where each row corresponds to a cell ID, and the column indicates whether the cell is classified as a singlet or doublet.
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+res.D1<-complete_DoubletFinder(CLL_p1_D1_filtered)
+res.D1$row_names <- paste0("D1_", res.D1$row_names)
+res.D4<-complete_DoubletFinder(CLL_p1_D4_filtered)
+res.D4$row_names <- paste0("D4_", res.D4$row_names)
+res.D8<-complete_DoubletFinder(CLL_p1_D8_filtered)
+res.D8$row_names <- paste0("D8_", res.D8$row_names)
+res.D11<-complete_DoubletFinder(CLL_p1_D11_filtered)
+res.D11$row_names <- paste0("D11_", res.D11$row_names)
+res.D14<-complete_DoubletFinder(CLL_p1_D14_filtered)
+res.D14$row_names <- paste0("D14_", res.D14$row_names)
+results_multiplet <-bind_rows(res.D1, res.D4, res.D8, res.D11, res.D14)
+rownames(results_multiplet) <- results_multiplet$row_names
+results_multiplet$row_names <- NULL
+```
+
+Doublet/Singlet class addition in the Seurat Object metadata and removal doublet
+
+```{r}
+CLL_p1_merged <- AddMetaData(CLL_p1_merged, results_multiplet)
+CLL_p1_merged <- subset(CLL_p1_merged, doublet_finder == 'Singlet')
+```
+
+Cell number after doublets removal
+
+```{r}
+ncol(CLL_p1_merged)
+```
+
+## QC and filtering
+
+This step in done on the data days merged (same threshold for the 5 time points). The tool DDQC is a tool used for the quality control in single cell RNA seq. It identifies and filters the bad quality cells thanks to adaptive threshold based on the median absolute deviation on four QC metrics (gene and UMI complexity, fraction of reads mapping to
+mitochondrial and ribosomal genes). (Subramanian, A., Alperovich, M., Yang, Y. *et al.*, 2022).
+
+Transform the Seurat Object in h5
+
+```{r}
+CLL_merged.h5 <-
+```
+
+```{python}
+import pegasusio as io
+import ddqc
+
+data1 = io.read_input("CLL_merged.h5", genome = 'hg19')
+ddqc.ddqc_metrics(data1)
+```
+
+Mitochondrial gene percentage calculation
+
+```{r}
+CLL_p1_merged[["percent.mt"]] <- PercentageFeatureSet(CLL_p1_merged, pattern = "^MT-")
+```
+
+Observe the distribution on violin plot, in order to adapt the threshold
+
+```{r}
+#| warning: false
+VlnPlot(CLL_p1_merged, features = c("nFeature_RNA"))
+VlnPlot(CLL_p1_merged, features = c("nCount_RNA"))
+VlnPlot(CLL_p1_merged, features = c("percent.mt"))
+```
+
+Filtering
+
+```{r}
+CLL_p1_merged<-subset(CLL_p1_merged, subset= nFeature_RNA > 100 
+                      & nFeature_RNA < 6000 & percent.mt < 10)
+
+```
+
+Cell and features number after filtering
+
+```{r}
+ncol(CLL_p1_merged)
+nrow(CLL_p1_merged)
+```
+
+Violin plot after filtering
+
+```{r}
+#| warning: false
+VlnPlot(CLL_p1_merged, features = c("nFeature_RNA")) 
+VlnPlot(CLL_p1_merged, features = c("nCount_RNA")) 
+VlnPlot(CLL_p1_merged, features = c("percent.mt"))
+```
+
+## Normalization, scaling and most variable features
+
+Normalization
+
+```{r}
+#| include: false
+CLL_p1_merged<-NormalizeData(CLL_p1_merged)
+```
+
+Variable features. Only genes with variability are kept.
+
+```{r}
+#| warning: false
+CLL_p1_merged<-FindVariableFeatures(CLL_p1_merged,selection.method = "vst", 
+                                    nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(CLL_p1_merged), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(CLL_p1_merged)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+```
+
+Scaling
+
+```{r}
+#| warning: false
+all.genes <- rownames(CLL_p1_merged)
+CLL_p1_merged <- ScaleData(CLL_p1_merged, features = all.genes)
+```
+
+# Exploring
+
+First step of visualization is to run a PCA.
+
+```{r}
+#| warning: false
+CLL_p1_merged <- RunPCA(CLL_p1_merged, features = VariableFeatures(object = CLL_p1_merged))
+```
+
+Ranking of principle components based on the percentage of variance explained by each one, in order to choose how many components for the representation
+
+```{r}
+#| warning: false
+ElbowPlot(CLL_p1_merged)
+```
+
+With those plots, the correlation between genes and components is shown, the PCA in the two first components and the heatmap in PC1.
+
+```{r}
+VizDimLoadings(CLL_p1_merged, dims = 1:2, reduction = "pca")
+DimPlot(CLL_p1_merged, reduction = "pca") + NoLegend()
+DimHeatmap(CLL_p1_merged, dims = 1, cells = 500, balanced = TRUE)
+```
+
+## Clustering
+
+Cells were clustered based on the first ten principal components. The `FindClusters` function requires a `resolution` parameter, which controls the clustering granularity, the number of clusters obtained depends directly on this value. That's why four different resolutions (0.05, 0.1, 0.2, 0.5) were tested, in order to identify the most appropriate one.
+
+```{r}
+#| message: false
+#| warning: false
+CLL_p1_merged <- FindNeighbors(CLL_p1_merged, dims = 1:10)
+CLL_p1_merged.05 <- FindClusters(CLL_p1_merged, resolution = 0.05)
+CLL_p1_merged.1 <- FindClusters(CLL_p1_merged, resolution = 0.1)
+CLL_p1_merged.2 <- FindClusters(CLL_p1_merged, resolution = 0.2)
+CLL_p1_merged.5 <- FindClusters(CLL_p1_merged, resolution = 0.5)
+```
+
+## UMAP
+
+Run the UMAP (visualization) on the resolution chosen below.
+
+```{r}
+#| warning: false
+CLL_p1_merged.05 <- RunUMAP(CLL_p1_merged.05, dims = 1:10)
+CLL_p1_merged.1 <- RunUMAP(CLL_p1_merged.1, dims = 1:10)
+CLL_p1_merged.2 <- RunUMAP(CLL_p1_merged.2, dims = 1:10)
+CLL_p1_merged.5 <- RunUMAP(CLL_p1_merged.5, dims = 1:10)
+
+DimPlot(CLL_p1_merged.05, reduction = "umap")
+DimPlot(CLL_p1_merged.1, reduction = "umap")
+DimPlot(CLL_p1_merged.2, reduction = "umap")
+DimPlot(CLL_p1_merged.5, reduction = "umap")
+```
