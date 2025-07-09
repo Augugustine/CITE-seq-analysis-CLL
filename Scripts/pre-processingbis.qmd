@@ -4,13 +4,15 @@ params:
   patient: "P1"
   resolution: 0.1
   mito_gene_percent: 10
+  directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
+  file: "filtered_feature_bc_matrix.h5"
 format: html
 editor: visual
 ---
 
-Steps of this pre-processing using Seurat and DoubletFinder (all days merged)
+Steps of this pre-processing using CellBender if necessary, Seurat and DoubletFinder (all days merged)
 
--   Downloading the data and creating one Seurat object per day. Using filtered data without empty drops (from CellRanger 10X Genomics or CellBender)
+-   Downloading the data and creating one Seurat object per day. Using filtered data without empty drops and remove technical artifacts (from CellRanger 10X Genomics or CellBender)
 
 -   Merging all days into one Seurat object.
 
@@ -49,7 +51,7 @@ Download the data and Seurat Object creation
 
 ```{r}
 #| include: false
-seurat <- load_data_filtered(params$patient, c(1,4,8,11,14), base_dir = "~/Documents/Singlecell-R/", "filtered_feature_bc_matrix.h5")
+seurat <- load_data(params$patient, c(1,4,8,11,14), params$directory, params$file)
 list2env(seurat, envir = .GlobalEnv)
 ```
 
@@ -267,6 +269,6 @@ DimPlot(CLL_merged, reduction = "umap")
 Save the object after the pre-processing
 
 ```{r}
-namepath=paste0("./CLL_", params$patient, "merged.rds")
+namepath=paste0("./CLL_", params$patient, "_merged.rds")
 saveRDS(CLL_merged, file = namepath)
 ```
