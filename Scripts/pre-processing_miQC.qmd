@@ -1,0 +1,299 @@
+---
+title: "Pre-processing miQC"
+params: 
+  patient: "P1"
+  resolution: 0.1
+  mito_gene_percent: 10
+  directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
+  file: "filtered_feature_bc_matrix.h5"
+format: html
+editor: visual
+---
+
+Steps of this pre-processing, Seurat, DoubletFinder and miQC (all days merged)
+
+-   Downloading the data and creating one Seurat object per day. Using filtered data without empty drops and remove technical artifacts (from CellRanger 10X Genomics or CellBender)
+
+-   Merging all days into one Seurat object.
+
+-   Removing non-coding genes using **Ensembl** gene annotations (via a reusable custom function).
+
+-   Detecting doublets (Singlet or Doublet) using **DoubletFinder** on each day separately, then adding this metadata to the merged object and removing doublets (also done via a reusable function).
+
+-   Quality control based on the number of detected features and percentage of mitochondrial genes (thresholds: max 10% mitochondrial genes, between 100 and 6000 features) using **Seurat**.
+
+-   Selecting the top 2000 variable genes, normalization, and scaling (**Seurat**).
+
+-   Visualizations: PCA, Heatmap, and UMAP (resolution 0.1)
+
+## Data and libraries initialization
+
+Libraries required
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+#library(scDblFinder)
+library(DoubletFinder)
+library(SingleCellExperiment)
+library(tibble)
+library(biomaRt)
+library(ggplot2)
+library(miQC)
+source("functions.R")
+```
+
+Download the data and Seurat Object creation
+
+```{r}
+#| include: false
+seurat <- load_data(params$patient, c(1,4,8,11,14), params$directory, params$file)
+list2env(seurat, envir = .GlobalEnv)
+```
+
+Add an identity with the time point
+
+```{r}
+CLL_D1_filtered$timepoint <- "D1"
+CLL_D4_filtered$timepoint <- "D4"
+CLL_D8_filtered$timepoint <- "D8"
+CLL_D11_filtered$timepoint <- "D11"
+CLL_D14_filtered$timepoint <- "D14"
+```
+
+Merge all the data filtered, in order to have one SeuratObject with all the time point for one patient (and the total cells and genes number).
+
+```{r}
+CLL_merged <- merge(CLL_D1_filtered, y = list(CLL_D4_filtered, CLL_D8_filtered,
+                                                    CLL_D11_filtered, CLL_D14_filtered),
+                       add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), project = "TimeCourse")
+
+CLL_merged[["RNA"]] <- JoinLayers(CLL_merged[["RNA"]])
+```
+
+Total number of cells at the beginning.
+
+```{r}
+ncol(CLL_merged)
+```
+
+## Non coding genes removal
+
+Features number before non-coding genes removal
+
+```{r}
+nrow(CLL_merged)
+```
+
+The non-coding genes removal is based on the database Ensembl in order to select the genes coding for proteins. The function used is explain on the file functions.R
+
+This function accepts a Seurat object at any stage (pre- or post-processing) and returns a version of the object with all non-coding genes filtered out.
+
+```{r}
+CLL_merged <- removal_noncoding_gene(CLL_merged)
+```
+
+Features number after non-coding genes removal
+
+```{r}
+nrow(CLL_merged)
+```
+
+## Doublet removal
+
+Number of cell before doublet removal
+
+```{r}
+ncol(CLL_merged)
+```
+
+The tool used is DoubletFinder, and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a data frame where each row corresponds to a cell ID, and the column indicates whether the cell is classified as a singlet or doublet.
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+res.D1<-complete_DoubletFinder(CLL_D1_filtered)
+res.D1$row_names <- paste0("D1_", res.D1$row_names)
+res.D4<-complete_DoubletFinder(CLL_D4_filtered)
+res.D4$row_names <- paste0("D4_", res.D4$row_names)
+res.D8<-complete_DoubletFinder(CLL_D8_filtered)
+res.D8$row_names <- paste0("D8_", res.D8$row_names)
+res.D11<-complete_DoubletFinder(CLL_D11_filtered)
+res.D11$row_names <- paste0("D11_", res.D11$row_names)
+res.D14<-complete_DoubletFinder(CLL_D14_filtered)
+res.D14$row_names <- paste0("D14_", res.D14$row_names)
+results_multiplet <-bind_rows(res.D1, res.D4, res.D8, res.D11, res.D14)
+rownames(results_multiplet) <- results_multiplet$row_names
+results_multiplet$row_names <- NULL
+```
+
+Doublet/Singlet class addition in the Seurat Object metadata and removal doublet
+
+```{r}
+CLL_merged <- AddMetaData(CLL_merged, results_multiplet)
+CLL_merged <- subset(CLL_merged, doublet_finder == 'Singlet')
+```
+
+Cell number after doublets removal
+
+```{r}
+ncol(CLL_merged)
+```
+
+## QC and filtering
+
+This step in done on the data days merged (same threshold for the 5 time points). miQC is a tool for filtering low-quality cells in single-cell RNA-seq data. It uses a probabilistic model based on two metrics: the percentage of mitochondrial reads and the number of detected genes. Instead of using fixed thresholds, miQC learns the distribution of these values in your data and estimates the probability that each cell is low quality. You can then filter out cells with high probabilities of being compromised (by default posterior \> 0.75) (Hippen et al., 2021).
+
+Mitochondrial and ribosomal genes percentage
+
+```{r}
+CLL_merged[["percent.mt"]] <- PercentageFeatureSet(CLL_merged, pattern = "^MT-")
+CLL_merged[["percent.ribo"]] <- PercentageFeatureSet(CLL_merged, pattern = "^RPS|^RPL")
+```
+
+Applying the miQC tool on the data transformed in SingleCellExperiment format
+
+```{r}
+#| warning: false
+sce <- as.SingleCellExperiment(CLL_merged)
+
+sce_miqc <- miQC(sce)
+```
+
+Metadata extraction and adding to the Seurat Object
+
+```{r}
+miqc_metadata <- as.data.frame(colData(sce_miqc)[, c("posterior", "discard")])
+colnames(miqc_metadata) <- c("miqc_posterior", "miqc_pass")
+
+CLL_merged <- AddMetaData(CLL_merged, metadata = miqc_metadata)
+```
+
+Plots
+
+```{r}
+#| warning: false
+ggplot(CLL_merged@meta.data, aes(x = nFeature_RNA, y = percent.mt, color = miqc_posterior)) +
+  geom_point(size = 1, alpha = 0.6) +
+  scale_color_gradient(low = "blue", high = "red") +
+  theme_minimal() +
+  labs(title = "miQC Posterior Probabilities",
+       x = "Number of detected genes",
+       y = "Percent mitochondrial reads",
+       color = "Posterior\n(Compromised)")
+```
+
+```{r}
+ggplot(CLL_merged@meta.data, aes(x = nFeature_RNA, y = percent.mt, color = miqc_pass)) +
+  geom_point(alpha = 0.5) +
+  scale_color_manual(values = c("TRUE" = "green", "FALSE" = "grey")) +
+  theme_minimal() +
+  labs(title = "Cells kept (green) vs discarded (grey) by miQC",
+       x = "Number of detected genes",
+       y = "Percent mitochondrial reads",
+       color = "miQC pass")
+```
+
+Filtering
+
+```{r}
+CLL_merged <- subset(CLL_merged, subset = miqc_pass)
+```
+
+Cell and features number after filtering
+
+```{r}
+ncol(CLL_merged)
+nrow(CLL_merged)
+```
+
+## Normalization, scaling and most variable features
+
+Normalization
+
+```{r}
+#| include: false
+CLL_merged<-NormalizeData(CLL_merged)
+```
+
+Variable features. Only genes with variability are kept.
+
+```{r}
+#| warning: false
+CLL_merged<-FindVariableFeatures(CLL_merged,selection.method = "vst", 
+                                    nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(CLL_merged), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(CLL_merged)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+```
+
+Scaling
+
+```{r}
+#| warning: false
+all.genes <- rownames(CLL_merged)
+CLL_merged <- ScaleData(CLL_merged, features = all.genes)
+```
+
+# Exploring
+
+First step of visualization is to run a PCA.
+
+```{r}
+#| warning: false
+CLL_merged <- RunPCA(CLL_merged, features = VariableFeatures(object = CLL_merged))
+```
+
+Ranking of principle components based on the percentage of variance explained by each one, in order to choose how many components for the representation
+
+```{r}
+#| warning: false
+ElbowPlot(CLL_merged)
+```
+
+With those plots, the correlation between genes and components is shown, the PCA in the two first components and the heatmap in PC1.
+
+```{r}
+VizDimLoadings(CLL_merged, dims = 1:2, reduction = "pca")
+DimPlot(CLL_merged, reduction = "pca") + NoLegend()
+DimHeatmap(CLL_merged, dims = 1, cells = 500, balanced = TRUE)
+```
+
+## Clustering
+
+Cells were clustered based on the first ten principal components. The `FindClusters` function requires a `resolution` parameter, which controls the clustering granularity, the number of clusters obtained depends directly on this value. That's why four different resolutions (0.05, 0.1, 0.2, 0.5) were tested, in order to identify the most appropriate one.
+
+```{r}
+#| message: false
+#| warning: false
+CLL_merged <- FindNeighbors(CLL_merged, dims = 1:10)
+CLL_merged <- FindClusters(CLL_merged, resolution = params$resolution)
+```
+
+## UMAP
+
+Run the UMAP (visualization) on the resolution chosen below.
+
+```{r}
+#| warning: false
+CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
+DimPlot(CLL_merged, reduction = "umap")
+```
+
+Save the object after the pre-processing
+
+```{r}
+namepath=paste0("./CLL_", params$patient, "_merged.rds")
+saveRDS(CLL_merged, file = namepath)
+```
