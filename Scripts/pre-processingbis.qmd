@@ -10,9 +10,9 @@ format: html
 editor: visual
 ---
 
-Steps of this pre-processing using CellBender if necessary, Seurat and DoubletFinder (all days merged)
+Steps of this pre-processing Seurat and DoubletFinder (all days merged)
 
--   Downloading the data and creating one Seurat object per day. Using filtered data without empty drops and remove technical artifacts (from CellRanger 10X Genomics or CellBender)
+-   Downloading the data and creating one Seurat object per day. Using filtered data without empty drops and remove technical artifacts (from CellRanger 10X Genomics)
 
 -   Merging all days into one Seurat object.
 
@@ -51,7 +51,7 @@ Download the data and Seurat Object creation
 
 ```{r}
 #| include: false
-seurat <- load_data(params$patient, c(1,4,8,11,14), params$directory, params$file)
+seurat <- load_data_10XG(params$patient, c(1,4,8,11,14), params$directory, params$file)
 list2env(seurat, envir = .GlobalEnv)
 ```
 

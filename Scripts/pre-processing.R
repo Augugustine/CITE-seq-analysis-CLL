@@ -1,0 +1,106 @@
+renv::activate()
+## ----setup, include=FALSE-------------------------------------------------------------------------------------------
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+#library(tidyverse)
+
+
+## -------------------------------------------------------------------------------------------------------------------
+CLL_p1_D1_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J1/outs/filtered_feature_bc_matrix.h5")
+CLL_p1_D4_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J4/outs/filtered_feature_bc_matrix.h5")
+CLL_p1_D8_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J8/outs/filtered_feature_bc_matrix.h5")
+CLL_p1_D11_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J11/outs/filtered_feature_bc_matrix.h5")
+CLL_p1_D14_filtered.data <- Read10X_h5("~/Documents/Singlecell-R/P1/run_count_J14/outs/filtered_feature_bc_matrix.h5")
+
+CLL_p1_D1_filtered <- CreateSeuratObject(counts = CLL_p1_D1_filtered.data$`Gene Expression`, project = "P1_D1_filtered")
+CLL_p1_D4_filtered <- CreateSeuratObject(counts = CLL_p1_D4_filtered.data$`Gene Expression`, project = "P1_D4_filtered")
+CLL_p1_D8_filtered <- CreateSeuratObject(counts = CLL_p1_D8_filtered.data$`Gene Expression`, project = "P1_D8_filtered")
+CLL_p1_D11_filtered <- CreateSeuratObject(counts = CLL_p1_D11_filtered.data$`Gene Expression`, project = "P1_D11_filtered")
+CLL_p1_D14_filtered <- CreateSeuratObject(counts = CLL_p1_D14_filtered.data$`Gene Expression`, project = "P1_D14_filtered")
+
+
+## -------------------------------------------------------------------------------------------------------------------
+CLL_p1_D1_filtered$timepoint <- "D1"
+CLL_p1_D4_filtered$timepoint <- "D4"
+CLL_p1_D8_filtered$timepoint <- "D8"
+CLL_p1_D11_filtered$timepoint <- "D11"
+CLL_p1_D14_filtered$timepoint <- "D14"
+
+
+## -------------------------------------------------------------------------------------------------------------------
+ncol(CLL_p1_D1_filtered) # number of cell 
+nrow(CLL_p1_D1_filtered) # number of genes
+
+ncol(CLL_p1_D4_filtered)
+nrow(CLL_p1_D4_filtered)
+
+ncol(CLL_p1_D8_filtered)
+nrow(CLL_p1_D8_filtered)
+
+ncol(CLL_p1_D11_filtered)
+nrow(CLL_p1_D11_filtered)
+
+ncol(CLL_p1_D14_filtered)
+nrow(CLL_p1_D14_filtered)
+
+
+## -------------------------------------------------------------------------------------------------------------------
+CLL_p1_merged <- merge(CLL_p1_D1_filtered, y = list(CLL_p1_D4_filtered, CLL_p1_D8_filtered, CLL_p1_D11_filtered, CLL_p1_D14_filtered), add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), project = "TimeCourse")
+
+CLL_p1_merged[["RNA"]] <- JoinLayers(CLL_p1_merged[["RNA"]])
+
+ncol(CLL_p1_merged)
+nrow(CLL_p1_merged)
+
+
+## -------------------------------------------------------------------------------------------------------------------
+CLL_p1_merged[["percent.mt"]] <- PercentageFeatureSet(CLL_p1_merged, pattern = "^MT-")
+
+
+## -------------------------------------------------------------------------------------------------------------------
+VlnPlot(CLL_p1_merged, features = c("nFeature_RNA"))
+VlnPlot(CLL_p1_merged, features = c("nCount_RNA"))
+VlnPlot(CLL_p1_merged, features = c("percent.mt"))
+
+
+## -------------------------------------------------------------------------------------------------------------------
+CLL_p1_merged<-subset(CLL_p1_merged, subset= nFeature_RNA > 100 & nFeature_RNA < 6000 & percent.mt < 10)
+
+ncol(CLL_p1_merged)
+nrow(CLL_p1_merged)
+
+
+## -------------------------------------------------------------------------------------------------------------------
+VlnPlot(CLL_p1_merged, features = c("nFeature_RNA"))
+VlnPlot(CLL_p1_merged, features = c("nCount_RNA"))
+VlnPlot(CLL_p1_merged, features = c("percent.mt"))
+
+
+## -------------------------------------------------------------------------------------------------------------------
+CLL_p1_merged<-NormalizeData(CLL_p1_merged)
+
+
+## -------------------------------------------------------------------------------------------------------------------
+CLL_p1_merged<-FindVariableFeatures(CLL_p1_merged,selection.method = "vst", nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(CLL_p1_merged), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(CLL_p1_merged)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+
+
+## -------------------------------------------------------------------------------------------------------------------
+all.genes <- rownames(CLL_p1_merged)
+CLL_p1_merged <- ScaleData(CLL_p1_merged, features = all.genes)
+
+
+## ----cars-----------------------------------------------------------------------------------------------------------
+
+

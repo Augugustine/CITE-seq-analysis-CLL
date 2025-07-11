@@ -1,9 +1,9 @@
 ## File with the function definition used in all the scripts for the single cell analysis 
 
 # This function is created to load data for one patient 
-# Input : patient id, data folder path (path for the patient folder ex: P1), days, and name file
+# Input : patient id, data folder path (path for the patient folder ex: P1), days, and name file (from 10X Genomics)
 # Output : seurat object list loaded 
-load_data <- function(patient_id, jours, base_dir, name_file) {
+load_data_10XG <- function(patient_id, jours, base_dir, name_file) {
   # Construct the path
   paths <- file.path(base_dir, patient_id, paste0("run_count_J", jours), "outs", name_file)
   # Data load
@@ -24,6 +24,29 @@ load_data <- function(patient_id, jours, base_dir, name_file) {
   return(seurat_list)
 }
 
+# This function is created to load data for one patient 
+# Input : patient id, data folder path (path for the patient folder ex: P1), days, and name file (from CellBender)
+# Output : seurat object list loaded 
+load_data_cellbender <- function(patient_id, jours, base_dir, name_file) {
+  # Construct the path
+  paths <- file.path(base_dir, patient_id, paste0("run_count_J", jours), "outs", name_file)
+  # Data load
+  data_list <- lapply(paths, Read_CellBender_h5_Mat)
+  names(data_list) <- paste0("CLL", "_D", jours, "_filtered.data")
+  # Seurat Object creation
+  seurat_list <- lapply(seq_along(data_list), function(i) {
+    CreateSeuratObject(
+      counts = data_list[[i]],
+      project = paste0(patient_id, "_D", jours[i], "_filtered"),
+      min.cells = 2,
+      min.features = 100
+    )
+  })
+  
+  # Name the data
+  names(seurat_list) <- paste0("CLL", "_D", jours, "_filtered")
+  return(seurat_list)
+}
 
 # This function takes a single-cell RNA-seq sample (in Seurat object format) as input and performs all the necessary preprocessing steps required 
 # by DoubletFinder, including normalization, identification of variable features, scaling, and PCA.

@@ -12,7 +12,7 @@ editor: visual
 
 Steps of this pre-processing, Seurat, DoubletFinder and DDQC (all days merged)
 
--   Downloading the data filtered by CellBender or 10X Genomics pipeline CellRanger and merging all days into one Seurat object.
+-   Downloading the data filtered by 10X Genomics pipeline CellRanger and merging all days into one Seurat object.
 
 -   Removing non-coding genes using **Ensembl** gene annotations (via a reusable custom function).
 
@@ -41,12 +41,13 @@ library(tibble)
 library(biomaRt)
 library(ggplot2)
 library(ddqcR)
+library(SummarizedExperiment)
 source("functions.R")
 ```
 
 ```{r}
 #| include: false
-seurat <- load_data(params$patient, c(1,4,8,11,14), params$directory, params$file)
+seurat <- load_data_10XG(params$patient, c(1,4,8,11,14), params$directory, params$file)
 list2env(seurat, envir = .GlobalEnv)
 ```
 
@@ -159,7 +160,6 @@ Metadata extraction and adding to the Seurat Object
 
 ```{r}
 ddqc_metadata <- as.data.frame(colData(ddqc_results)[, c("passed.qc")])
-
 CLL_merged <- AddMetaData(CLL_merged, metadata = ddqc_metadata)
 ```
 
@@ -167,4 +167,96 @@ Filtering
 
 ```{r}
 CLL_merged <- subset(CLL_merged, subset = passed.qc==TRUE)
+```
+
+Cell and features number after filtering
+
+```{r}
+ncol(CLL_merged)
+nrow(CLL_merged)
+```
+
+## Normalization, scaling and most variable features
+
+Normalization
+
+```{r}
+#| include: false
+CLL_merged<-NormalizeData(CLL_merged)
+```
+
+Variable features. Only genes with variability are kept.
+
+```{r}
+#| warning: false
+CLL_merged<-FindVariableFeatures(CLL_merged,selection.method = "vst", 
+                                    nfeatures = 2000)
+
+# Identify the 10 most highly variable genes
+top10 <- head(VariableFeatures(CLL_merged), 10)
+
+# plot variable features with and without labels
+plot1 <- VariableFeaturePlot(CLL_merged)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot2
+```
+
+Scaling
+
+```{r}
+#| warning: false
+all.genes <- rownames(CLL_merged)
+CLL_merged <- ScaleData(CLL_merged, features = all.genes)
+```
+
+# Exploring
+
+First step of visualization is to run a PCA.
+
+```{r}
+#| warning: false
+CLL_merged <- RunPCA(CLL_merged, features = VariableFeatures(object = CLL_merged))
+```
+
+Ranking of principle components based on the percentage of variance explained by each one, in order to choose how many components for the representation
+
+```{r}
+#| warning: false
+ElbowPlot(CLL_merged)
+```
+
+With those plots, the correlation between genes and components is shown, the PCA in the two first components and the heatmap in PC1.
+
+```{r}
+VizDimLoadings(CLL_merged, dims = 1:2, reduction = "pca")
+DimPlot(CLL_merged, reduction = "pca") + NoLegend()
+DimHeatmap(CLL_merged, dims = 1, cells = 500, balanced = TRUE)
+```
+
+## Clustering
+
+Cells were clustered based on the first ten principal components. The `FindClusters` function requires a `resolution` parameter, which controls the clustering granularity, the number of clusters obtained depends directly on this value. That's why four different resolutions (0.05, 0.1, 0.2, 0.5) were tested, in order to identify the most appropriate one.
+
+```{r}
+#| message: false
+#| warning: false
+CLL_merged <- FindNeighbors(CLL_merged, dims = 1:10)
+CLL_merged <- FindClusters(CLL_merged, resolution = params$resolution)
+```
+
+## UMAP
+
+Run the UMAP (visualization) on the resolution chosen below.
+
+```{r}
+#| warning: false
+CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
+DimPlot(CLL_merged, reduction = "umap")
+```
+
+Save the object after the pre-processing
+
+```{r}
+namepath=paste0("./CLL_", params$patient, "_merged.rds")
+#saveRDS(CLL_merged, file = namepath)
 ```
