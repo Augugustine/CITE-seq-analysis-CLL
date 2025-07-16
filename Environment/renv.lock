@@ -2562,9 +2562,9 @@
     },
     "assorthead": {
       "Package": "assorthead",
-      "Version": "1.3.4",
+      "Version": "1.3.5",
       "Source": "Bioconductor",
-      "Date": "2025-06-12",
+      "Date": "2025-07-13",
       "Title": "Assorted Header-Only C++ Libraries",
       "Authors@R": "person(\"Aaron\", \"Lun\", role=c(\"cre\", \"aut\"), email=\"infinite.monkeys.with.keyboards@gmail.com\")",
       "Description": "Vendors an assortment of useful header-only C++ libraries. Bioconductor packages can use these libraries in their own C++ code by LinkingTo this package without introducing any additional dependencies. The use of a central repository avoids duplicate vendoring of libraries across multiple R packages, and enables better coordination of version updates across cohorts of interdependent C++ libraries.",
@@ -2581,8 +2581,8 @@
       "biocViews": "SingleCell, QualityControl, Normalization, DataRepresentation, DataImport, DifferentialExpression, Alignment",
       "git_url": "https://git.bioconductor.org/packages/assorthead",
       "git_branch": "devel",
-      "git_last_commit": "bfd3858",
-      "git_last_commit_date": "2025-06-12",
+      "git_last_commit": "ae0ac19",
+      "git_last_commit_date": "2025-07-13",
       "Repository": "Bioconductor 3.22",
       "NeedsCompilation": "no",
       "Author": "Aaron Lun [cre, aut]",
@@ -2609,9 +2609,9 @@
     },
     "beachmat": {
       "Package": "beachmat",
-      "Version": "2.25.1",
+      "Version": "2.25.2",
       "Source": "Bioconductor",
-      "Date": "2025-06-03",
+      "Date": "2025-07-13",
       "Title": "Compiling Bioconductor to Handle Each Matrix Type",
       "Authors@R": "c(person(\"Aaron\", \"Lun\", role = c(\"aut\", \"cre\"), email = \"infinite.monkeys.with.keyboards@gmail.com\"), person(\"Hervé\", \"Pagès\", role=\"aut\"), person(\"Mike\", \"Smith\", role=\"aut\"))",
       "Imports": [
@@ -2648,8 +2648,8 @@
       "Encoding": "UTF-8",
       "git_url": "https://git.bioconductor.org/packages/beachmat",
       "git_branch": "devel",
-      "git_last_commit": "64d3940",
-      "git_last_commit_date": "2025-06-04",
+      "git_last_commit": "6cf7450",
+      "git_last_commit_date": "2025-07-13",
       "Repository": "Bioconductor 3.22",
       "Author": "Aaron Lun [aut, cre], Hervé Pagès [aut], Mike Smith [aut]",
       "Maintainer": "Aaron Lun <infinite.monkeys.with.keyboards@gmail.com>"
@@ -5254,7 +5254,7 @@
     },
     "httr2": {
       "Package": "httr2",
-      "Version": "1.1.2",
+      "Version": "1.2.0",
       "Source": "Repository",
       "Title": "Perform HTTP Requests and Process the Responses",
       "Authors@R": "c( person(\"Hadley\", \"Wickham\", , \"hadley@posit.co\", role = c(\"aut\", \"cre\")), person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\")), person(\"Maximilian\", \"Girlich\", role = \"ctb\") )",
@@ -5263,11 +5263,11 @@
       "URL": "https://httr2.r-lib.org, https://github.com/r-lib/httr2",
       "BugReports": "https://github.com/r-lib/httr2/issues",
       "Depends": [
-        "R (>= 4.0)"
+        "R (>= 4.1)"
       ],
       "Imports": [
         "cli (>= 3.0.0)",
-        "curl (>= 6.2.1)",
+        "curl (>= 6.4.0)",
         "glue",
         "lifecycle",
         "magrittr",
@@ -5295,14 +5295,14 @@
         "rmarkdown",
         "testthat (>= 3.1.8)",
         "tibble",
-        "webfakes",
+        "webfakes (>= 1.4.0)",
         "xml2"
       ],
       "VignetteBuilder": "knitr",
       "Config/Needs/website": "tidyverse/tidytemplate",
       "Config/testthat/edition": "3",
       "Config/testthat/parallel": "true",
-      "Config/testthat/start-first": "multi-req, resp-stream, req-perform",
+      "Config/testthat/start-first": "resp-stream, req-perform",
       "Encoding": "UTF-8",
       "RoxygenNote": "7.3.2",
       "NeedsCompilation": "no",
@@ -7058,14 +7058,14 @@
       ],
       "NeedsCompilation": "yes",
       "VignetteBuilder": "knitr",
+      "Author": "Ilya Korsunsky [aut] (ORCID: <https://orcid.org/0000-0003-4848-3948>), Aparna Nathan [aut], Nghia Millard [aut] (ORCID: <https://orcid.org/0000-0002-0518-7674>), Soumya Raychaudhuri [aut] (ORCID: <https://orcid.org/0000-0002-1901-8265>), Kamil Slowikowski [cre, ctb] (ORCID: <https://orcid.org/0000-0002-2843-6370>), Austin Hartman [ctb] (ORCID: <https://orcid.org/0000-0001-7278-1852>)",
+      "Maintainer": "Kamil Slowikowski <kslowikowski@gmail.com>",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
-      "RemoteRepo": "presto",
       "RemoteUsername": "immunogenomics",
-      "RemoteRef": "HEAD",
-      "RemoteSha": "7636b3d0465c468c35853f82f1717d3a64b3c8f6",
-      "Author": "Ilya Korsunsky [aut] (ORCID: <https://orcid.org/0000-0003-4848-3948>), Aparna Nathan [aut], Nghia Millard [aut] (ORCID: <https://orcid.org/0000-0002-0518-7674>), Soumya Raychaudhuri [aut] (ORCID: <https://orcid.org/0000-0002-1901-8265>), Kamil Slowikowski [cre, ctb] (ORCID: <https://orcid.org/0000-0002-2843-6370>), Austin Hartman [ctb] (ORCID: <https://orcid.org/0000-0001-7278-1852>)",
-      "Maintainer": "Kamil Slowikowski <kslowikowski@gmail.com>"
+      "RemoteRepo": "presto",
+      "RemoteRef": "master",
+      "RemoteSha": "7636b3d0465c468c35853f82f1717d3a64b3c8f6"
     },
     "prettyunits": {
       "Package": "prettyunits",
@@ -9552,17 +9552,17 @@
         "BiocParallel",
         "presto"
       ],
-      "Remotes": "immunogenomics/presto",
       "Encoding": "UTF-8",
+      "LazyData": "true",
       "RoxygenNote": "7.2.3",
+      "Author": "Jesper Grud Skat Madsen [cre, aut], Gabija Kavaliauskaite [aut]",
       "RemoteType": "github",
       "RemoteHost": "api.github.com",
-      "RemoteRepo": "valiDrops",
       "RemoteUsername": "madsen-lab",
-      "RemoteRef": "HEAD",
+      "RemoteRepo": "valiDrops",
+      "RemoteRef": "main",
       "RemoteSha": "f67d75100f90950266b9b73f9fddcf4c5a0a4b9b",
-      "NeedsCompilation": "no",
-      "Author": "Jesper Grud Skat Madsen [cre, aut], Gabija Kavaliauskaite [aut]"
+      "Remotes": "immunogenomics/presto"
     },
     "vctrs": {
       "Package": "vctrs",
