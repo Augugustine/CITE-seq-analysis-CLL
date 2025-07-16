@@ -1,24 +1,22 @@
 ---
-title: "Pre-processing"
+title: "Pre-processing without doublet removal"
 params: 
   patient: "P1"
   resolution: 0.1
   mito_gene_percent: 10
   directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
-  file: "cleanedCellBender_filtered.h5"
+  file: "filtered_feature_bc_matrix.h5"
 format: html
 editor: visual
 ---
 
-Steps of this pre-processing using CellBender, Seurat and DoubletFinder (all days merged)
+## Steps of this pre-processing Seurat without doublet removal (all days merged)
 
--   Downloading the data and creating one Seurat object per day. Using filtered data without empty drops and remove technical artifacts from CellBender
+-   Downloading the data and creating one Seurat object per day. Using filtered data without empty drops and remove technical artifacts (from CellRanger 10X Genomics)
 
 -   Merging all days into one Seurat object.
 
 -   Removing non-coding genes using **Ensembl** gene annotations (via a reusable custom function).
-
--   Detecting doublets (Singlet or Doublet) using **DoubletFinder** on each day separately, then adding this metadata to the merged object and removing doublets (also done via a reusable function).
 
 -   Quality control based on the number of detected features and percentage of mitochondrial genes (thresholds: max 10% mitochondrial genes, between 100 and 6000 features) using **Seurat**.
 
@@ -44,7 +42,6 @@ library(DoubletFinder)
 library(tibble)
 library(biomaRt)
 library(ggplot2)
-library(scCustomize)
 source("functions.R")
 ```
 
@@ -52,7 +49,7 @@ Download the data and Seurat Object creation
 
 ```{r}
 #| include: false
-seurat <- load_data_cellbender(params$patient, c(1,4,8,11,14), params$directory, params$file)
+seurat <- load_data_10XG(params$patient, c(1,4,8,11,14), params$directory, params$file)
 list2env(seurat, envir = .GlobalEnv)
 ```
 
@@ -102,48 +99,6 @@ Features number after non-coding genes removal
 
 ```{r}
 nrow(CLL_merged)
-```
-
-## Doublet removal
-
-Number of cell before doublet removal
-
-```{r}
-ncol(CLL_merged)
-```
-
-The tool used is DoubletFinder, and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a data frame where each row corresponds to a cell ID, and the column indicates whether the cell is classified as a singlet or doublet.
-
-```{r}
-#| message: false
-#| warning: false
-#| include: false
-res.D1<-complete_DoubletFinder(CLL_D1_filtered)
-res.D1$row_names <- paste0("D1_", res.D1$row_names)
-res.D4<-complete_DoubletFinder(CLL_D4_filtered)
-res.D4$row_names <- paste0("D4_", res.D4$row_names)
-res.D8<-complete_DoubletFinder(CLL_D8_filtered)
-res.D8$row_names <- paste0("D8_", res.D8$row_names)
-res.D11<-complete_DoubletFinder(CLL_D11_filtered)
-res.D11$row_names <- paste0("D11_", res.D11$row_names)
-res.D14<-complete_DoubletFinder(CLL_D14_filtered)
-res.D14$row_names <- paste0("D14_", res.D14$row_names)
-results_multiplet <-bind_rows(res.D1, res.D4, res.D8, res.D11, res.D14)
-rownames(results_multiplet) <- results_multiplet$row_names
-results_multiplet$row_names <- NULL
-```
-
-Doublet/Singlet class addition in the Seurat Object metadata and removal doublet
-
-```{r}
-CLL_merged <- AddMetaData(CLL_merged, results_multiplet)
-CLL_merged <- subset(CLL_merged, doublet_finder == 'Singlet')
-```
-
-Cell number after doublets removal
-
-```{r}
-ncol(CLL_merged)
 ```
 
 ## QC and filtering
@@ -273,5 +228,5 @@ Save the object after the pre-processing
 
 ```{r}
 namepath=paste0("./CLL_", params$patient, "_merged.rds")
-saveRDS(CLL_merged, file = namepath)
+#saveRDS(CLL_merged, file = namepath)
 ```

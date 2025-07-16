@@ -48,6 +48,7 @@ load_data_cellbender <- function(patient_id, jours, base_dir, name_file) {
   return(seurat_list)
 }
 
+
 # This function takes a single-cell RNA-seq sample (in Seurat object format) as input and performs all the necessary preprocessing steps required 
 # by DoubletFinder, including normalization, identification of variable features, scaling, and PCA.
 # It then determines the optimal parameters for DoubletFinder (PCs, pN, pK, and nExp), runs the tool, and returns a data frame containing the IDs 
@@ -114,12 +115,8 @@ sample <- doubletFinder(seu = sample,
                         nExp = nExp.poi.adj) # number of expected real doublets
 # change name of metadata column with Singlet/Doublet information
 colnames(sample@meta.data)[grepl('DF.classifications.*', colnames(sample@meta.data))] <- "doublet_finder"
-
-double_finder_res <- sample@meta.data['doublet_finder'] # get the metadata column with singlet, doublet info
-double_finder_res <- rownames_to_column(double_finder_res, "row_names") # add the cell IDs as new column to be able to merge correctly
-return(double_finder_res)
+return(sample)
 }
-
 
 
 # Non-coding genes removal 

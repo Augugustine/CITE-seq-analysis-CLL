@@ -10,9 +10,9 @@ format: html
 editor: visual
 ---
 
-## Steps of this pre-processing, Seurat, DoubletFinder and DDQC (all days merged)
+## Steps of this pre-processing, valiDrops, Seurat and DoubletFinder 
 
--   Downloading the data filtered by 10X Genomics pipeline CellRanger and merging all days into one Seurat object.
+-   Downloading the raw data by 10X Genomics pipeline and merging all days into one Seurat object.
 
 -   Applying the **valiDrops** tool. This tool performs quality control on single-cell data by identifying valid barcodes and predicting whether each cell is alive or dead, based on expression profiles and quality metrics
 
@@ -47,19 +47,6 @@ source("functions.R")
 ```
 
 ```{r}
-## Run valiDrops
-# Uncomment the line below to run without parallel processing in the dead cell prediction 
-# valid <- valiDrops(data, label_dead = TRUE)
-
-# Comment the line below to stop running with parallel processing in the dead cell prediction
-# Depending on your system, you may use SnowParam() instead of MulticoreParam(). Get more information in the BiocParallel vignette.
-valid <- valiDrops(data, label_dead = TRUE, bpparam = BiocParallel::MulticoreParam())
-
-## SIMPLE: Create a Seurat object with the barcodes that pass quality control and are predicted to be live
-seu <- CreateSeuratObject(data[, colnames(data) %in% valid[ valid$qc.pass == "pass" & valid$label == "live","barcode"]], min.cells = 1, min.features = 1)
-```
-
-```{r}
 #| include: false
 seurat <- load_data_10XG(params$patient, c(1,4,8,11,14), params$directory, params$file)
 list2env(seurat, envir = .GlobalEnv)
@@ -89,6 +76,16 @@ Total number of cells at the beginning.
 
 ```{r}
 ncol(CLL_merged)
+```
+
+Run valiDrops
+
+```{r}
+CLL_merged <- valiDrops(CLL_merged, label_dead = TRUE)
+```
+
+```{r}
+CLL_merged <- subset(CLL_merged, qc.pass == "pass" & label == "live")
 ```
 
 ## Non coding genes removal

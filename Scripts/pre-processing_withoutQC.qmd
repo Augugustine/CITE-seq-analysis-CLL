@@ -1,26 +1,24 @@
 ---
-title: "Pre-processing"
+title: "Pre-processing without QC"
 params: 
   patient: "P1"
   resolution: 0.1
   mito_gene_percent: 10
   directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
-  file: "cleanedCellBender_filtered.h5"
+  file: "filtered_feature_bc_matrix.h5"
 format: html
 editor: visual
 ---
 
-Steps of this pre-processing using CellBender, Seurat and DoubletFinder (all days merged)
+## Steps of this pre-processing Seurat and DoubletFinder (all days merged)
 
--   Downloading the data and creating one Seurat object per day. Using filtered data without empty drops and remove technical artifacts from CellBender
+-   Downloading the data and creating one Seurat object per day. Using filtered data without empty drops and remove technical artifacts (from CellRanger 10X Genomics)
 
 -   Merging all days into one Seurat object.
 
 -   Removing non-coding genes using **Ensembl** gene annotations (via a reusable custom function).
 
 -   Detecting doublets (Singlet or Doublet) using **DoubletFinder** on each day separately, then adding this metadata to the merged object and removing doublets (also done via a reusable function).
-
--   Quality control based on the number of detected features and percentage of mitochondrial genes (thresholds: max 10% mitochondrial genes, between 100 and 6000 features) using **Seurat**.
 
 -   Selecting the top 2000 variable genes, normalization, and scaling (**Seurat**).
 
@@ -44,7 +42,6 @@ library(DoubletFinder)
 library(tibble)
 library(biomaRt)
 library(ggplot2)
-library(scCustomize)
 source("functions.R")
 ```
 
@@ -52,7 +49,7 @@ Download the data and Seurat Object creation
 
 ```{r}
 #| include: false
-seurat <- load_data_cellbender(params$patient, c(1,4,8,11,14), params$directory, params$file)
+seurat <- load_data_10XG(params$patient, c(1,4,8,11,14), params$directory, params$file)
 list2env(seurat, envir = .GlobalEnv)
 ```
 
@@ -146,49 +143,6 @@ Cell number after doublets removal
 ncol(CLL_merged)
 ```
 
-## QC and filtering
-
-This step in done on the data days merged (same threshold for the 5 time points). Damaged cells removal (mitochondrial gene percentage), related to the cell quality
-
-Mitochondrial gene percentage calculation
-
-```{r}
-CLL_merged[["percent.mt"]] <- PercentageFeatureSet(CLL_merged, pattern = "^MT-")
-```
-
-Observe the distribution on violin plot, in order to adapt the threshold
-
-```{r}
-#| warning: false
-VlnPlot(CLL_merged, features = c("nFeature_RNA"))
-VlnPlot(CLL_merged, features = c("nCount_RNA"))
-VlnPlot(CLL_merged, features = c("percent.mt"))
-```
-
-Filtering
-
-```{r}
-CLL_merged<-subset(CLL_merged, subset= nFeature_RNA > 100 
-                      & nFeature_RNA < 6000 & percent.mt < params$mito_gene_percent)
-
-```
-
-Cell and features number after filtering
-
-```{r}
-ncol(CLL_merged)
-nrow(CLL_merged)
-```
-
-Violin plot after filtering
-
-```{r}
-#| warning: false
-VlnPlot(CLL_merged, features = c("nFeature_RNA")) 
-VlnPlot(CLL_merged, features = c("nCount_RNA")) 
-VlnPlot(CLL_merged, features = c("percent.mt"))
-```
-
 ## Normalization, scaling and most variable features
 
 Normalization
@@ -273,5 +227,5 @@ Save the object after the pre-processing
 
 ```{r}
 namepath=paste0("./CLL_", params$patient, "_merged.rds")
-saveRDS(CLL_merged, file = namepath)
+#saveRDS(CLL_merged, file = namepath)
 ```
