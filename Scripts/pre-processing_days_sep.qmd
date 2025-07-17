@@ -1,7 +1,7 @@
 ---
 title: "Pre-processing QC separately for each day"
 params: 
-  patient: "P1"
+  patient: "P2"
   resolution: 0.1
   mito_gene_percent: 10
   directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
@@ -94,7 +94,7 @@ Number of cell before doublet removal
 sapply(mget(names), ncol)
 ```
 
-The tool used is DoubletFinder, and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a data frame where each row corresponds to a cell ID, and the column indicates whether the cell is classified as a singlet or doublet.
+The tool used is DoubletFinder, and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a new seurat object with a new column in the metadata which indicates whether the cell is classified as a singlet or doublet.
 
 ```{r}
 #| message: false
@@ -120,22 +120,45 @@ This step in done on the data days merged (same threshold for the 5 time points)
 Mitochondrial gene percentage calculation
 
 ```{r}
-CLL_merged[["percent.mt"]] <- PercentageFeatureSet(CLL_merged, pattern = "^MT-")
+for (obj_name in names) {
+  seurat_obj <- get(obj_name)
+  seurat_obj[["percent.mt"]] <- PercentageFeatureSet(seurat_obj, pattern = "^MT-")
+  assign(obj_name, seurat_obj)
+}
 ```
 
 Observe the distribution on violin plot, in order to adapt the threshold
 
 ```{r}
 #| warning: false
-VlnPlot(CLL_merged, features = c("nFeature_RNA"))
-VlnPlot(CLL_merged, features = c("nCount_RNA"))
-VlnPlot(CLL_merged, features = c("percent.mt"))
+
+for (obj_name in names) {
+  seurat_obj <- get(obj_name)
+  p1 <- VlnPlot(seurat_obj, features = "nFeature_RNA", pt.size = 0.1,  group.by = "orig.ident") + NoLegend()
+  p2 <- VlnPlot(seurat_obj, features = "nCount_RNA", pt.size = 0.1, group.by = "orig.ident", y.max= 50000) + NoLegend()
+  p3 <- VlnPlot(seurat_obj, features = "percent.mt", pt.size = 0.1, group.by = "orig.ident", y.max= 25) + NoLegend()
+  print(p1 + p2 + p3 + plot_layout(ncol = 3))
+}
 ```
 
 Filtering
 
+The threshold are chosen thanks to the plot below.
+
 ```{r}
-CLL_merged<-subset(CLL_merged, subset= nFeature_RNA > 100 
+CLL_D1_filtered<-subset(CLL_D1_filtered, subset= nFeature_RNA > 1000 
+                      & nFeature_RNA < 6000 & percent.mt < params$mito_gene_percent)
+
+CLL_D4_filtered<-subset(CLL_D4_filtered, subset= nFeature_RNA > 1000 
+                      & nFeature_RNA < 5500 & percent.mt < params$mito_gene_percent)
+
+CLL_D8_filtered<-subset(CLL_D8_filtered, subset= nFeature_RNA > 1000 
+                      & nFeature_RNA < 6000 & percent.mt < params$mito_gene_percent)
+
+CLL_D11_filtered<-subset(CLL_D11_filtered, subset= nFeature_RNA > 500 
+                      & nFeature_RNA < 5000 & percent.mt < params$mito_gene_percent)
+
+CLL_D14_filtered<-subset(CLL_D14_filtered, subset= nFeature_RNA > 500 
                       & nFeature_RNA < 6000 & percent.mt < params$mito_gene_percent)
 
 ```
@@ -143,17 +166,8 @@ CLL_merged<-subset(CLL_merged, subset= nFeature_RNA > 100
 Cell and features number after filtering
 
 ```{r}
-ncol(CLL_merged)
-nrow(CLL_merged)
-```
-
-Violin plot after filtering
-
-```{r}
-#| warning: false
-VlnPlot(CLL_merged, features = c("nFeature_RNA")) 
-VlnPlot(CLL_merged, features = c("nCount_RNA")) 
-VlnPlot(CLL_merged, features = c("percent.mt"))
+sapply(mget(names), ncol)
+sapply(mget(names), nrow)
 ```
 
 ## Merge the timepoint in one object

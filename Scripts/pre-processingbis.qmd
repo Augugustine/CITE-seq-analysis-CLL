@@ -111,7 +111,7 @@ Number of cell before doublet removal
 ncol(CLL_merged)
 ```
 
-The tool used is DoubletFinder, and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a data frame where each row corresponds to a cell ID, and the column indicates whether the cell is classified as a singlet or doublet.
+The tool used is DoubletFinder, and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a new Seurat object that includes an additional metadata column indicating whether each cell is classified as a singlet or a doublet. For each day, the cell IDs and their corresponding classifications are extracted and then merged across all days.
 
 ```{r}
 #| message: false

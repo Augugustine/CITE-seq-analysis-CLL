@@ -112,25 +112,34 @@ Number of cell before doublet removal
 ncol(CLL_merged)
 ```
 
-The tool used is DoubletFinder, and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a data frame where each row corresponds to a cell ID, and the column indicates whether the cell is classified as a singlet or doublet.
+The tool used is DoubletFinder, and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a new Seurat object that includes an additional metadata column indicating whether each cell is classified as a singlet or a doublet. For each day, the cell IDs and their corresponding classifications are extracted and then merged across all days.
 
 ```{r}
 #| message: false
 #| warning: false
 #| include: false
-res.D1<-complete_DoubletFinder(CLL_D1_filtered)
-res.D1$row_names <- paste0("D1_", res.D1$row_names)
-res.D4<-complete_DoubletFinder(CLL_D4_filtered)
-res.D4$row_names <- paste0("D4_", res.D4$row_names)
-res.D8<-complete_DoubletFinder(CLL_D8_filtered)
-res.D8$row_names <- paste0("D8_", res.D8$row_names)
-res.D11<-complete_DoubletFinder(CLL_D11_filtered)
-res.D11$row_names <- paste0("D11_", res.D11$row_names)
-res.D14<-complete_DoubletFinder(CLL_D14_filtered)
-res.D14$row_names <- paste0("D14_", res.D14$row_names)
-results_multiplet <-bind_rows(res.D1, res.D4, res.D8, res.D11, res.D14)
-rownames(results_multiplet) <- results_multiplet$row_names
-results_multiplet$row_names <- NULL
+days <- c("D1","D4","D8","D11", "D14")
+results_list <- list()
+
+for (day in days) {
+  obj_name <- paste0("CLL_", day, "_filtered")
+  obj <- get(obj_name)
+  obj <- complete_DoubletFinder(obj)
+  assign(obj_name, obj) 
+  
+  # Metadata extraction
+  res <- obj@meta.data["doublet_finder"]
+  
+  # New cells name with _D
+  res$cell_id <- paste0(day, "_", rownames(res))
+  rownames(res) <- res$cell_id
+  res$cell_id <- NULL
+  
+  results_list[[day]] <- res
+}
+
+# Fusion
+results_multiplet <- do.call(dplyr::bind_rows, results_list)
 ```
 
 Doublet/Singlet class addition in the Seurat Object metadata and removal doublet
