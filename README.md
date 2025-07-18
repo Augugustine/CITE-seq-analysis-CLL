@@ -23,6 +23,20 @@ R packages, primarily:
 The project uses renv to manage R dependencies, ensuring reproducibility. The environment is compatible with R version ≥ 4.3.x  
 
 Python (used for complementary tools, details available in the relevant scripts)
+- CellBender
+
+## Scripts 
+
+The pre-processing folder contains scripts implementing different pre-processing strategies using various tools and methods:
+    pre-processing_cellbender: Pre-processing with CellBender to remove empty droplets prior to Seurat steps.
+    pre-processing_seurat: Standard Seurat pipeline including QC and filtering using fixed thresholds.
+    pre-processing_DDQC: QC and filtering using the DDQC tool, which adapts QC thresholds based on clustering.
+    pre-processing_valiDrops: Initial steps including empty droplet removal, QC, and filtering.
+    pre-processing_withoutQC: Pre-processing pipeline without QC or filtering steps.
+    pre-processing_doublet: Pre-processing pipeline without doublet removal.
+    pre-processing_days_sep: Standard Seurat pipeline including doublet removal, non-coding gene removal, QC and filtering, but applied separately to each day.
+
+
 
 ## Author 
 Augustine Blanc-Boekholt 
