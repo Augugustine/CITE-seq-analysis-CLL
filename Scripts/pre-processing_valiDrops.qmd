@@ -85,13 +85,19 @@ This step in done on the data days merged. The tool valiDrops is a tool used for
 Run valiDrops
 
 ```{r}
-CLL_merged <- valiDrops(CLL_merged, label_dead = TRUE)
+valid <- valiDrops(CLL_merged, label_dead = TRUE)
+saveRDS(valid, file = "valiDrops.rds")
 ```
 
 Keeping the cells alive and barcodes that passed the quality control
 
 ```{r}
-CLL_merged <- subset(CLL_merged, qc.pass == "pass" & label == "live")
+valid <- valid[, c("Barcode", "qc.pass", "label")]
+rownames(valid) <- valid$Barcode
+valid$Barcode <- NULL
+CLL_merged <- AddMetaData(CLL_merged, valid)
+
+CLL_merged <- subset(CLL_merged, subset = qc.pass == "pass" & label == "live")
 ```
 
 ```{r}
