@@ -1,0 +1,79 @@
+---
+title: "Annotation"
+params: 
+  patient: "P1"
+  file: "CLL_P1_seurat.rds"
+format: html
+editor: visual
+---
+
+# Cell types annotation 
+
+This script aims to annotate cell clusters in order to identify the corresponding cell types. It combines both automatic and manual annotation approaches to improve accuracy and biological relevance.
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+source("functions.R")
+```
+
+Read the data pre-processed
+
+```{r}
+data<-readRDS(params$file)
+```
+
+## Manual annotation 
+
+With WebCSEA and Seurat
+
+```{r}
+cluster6.markers <- FindMarkers(data, ident.1 = 6, ident.2 = c(0, 1, 2, 3, 4, 5))
+```
+
+```{r}
+cluster6.markers <- FindMarkers(data, ident.1 = 6, logfc.threshold = 0.25, test.use = "roc", only.pos = TRUE)
+```
+
+```{r}
+VlnPlot(data, features = c("MS4A1", "CD79A"))
+```
+
+```{r}
+FeaturePlot(data, features = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP",
+    "CD8A"))
+```
+
+Extraction des marqueurs différencitiellement exprimés puis injectuon de ces mraqueurs l'outil WebCSEA (Dai Y, Hu R, Liu A, Cho KS, Manuel AM, Li X, Dong X, Jia P, Zhao Z, 2022).
+
+```{r}
+new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono",
+    "NK", "DC", "Platelet")
+names(new.cluster.ids) <- levels(data)
+data <- RenameIdents(data, new.cluster.ids)
+DimPlot(data, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+```
+
+```{r}
+plot <- DimPlot(data, reduction = "umap", label = TRUE, label.size = 4.5) + xlab("UMAP 1") + ylab("UMAP 2") +
+    theme(axis.title = element_text(size = 18), legend.text = element_text(size = 18)) + guides(colour = guide_legend(override.aes = list(size = 10)))
+ggsave(filename = "./Plots/umap_annotated.jpg", height = 7, width = 12, plot = plot, quality = 50)
+```
+
+```{r}
+saveRDS(data, file = "CLL_annoted.rds")
+```
+
+## Automatic annotation
+
+With Azimuth
+
+With SingleR

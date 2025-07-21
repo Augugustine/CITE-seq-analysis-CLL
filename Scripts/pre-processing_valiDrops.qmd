@@ -86,15 +86,14 @@ Run valiDrops
 
 ```{r}
 valid <- valiDrops(CLL_merged, label_dead = TRUE)
-saveRDS(valid, file = "valiDrops.rds")
 ```
 
 Keeping the cells alive and barcodes that passed the quality control
 
 ```{r}
-valid <- valid[, c("Barcode", "qc.pass", "label")]
-rownames(valid) <- valid$Barcode
-valid$Barcode <- NULL
+valid <- valid[, c("barcode", "qc.pass", "label")]
+rownames(valid) <- valid$barcode
+valid$barcode <- NULL
 CLL_merged <- AddMetaData(CLL_merged, valid)
 
 CLL_merged <- subset(CLL_merged, subset = qc.pass == "pass" & label == "live")
@@ -277,5 +276,5 @@ Save the object after the pre-processing
 
 ```{r}
 namepath=paste0("./CLL_", params$patient, "_merged.rds")
-#saveRDS(CLL_merged, file = namepath)
+saveRDS(CLL_merged, file = namepath)
 ```
