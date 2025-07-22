@@ -137,3 +137,13 @@ seuratobj<-subset(seuratobj, features = coding_genes) # keep only the coding gen
 return(seuratobj) 
 }
 
+# Run graph reduction as UMAP
+run_graph_reduction <- function(seuratobj){
+  seuratobj <- NormalizeData(seuratobj)
+  seuratobj <- FindVariableFeatures(seuratobj)
+  seuratobj <- ScaleData(seuratobj)
+  seuratobj <- RunPCA(seuratobj)
+  seuratobj <- RunUMAP(seuratobj, dims = 1:10)
+  return(seuratobj)
+}
+
