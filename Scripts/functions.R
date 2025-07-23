@@ -9,16 +9,26 @@ load_data_10XG <- function(patient_id, jours, base_dir, name_file) {
   # Data load
   data_list <- lapply(paths, Read10X_h5)
   names(data_list) <- paste0("CLL", "_D", jours, "_filtered.data")
-  # Seurat Object creation ('Gene Expression')
+  # Seurat Object creation RNA and ADT assays
   seurat_list <- lapply(seq_along(data_list), function(i) {
-    CreateSeuratObject(
-      counts = data_list[[i]]$`Gene Expression`,
-      project = paste0(patient_id, "_D", jours[i], "_filtered"),
-      min.cells = 2,
-      min.features = 100
+    # RNA and ADT extraction
+    rna_counts <- data_list[[i]]$`Gene Expression`
+    adt_counts <- data_list[[i]]$`Antibody Capture`
+    # Align cell barcodes across RNA and ADT
+    common_barcodes <- intersect(colnames(rna_counts), colnames(adt_counts))
+    rna_counts <- rna_counts[, common_barcodes]
+    adt_counts <- adt_counts[, common_barcodes]
+    adt_counts <- adt_counts[, match(colnames(rna_counts), colnames(adt_counts))]
+    # Seurat Object with RNA
+    seurat_obj <- CreateSeuratObject(
+      counts = rna_counts,
+      project = paste0(patient_id, "_D", jours[i], "_filtered")
     )
+    
+    # Add ADT in 2nd assay
+    seurat_obj[["ADT"]] <- CreateAssayObject(counts = adt_counts)
+    return(seurat_obj)
   })
-  
   # Name the data
   names(seurat_list) <- paste0("CLL", "_D", jours, "_filtered")
   return(seurat_list)
@@ -37,9 +47,7 @@ load_data_cellbender <- function(patient_id, jours, base_dir, name_file) {
   seurat_list <- lapply(seq_along(data_list), function(i) {
     CreateSeuratObject(
       counts = data_list[[i]],
-      project = paste0(patient_id, "_D", jours[i], "_filtered"),
-      min.cells = 2,
-      min.features = 100
+      project = paste0(patient_id, "_D", jours[i], "_filtered")
     )
   })
   
@@ -138,7 +146,7 @@ return(seuratobj)
 }
 
 # Run graph reduction as UMAP
-run_graph_reduction <- function(seuratobj){
+run_umap <- function(seuratobj){
   seuratobj <- NormalizeData(seuratobj)
   seuratobj <- FindVariableFeatures(seuratobj)
   seuratobj <- ScaleData(seuratobj)
@@ -146,4 +154,22 @@ run_graph_reduction <- function(seuratobj){
   seuratobj <- RunUMAP(seuratobj, dims = 1:10)
   return(seuratobj)
 }
+
+# Run wnnUMAP graph 
+run_wnnumap <- function(seuratobj, resol, normalisation_type){
+  DefaultAssay(seuratobj) <- 'ADT'
+  
+  seuratobj[["ADT"]] <- NormalizeData(seuratobj[["ADT"]], normalization.method = 'CLR', margin = 2)
+  seuratobj[["ADT"]] <- ScaleData(seuratobj[["ADT"]])
+  seuratobj <- RunPCA(seuratobj, assay = 'ADT', reduction.name = 'apca')
+  
+  DefaultAssay(seuratobj) <- normalisation_type
+  seuratobj <- FindMultiModalNeighbors(
+    seuratobj, reduction.list = list("pca", "apca"), 
+    dims.list = list(1:30, 1:18), modality.weight.name = "RNA.weight")
+  seuratobj <- RunUMAP(seuratobj, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+  seuratobj <- FindClusters(seuratobj, graph.name = "wsnn", algorithm = 3, resolution = resol, verbose = FALSE)
+  return(seuratobj)
+}
+
 
