@@ -7,7 +7,7 @@ format: html
 editor: visual
 ---
 
-# Cell types annotation 
+# Cell types annotation
 
 This script aims to annotate cell clusters in order to identify the corresponding cell types. It combines both automatic and manual annotation approaches to improve accuracy and biological relevance.
 
@@ -22,6 +22,7 @@ library(hdf5r)
 library(dplyr)
 library(patchwork)
 library(ggplot2)
+library(Azimuth)
 source("functions.R")
 ```
 
@@ -31,7 +32,7 @@ Read the data pre-processed
 data<-readRDS(params$file)
 ```
 
-## Manual annotation 
+## Manual annotation
 
 With WebCSEA and Seurat
 
@@ -75,5 +76,21 @@ saveRDS(data, file = "CLL_annoted.rds")
 ## Automatic annotation
 
 With Azimuth
+
+Récupérer le seurat object (ARN et ADT) mais annation en utilisant seulement les ARN. l'object doit avoir été filtrés (cellules et gènes) mais pas plus. Puis on lui applique une normalization comme celui de la référence utilisé () donc ici SCTransform puis une ACP
+
+```{r}
+DefaultAssay(data) <- "RNA"
+data <- SCTransform(data)
+data <- RunPCA(data)
+
+data <- RunAzimuth(data, reference = "pbmcref")
+```
+
+```{r}
+DimPlot(data, group.by = "predicted.celltype.l2", label = TRUE, label.size = 3) + NoLegend()
+```
+
+check the score prediction
 
 With SingleR
