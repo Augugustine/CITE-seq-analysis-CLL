@@ -172,11 +172,11 @@ CLL_merged <- subset(CLL_merged, doublet_finder == 'Singlet')
 Identify the doublets on the UMAP
 
 ```{r}
-CLL_multiplet <- run_graph_reduction(CLL_multiplet)
+CLL_multiplet <- run_umap(CLL_multiplet)
 
 CLL_multiplet$Doublet_Status <- ifelse(CLL_multiplet$doublet_finder == "Doublet", "Doublet", "Other")
 
-DimPlot(CLL_multiplet, group.by = "Doublet_Status", cols = c("Other" = "grey80", "Doublet" = "red"))
+DimPlot(CLL_multiplet, group.by = "Doublet_Status", cols = c("Other" = "grey80", "Doublet" = "red")) + ggtitle("Doublets position")
 ```
 
 Cell number after doublets removal
@@ -204,11 +204,22 @@ VlnPlot(CLL_merged, features = c("nCount_RNA"))
 VlnPlot(CLL_merged, features = c("percent.mt"))
 ```
 
+Visualize the position of cells that failed QC on the UMAP
+
+```{r}
+CLL_merged$qc_pass <- with(CLL_merged@meta.data,
+                           nFeature_RNA > 100 &
+                           nFeature_RNA < 6000 &
+                           percent.mt < params$mito_gene_percent)
+CLL_qc <-CLL_merged
+CLL_qc <- run_umap(CLL_qc)
+DimPlot(CLL_qc, group.by = "qc_pass", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle("QC status of cells (red = failed)")
+```
+
 Filtering
 
 ```{r}
-CLL_merged<-subset(CLL_merged, subset= nFeature_RNA > 100 
-                      & nFeature_RNA < 6000 & percent.mt < params$mito_gene_percent)
+CLL_merged<-subset(CLL_merged, subset = qc_pass == TRUE)
 ```
 
 Cell and features number after filtering
@@ -374,7 +385,35 @@ counts <- as.matrix(counts)
 write.table(counts, file = "CLL_P1_seurat_logNormalize.tsv", sep = "\t", quote = FALSE, col.names = NA)
 ```
 
-Save the object after the pre-processing
+## wnnUMAP (ADT+RNA)
+
+Visualization with wnnUMAP on data SCTransform
+
+```{r}
+#| message: false
+#| warning: false
+CLL_merged_sctransform <- run_wnnumap(CLL_merged_sctransform, params$resolution, "SCT")
+plotwnn <- DimPlot(CLL_merged_sctransform, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
+  NoLegend() + ggtitle("wnnUMAP on RNA SCTranform normalization")
+plotwnn
+ggsave("wnnumpa_sct.jpeg", plotwnn)
+DefaultAssay(CLL_merged_sctransform) <- 'RNA'
+```
+
+Visualization with wnnUMAP on data LogNormalize
+
+```{r}
+#| message: false
+#| warning: false
+CLL_merged <- run_wnnumap(CLL_merged, params$resolution, "RNA")
+plotwnn <- DimPlot(CLL_merged, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
+  NoLegend() + ggtitle("wnnUMAP on RNA LogNormalize normalization")
+plotwnn
+ggsave("wnnumpa_log.jpeg", plotwnn)
+DefaultAssay(CLL_merged) <- 'RNA'
+```
+
+## Save the object after the pre-processing
 
 ```{r}
 namepath=paste0("./CLL_", params$patient, "_seurat.rds")
