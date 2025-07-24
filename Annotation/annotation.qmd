@@ -77,13 +77,10 @@ saveRDS(data, file = "CLL_annoted.rds")
 
 With Azimuth
 
-Récupérer le seurat object (ARN et ADT) mais annation en utilisant seulement les ARN. l'object doit avoir été filtrés (cellules et gènes) mais pas plus. Puis on lui applique une normalization comme celui de la référence utilisé () donc ici SCTransform puis une ACP
+Récupérer le seurat object (ARN et ADT) mais annotation en utilisant seulement les ARN. l'object doit avoir été filtrés (cellules et gènes). Il doit contenir les RNA count. Car Azimuth va appliquer une normalization comme celui de la référence utilisée (Hao, Y., Hao, S., Andersen-Nissen, E., Mauck, W. M., Zheng, S., Butler, A., Lee, M. J., Wilk, A. J., Darby, C., Zager, M., Hoffman, P., Stoeckius, M., Papalexi, E., Mimitou, E. P., Jain, J., Srivastava, A., Stuart, T., Fleming, L. M., Yeung, B., … Satija, R., 2021).
 
 ```{r}
 DefaultAssay(data) <- "RNA"
-data <- SCTransform(data)
-data <- RunPCA(data)
-
 data <- RunAzimuth(data, reference = "pbmcref")
 ```
 
