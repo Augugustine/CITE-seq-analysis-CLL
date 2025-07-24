@@ -95,6 +95,7 @@ This function accepts a Seurat object at any stage (pre- or post-processing) and
 
 ```{r}
 CLL_merged <- removal_noncoding_gene(CLL_merged)
+all.equal(colnames(CLL_merged[["RNA"]]), colnames(CLL_merged))
 ```
 
 Features number after non-coding genes removal
@@ -153,15 +154,18 @@ CLL_multiplet <- CLL_merged
 Percentage calculation
 
 ```{r}
+#| include: false
 table_classes <- table(CLL_merged$doublet_finder)
 percentages <- prop.table(table_classes) * 100
-print(percentages)
 
 CLL_merged@meta.data %>%
   group_by(timepoint, doublet_finder) %>%
   summarise(n = n()) %>%
   mutate(percent = n / sum(n) * 100) -> timepoint_percent
+```
 
+```{r}
+print(percentages)
 print(timepoint_percent)
 ```
 
@@ -172,10 +176,13 @@ CLL_merged <- subset(CLL_merged, doublet_finder == 'Singlet')
 Identify the doublets on the UMAP
 
 ```{r}
+#| include: false
 CLL_multiplet <- run_umap(CLL_multiplet)
 
 CLL_multiplet$Doublet_Status <- ifelse(CLL_multiplet$doublet_finder == "Doublet", "Doublet", "Other")
+```
 
+```{r}
 DimPlot(CLL_multiplet, group.by = "Doublet_Status", cols = c("Other" = "grey80", "Doublet" = "red")) + ggtitle("Doublets position")
 ```
 
@@ -207,12 +214,16 @@ VlnPlot(CLL_merged, features = c("percent.mt"))
 Visualize the position of cells that failed QC on the UMAP
 
 ```{r}
+#| include: false
 CLL_merged$qc_pass <- with(CLL_merged@meta.data,
                            nFeature_RNA > 100 &
                            nFeature_RNA < 6000 &
                            percent.mt < params$mito_gene_percent)
 CLL_qc <-CLL_merged
 CLL_qc <- run_umap(CLL_qc)
+```
+
+```{r}
 DimPlot(CLL_qc, group.by = "qc_pass", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle("QC status of cells (red = failed)")
 ```
 
@@ -242,13 +253,15 @@ VlnPlot(CLL_merged, features = c("percent.mt"))
 
 There are two ways to perform this step. One option is to use SCTransform, which combines normalization, scaling, and the selection of highly variable features in a single function. The normalization is based on a negative binomial regression model that accounts for technical variability. Alternatively, we can perform each step separately: First, normalize the data using the LogNormalize method, then apply scaling, and finally, identify the most variable features. With LogNormalize, the feature counts for each cell are divided by the total counts for that cell, multiplied by a scaling factor.
 
-With SCTransform
+-   With SCTransform
 
 ```{r}
 #| include: false
 CLL_merged_sctransform <- CLL_merged
 CLL_merged_sctransform <- SCTransform(CLL_merged_sctransform)
 ```
+
+-   With LogNormalize
 
 Normalization
 
@@ -315,7 +328,7 @@ DimHeatmap(CLL_merged, dims = 1, cells = 500, balanced = TRUE)
 
 ## Clustering
 
-Cells were clustered based on the first ten principal components. The `FindClusters` function requires a `resolution` parameter, which controls the clustering granularity, the number of clusters obtained depends directly on this value. That's why four different resolutions (0.05, 0.1, 0.2, 0.5) were tested, in order to identify the most appropriate one.
+Cells were clustered based on the first ten principal components. The `FindClusters` function requires a `resolution` parameter, which controls the clustering granularity, the number of clusters obtained depends directly on this value. That's why different resolutions can be tested, in scripts parameters, in order to identify the most appropriate one.
 
 ```{r}
 #| message: false
@@ -345,12 +358,26 @@ plotumap<-DimPlot(CLL_merged_sctransform, reduction = "umap")
 ggsave("umap1.jpeg", plotumap)
 ```
 
+UMAP by timepoint
+
+```{r}
+DimPlot(CLL_merged_sctransform, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") +
+  ggtitle("UMAP by timepoint (normalized by SCTransform)") +
+  theme(plot.title = element_text(hjust = 0.5))
+```
+
 ```{r}
 #| warning: false
 CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
-DimPlot(CLL_merged, reduction = "umap") + ggtitle("UMAP (normalized by LogNormalized)")
+DimPlot(CLL_merged, reduction = "umap") + ggtitle("UMAP (normalized by LogNormalize)")
 plotumap<-DimPlot(CLL_merged, reduction = "umap")
 ggsave("umap2.jpeg", plotumap)
+```
+
+```{r}
+DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") +
+  ggtitle("UMAP by timepoint (normalized by LogNormalize)") +
+  theme(plot.title = element_text(hjust = 0.5))
 ```
 
 ## t-SNE
