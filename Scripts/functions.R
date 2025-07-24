@@ -133,7 +133,7 @@ return(sample)
 removal_noncoding_gene <- function(seuratobj){
   
 mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl") # load the database Ensembl
-gene_list <-Features(seuratobj) # gene listing of the seurat object
+gene_list <-Features(seuratobj[["RNA"]]) # gene listing of the seurat object
 # Query Ensembl for gene biotype
 gene_info <- getBM(attributes = c("external_gene_name", "gene_biotype"),
                    filters = "external_gene_name",
@@ -141,7 +141,12 @@ gene_info <- getBM(attributes = c("external_gene_name", "gene_biotype"),
                    mart = mart)
 # Filter to keep only protein-coding genes
 coding_genes <- gene_info$external_gene_name[gene_info$gene_biotype == "protein_coding"] # list the coding genes
-seuratobj<-subset(seuratobj, features = coding_genes) # keep only the coding gene of the list, in the seurat object
+# RNA count matrix
+counts_matrix <- GetAssayData(seuratobj, assay = "RNA", layer = "counts")
+# Keep only the coding genes from the  RNA counts
+counts_matrix_filtered <- counts_matrix[rownames(counts_matrix) %in% coding_genes, ]
+# Create the RNA assay with only the coding genes
+seuratobj[["RNA"]] <- CreateAssay5Object(counts = counts_matrix_filtered)
 return(seuratobj) 
 }
 
@@ -161,6 +166,7 @@ run_wnnumap <- function(seuratobj, resol, normalisation_type){
   
   seuratobj[["ADT"]] <- NormalizeData(seuratobj[["ADT"]], normalization.method = 'CLR', margin = 2)
   seuratobj[["ADT"]] <- ScaleData(seuratobj[["ADT"]])
+  seuratobj[["ADT"]] <- FindVariableFeatures(seuratobj[["ADT"]], selection.method = "mean.var.plot", nfeatures = 20)
   seuratobj <- RunPCA(seuratobj, assay = 'ADT', reduction.name = 'apca')
   
   DefaultAssay(seuratobj) <- normalisation_type
