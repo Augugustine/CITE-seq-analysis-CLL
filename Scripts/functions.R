@@ -160,21 +160,34 @@ run_umap <- function(seuratobj){
   return(seuratobj)
 }
 
+# Run UMAP on ADT
+run_adt_umap <- function(seuratobj) {
+  DefaultAssay(seuratobj) <- "ADT"
+  seuratobj <- NormalizeData(seuratobj, normalization.method = "CLR", margin = 2)
+  seuratobj <- ScaleData(seuratobj)
+  all_feats <- rownames(seuratobj[["ADT"]])
+  VariableFeatures(seuratobj) <- all_feats
+  seuratobj <- RunPCA(seuratobj, reduction.name = "apca", verbose = FALSE)
+  seuratobj <- RunUMAP(seuratobj, reduction = "apca", dims = 1:18,
+                       reduction.name = "adt.umap", reduction.key = "ADTUMAP_")
+  DefaultAssay(seuratobj) <- "RNA"
+  return(seuratobj)
+}
+
 # Run wnnUMAP graph 
-run_wnnumap <- function(seuratobj, resol, normalisation_type){
-  DefaultAssay(seuratobj) <- 'ADT'
-  
-  seuratobj[["ADT"]] <- NormalizeData(seuratobj[["ADT"]], normalization.method = 'CLR', margin = 2)
-  seuratobj[["ADT"]] <- ScaleData(seuratobj[["ADT"]])
-  seuratobj[["ADT"]] <- FindVariableFeatures(seuratobj[["ADT"]], selection.method = "mean.var.plot", nfeatures = 20)
-  seuratobj <- RunPCA(seuratobj, assay = 'ADT', reduction.name = 'apca')
-  
-  DefaultAssay(seuratobj) <- normalisation_type
+run_wnnumap <- function(seuratobj, resolution, normalization_type) {
+  # Multimodal neighbors & WNN UMAP
+  DefaultAssay(seuratobj) <- normalization_type  # "RNA" or "SCT"
   seuratobj <- FindMultiModalNeighbors(
-    seuratobj, reduction.list = list("pca", "apca"), 
-    dims.list = list(1:30, 1:18), modality.weight.name = "RNA.weight")
-  seuratobj <- RunUMAP(seuratobj, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
-  seuratobj <- FindClusters(seuratobj, graph.name = "wsnn", algorithm = 3, resolution = resol, verbose = FALSE)
+    seuratobj,
+    reduction.list = list("pca", "apca"),
+    dims.list = list(1:30, 1:18),
+    modality.weight.name = "RNA.weight"
+  )
+  seuratobj <- RunUMAP(seuratobj, nn.name = "weighted.nn",
+                       reduction.name = "wnn.umap", reduction.key = "WNNUMAP_")
+  seuratobj <- FindClusters(seuratobj, graph.name = "wsnn",
+                            algorithm = 3, resolution = resolution, verbose = FALSE)
   return(seuratobj)
 }
 
