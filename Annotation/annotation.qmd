@@ -73,11 +73,28 @@ ggsave(filename = "./Plots/umap_annotated.jpg", height = 7, width = 12, plot = p
 saveRDS(data, file = "CLL_annoted.rds")
 ```
 
+Visualization (graphs)
+
+```{r}
+DimPlot(data, reduction = "umap", group.by = ) + ggtitle()
+```
+
+In Bonsai tool we can add a file with the cell annotation. The file required is a tsv file with in column the cell barcodes and the cell type.
+
+```{r}
+annotation_column <- "seurat_clusters"  # column name : to change
+barcode_annotation <- data.frame(
+  barcode = colnames(data),
+  annotation = data@meta.data[[annotation_column]]
+)
+write.table(annotation, file = "barcode_annotation.tsv", sep = "\t", quote = FALSE, col.names = NA)
+```
+
 ## Automatic annotation
 
 With Azimuth
 
-Récupérer le seurat object (ARN et ADT) mais annotation en utilisant seulement les ARN. l'object doit avoir été filtrés (cellules et gènes). Il doit contenir les RNA count. Car Azimuth va appliquer une normalization comme celui de la référence utilisée (Hao, Y., Hao, S., Andersen-Nissen, E., Mauck, W. M., Zheng, S., Butler, A., Lee, M. J., Wilk, A. J., Darby, C., Zager, M., Hoffman, P., Stoeckius, M., Papalexi, E., Mimitou, E. P., Jain, J., Srivastava, A., Stuart, T., Fleming, L. M., Yeung, B., … Satija, R., 2021).
+Retrieve the Seurat object (containing both RNA and ADT data), but perform cell type annotation using only the RNA modality. The object must already be filtered (cells and genes), and must contain raw RNA counts, as Azimuth will apply its own normalization consistent with the reference dataset used (Hao et al., 2021).
 
 ```{r}
 DefaultAssay(data) <- "RNA"
@@ -85,9 +102,13 @@ data <- RunAzimuth(data, reference = "pbmcref")
 ```
 
 ```{r}
-DimPlot(data, group.by = "predicted.celltype.l2", label = TRUE, label.size = 3) + NoLegend()
+DimPlot(data, group.by = "predicted.celltype.l1", label = TRUE, label.size = 3) + NoLegend()
 ```
 
 check the score prediction
 
 With SingleR
+
+exportation annotation pour Bonsai
+
+Checker les ADT pour confirmer les cell types
