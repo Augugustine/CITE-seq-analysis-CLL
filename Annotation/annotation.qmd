@@ -112,3 +112,5 @@ With SingleR
 exportation annotation pour Bonsai
 
 Checker les ADT pour confirmer les cell types
+
+Graph UMAP wnnUMAP avec les annotations
