@@ -4018,6 +4018,29 @@
       "Author": "Martin Maechler [aut, cre] (<https://orcid.org/0000-0002-8685-9910>), Peter Rousseeuw [aut] (Fortran original, <https://orcid.org/0000-0002-3807-5353>), Anja Struyf [aut] (S original), Mia Hubert [aut] (S original, <https://orcid.org/0000-0001-6398-4850>), Kurt Hornik [trl, ctb] (port to R; maintenance(1999-2000), <https://orcid.org/0000-0003-4198-9911>), Matthias Studer [ctb], Pierre Roudier [ctb], Juan Gonzalez [ctb], Kamil Kozlowski [ctb], Erich Schubert [ctb] (fastpam options for pam(), <https://orcid.org/0000-0001-9143-4880>), Keefe Murphy [ctb] (volume.ellipsoid({d >= 3}))",
       "Repository": "CRAN"
     },
+    "clusterCrit": {
+      "Package": "clusterCrit",
+      "Version": "1.3.0",
+      "Source": "Repository",
+      "License": "GPL (>= 2)",
+      "Description": "Package providing functions for computing a collection of clustering validation or quality criteria and partition comparison indices.",
+      "Title": "Clustering Indices",
+      "Authors@R": "c( person(\"Iago\", \"Giné-Vázquez\", role = c(\"cre\"),  email = \"iago.gin-vaz@protonmail.com\",  comment = c(ORCID = \"0000-0002-6725-2638\")), person(\"Bernard\", \"Desgraupes\", role = \"aut\"))",
+      "Date": "2023-11-21",
+      "Suggests": [
+        "RUnit",
+        "rbenchmark"
+      ],
+      "URL": "https://gitlab.com/iagogv/clusterCrit",
+      "BugReports": "https://gitlab.com/iagogv/clusterCrit/-/issues",
+      "Collate": "main.R zzz.R",
+      "NeedsCompilation": "yes",
+      "Encoding": "UTF-8",
+      "Type": "Package",
+      "Author": "Iago Giné-Vázquez [cre] (<https://orcid.org/0000-0002-6725-2638>), Bernard Desgraupes [aut]",
+      "Maintainer": "Iago Giné-Vázquez <iago.gin-vaz@protonmail.com>",
+      "Repository": "CRAN"
+    },
     "codetools": {
       "Package": "codetools",
       "Version": "0.2-20",
