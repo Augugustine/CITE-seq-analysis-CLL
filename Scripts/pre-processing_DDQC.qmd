@@ -193,7 +193,7 @@ Mitochondrial and ribosomal genes percentage
 
 ```{r}
 CLL_merged[["percent.mt"]] <- PercentageFeatureSet(CLL_merged, pattern = "^MT-")
-CLL_merged[["percent.ribo"]] <- PercentageFeatureSet(CLL_merged, pattern = "^RPS|^RPL")
+CLL_merged[["percent.rb"]] <- PercentageFeatureSet(CLL_merged, pattern = "^RPS|^RPL")
 ```
 
 ```{r}
@@ -203,7 +203,7 @@ ddqc_results<- ddqc.metrics(CLL_merged, res= 0.1, do.ribo = TRUE)
 Metadata extraction and adding to the Seurat Object
 
 ```{r}
-ddqc_metadata <- as.data.frame(ddqc_results[, c("passed.qc")])
+ddqc_metadata <- as.data.frame(ddqc_results[, c("passed.qc"), drop = FALSE])
 CLL_merged <- AddMetaData(CLL_merged, metadata = ddqc_metadata)
 ```
 
@@ -215,9 +215,9 @@ CLL_qc <- run_umap(CLL_qc)
 ```
 
 ```{r}
-plot<-DimPlot(CLL_qc, group.by = "passed.qc", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle(paste("QC status of cells (red = failed) for", params$patient,"using \nthe DDQC tool (adaptive threshold based on the median absolute\n deviation on four QC metrics, gene and UMI complexity, fraction \nof reads mapping to mitochondrial and ribosomal genes)"))
-plot
-ggsave(paste("DDQC_qc_", params$patient, ".jpeg"), plot)
+plot1<-DimPlot(CLL_qc, group.by = "passed.qc", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle(paste("QC status of cells (red = failed) for", params$patient,"using \nthe DDQC tool (adaptive threshold based on the median absolute\n deviation on four QC metrics, gene and UMI complexity, fraction \nof reads mapping to mitochondrial and ribosomal genes)"))
+plot1
+ggsave(paste0("DDQC_qc_", params$patient, ".jpeg"), plot1)
 ```
 
 Filtering
@@ -287,7 +287,7 @@ With those plots, the correlation between genes and components is shown, the PCA
 ```{r}
 VizDimLoadings(CLL_merged, dims = 1:2, reduction = "pca")
 DimPlot(CLL_merged, reduction = "pca") + NoLegend()
-DimHeatmap(CLL_merged, dims = 1, cells = 500, balanced = TRUE) + ggtitle(paste("Heatmap after the QC using the DDQC tool, for", params$patient))
+DimHeatmap(CLL_merged, dims = 1, cells = 500, balanced = TRUE) 
 ```
 
 ## Clustering
@@ -310,7 +310,7 @@ Run the UMAP (visualization) on the resolution chosen below.
 CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
 DimPlot(CLL_merged, reduction = "umap")
 plotumap<-DimPlot(CLL_merged, reduction = "umap") + ggtitle(paste("UMAP with QC using the DDQC tool,", params$patient))
-ggsave(paste("DDQC_umap_", params$patient, ".jpeg"), plot)
+ggsave(paste0("DDQC_umap_", params$patient, ".jpeg"), plotumap)
 ```
 
 UMAP by timepoint
@@ -321,20 +321,20 @@ CLL_merged$timepoint <- factor(
   levels = c("D1", "D4", "D8", "D11", "D14")
 )
 
-plot<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") +
+plot1<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") +
   ggtitle(paste("UMAP by timepoint with QC using the DDQC tool,", params$patient)) +
   theme(plot.title = element_text(hjust = 0.5))
-plot
-ggsave(paste("DDQC_umap_timepoint_", params$patient, ".jpeg"), plot)
+plot1
+ggsave(paste0("DDQC_umap_timepoint_", params$patient, ".jpeg"), plot1)
 ```
 
 ## t-SNE
 
 ```{r}
 CLL_merged <- RunTSNE(CLL_merged, reduction.use = "pca", dims.use = 1:10)
-plot<-TSNEPlot(CLL_merged) + ggtitle(paste("t-SNE with QC using the DDQC tool,", params$patient))
-plot
-ggsave(paste("DDQC_tsne_", params$patient, ".jpeg"), plot)
+plot1<-TSNEPlot(CLL_merged) + ggtitle(paste("t-SNE with QC using the DDQC tool,", params$patient))
+plot1
+ggsave(paste0("DDQC_tsne_", params$patient, ".jpeg"), plot1)
 ```
 
 ## Bonsai
@@ -364,7 +364,7 @@ CLL_merged <- run_wnnumap(CLL_merged, params$resolution, "RNA")
 plotwnn <- DimPlot(CLL_merged, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
   NoLegend() + ggtitle(paste("wnnUMAP with QC using the DDQC tool,", params$patient))
 plotwnn
-ggsave(paste("DDQC_wnnumap_", params$patient, ".jpeg"), plotwnn)
+ggsave(paste0("DDQC_wnnumap_", params$patient, ".jpeg"), plotwnn)
 DefaultAssay(CLL_merged) <- 'RNA'
 ```
 
