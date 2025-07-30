@@ -188,7 +188,7 @@ CLL_multiplet$Doublet_Status <- ifelse(CLL_multiplet$doublet_finder == "Doublet"
 ```{r}
 doublet<-DimPlot(CLL_multiplet, group.by = "Doublet_Status", cols = c("Other" = "grey80", "Doublet" = "red")) + ggtitle(paste("Doublets position for", params$patient, "with \nDoubletFinder (McGinnis, C. S. and al, 2019)"))
 doublet
-ggsave(paste("doublet_", params$patient, ".jpeg"), doublet)
+ggsave(paste0("doublet_", params$patient, ".jpeg"), doublet)
 ```
 
 Cell number after doublets removal
@@ -233,7 +233,7 @@ CLL_qc <- run_umap(CLL_qc)
 ```{r}
 qc<-DimPlot(CLL_qc, group.by = "qc_pass", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle(paste("QC status of cells (red = failed) for", params$patient,"based on \npredefined thresholds for nFeature and \nmitochondrial gene percentage (Seurat pipeline)"))
 qc
-ggsave(paste("seurat_qc_", params$patient, ".jpeg"), qc)
+ggsave(paste0("seurat_qc_", params$patient, ".jpeg"), qc)
 ```
 
 Filtering
@@ -353,7 +353,7 @@ kmeanplot <- plot(1:15, wss, type = "b", pch = 19, frame = FALSE,
      ylab = "Total within-clusters sum of squares",
      main = "Elbow Method for Optimal K (K-means)")
 kmeanplot
-ggsave(paste("kmean_", params$patient, ".jpeg"), kmeanplot)
+ggsave(paste0("kmean_", params$patient, ".jpeg"), kmeanplot)
 ```
 
 ```{r}
@@ -381,7 +381,7 @@ Run the UMAP (visualization) on the resolution chosen below.
 CLL_merged_sctransform <- RunUMAP(CLL_merged_sctransform, dims = 1:10)
 DimPlot(CLL_merged_sctransform, reduction = "umap") + ggtitle(paste("UMAP (SCTransform-normalized, \npost-Seurat pipeline),", params$patient))
 plotumap<-DimPlot(CLL_merged_sctransform, reduction = "umap")
-ggsave(paste("seurat_umap_sct_", params$patient, ".jpeg"), plotumap)
+ggsave(paste0("seurat_umap_sct_", params$patient, ".jpeg"), plotumap)
 ```
 
 UMAP by timepoint
@@ -396,7 +396,7 @@ time<-DimPlot(CLL_merged_sctransform, reduction = "umap", group.by = "seurat_clu
   ggtitle(paste("UMAP by timepoint (SCTransform-normalized, \npost-Seurat pipeline),", params$patient)) +
   theme(plot.title = element_text(hjust = 0.5))
 time
-ggsave(paste("seurat_umap_timepoint_sct_", params$patient, ".jpeg"), time)
+ggsave(paste0("seurat_umap_timepoint_sct_", params$patient, ".jpeg"), time)
 ```
 
 ```{r}
@@ -404,7 +404,7 @@ ggsave(paste("seurat_umap_timepoint_sct_", params$patient, ".jpeg"), time)
 CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
 DimPlot(CLL_merged, reduction = "umap") + ggtitle("UMAP (normalized by LogNormalize)")
 plotumap<-DimPlot(CLL_merged, reduction = "umap")
-ggsave(paste("seurat_umap_log_", params$patient, ".jpeg"), plotumap)
+ggsave(paste0("seurat_umap_log_", params$patient, ".jpeg"), plotumap)
 ```
 
 ```{r}
@@ -426,14 +426,14 @@ ggsave(paste0("seurat_umap_timepoint_log_", params$patient, ".jpeg"), time2)
 CLL_merged_sctransform <- RunTSNE(CLL_merged_sctransform, reduction.use = "pca", dims.use = 1:10)
 tsne<-TSNEPlot(CLL_merged_sctransform) + ggtitle(paste("t-SNE (normalized by SCTransform, \npost-Seurat pipeline),", params$patient))
 tsne
-ggsave(paste("seurat_tsne_sct_", params$patient, ".jpeg"), tsne)
+ggsave(paste0("seurat_tsne_sct_", params$patient, ".jpeg"), tsne)
 ```
 
 ```{r}
 CLL_merged <- RunTSNE(CLL_merged, reduction.use = "pca", dims.use = 1:10)
 tsne1<-TSNEPlot(CLL_merged) + ggtitle(paste("t-SNE (normalized by LogNormalize, \npost-Seurat pipeline),", params$patient))
 tsne1
-ggsave(paste("seurat_tsne_log_", params$patient, ".jpeg"), tsne1)
+ggsave(paste0("seurat_tsne_log_", params$patient, ".jpeg"), tsne1)
 ```
 
 ## Bonsai
@@ -470,7 +470,7 @@ CLL_merged_sctransform <- run_wnnumap(CLL_merged_sctransform, params$resolution,
 plotwnn <- DimPlot(CLL_merged_sctransform, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
   NoLegend() + ggtitle(paste("wnnUMAP on RNA SCTranform normalization \nand post-Seurat pipeline,", params$patient))
 plotwnn
-ggsave(paste("seurat_wnnumpa_sct_", params$patient, ".jpeg"), plotwnn)
+ggsave(paste0("seurat_wnnumpa_sct_", params$patient, ".jpeg"), plotwnn)
 DefaultAssay(CLL_merged_sctransform) <- 'RNA'
 ```
 
@@ -484,7 +484,7 @@ CLL_merged <- run_wnnumap(CLL_merged, params$resolution, "RNA")
 plotwnn <- DimPlot(CLL_merged, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
   NoLegend() + ggtitle(paste("wnnUMAP with RNA LogNormalize \nand post-Seurat pipeline,", params$patient))
 plotwnn
-ggsave(paste("seurat_wnnumpa_log_", params$patient, ".jpeg"), plotwnn)
+ggsave(paste0("seurat_wnnumpa_log_", params$patient, ".jpeg"), plotwnn)
 DefaultAssay(CLL_merged) <- 'RNA'
 ```
 
