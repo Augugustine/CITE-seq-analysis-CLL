@@ -3,6 +3,7 @@ title: "Annotation"
 params: 
   patient: "P1"
   file: "CLL_P1_seurat.rds"
+  pre-pro_type: "DDQC"
 format: html
 editor: visual
 ---
@@ -23,6 +24,7 @@ library(dplyr)
 library(patchwork)
 library(ggplot2)
 library(Azimuth)
+library(vegan)
 source("functions.R")
 ```
 
@@ -113,4 +115,77 @@ exportation annotation pour Bonsai
 
 Checker les ADT pour confirmer les cell types
 
-Graph UMAP wnnUMAP avec les annotations
+Graph UMAP, wnnUMAP, t-sne, Bonsai, Isomap avec les annotations
+
+## Visualization
+
+UMAP
+
+```{r}
+DimPlot(data, reduction = "umap")
+plotumap<-DimPlot(data, reduction = "umap") + ggtitle(paste("UMAP annotated with QC using \nthe DDQC tool,", params$patient))
+ggsave(paste0(params$pre-pro_type,"_umap_annoted", params$patient, ".jpeg"), plotumap)
+```
+
+UMAP by timepoint
+
+```{r}
+data$timepoint <- factor(
+  data$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+plot1<-DimPlot(data, reduction = "umap", group.by = "???", split.by = "timepoint") +
+  ggtitle(paste("UMAP annotated by timepoint with QC \nusing the DDQC tool,", params$patient)) +
+  theme(plot.title = element_text(hjust = 0.5))
+plot1
+ggsave(paste0(params$pre-pro_type, "_umap_timepoint_", params$patient, ".jpeg"), plot1)
+```
+
+wnnUMAP
+
+```{r}
+#| message: false
+#| warning: false
+plotwnn <- DimPlot(data, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
+  NoLegend() + ggtitle(paste("wnnUMAP annotated with QC using \nthe DDQC tool,", params$patient))
+plotwnn
+ggsave(paste0(params$pre-pro_type,"_wnnumap_", params$patient, ".jpeg"), plotwnn)
+DefaultAssay(data) <- 'RNA'
+```
+
+t-SNE
+
+```{r}
+plot1<-TSNEPlot(data) + ggtitle(paste("t-SNE annotated with QC using \nthe DDQC tool,", params$patient))
+plot1
+ggsave(paste0(params$pre-pro_type,"_tsne_", params$patient, ".jpeg"), plot1)
+```
+
+Bonsai
+
+In this analysis, we use the single-cell Bonsai pipeline available at <https://bonsai.unibas.ch/bonsai/>. The TSV matrix is exported in the pre-processing script, and we supplemented it with an annotation TSV file containing cell barcodes and their corresponding cell type annotations.
+
+```{r}
+
+```
+
+Isomap
+
+```{r}
+pc_mat <- Embeddings(data, reduction = "pca")[, 1:10]
+
+iso <- isomap(dist(pc_mat), ndim = 2, k = 10)  # k = nb voisins, à ajuster
+
+# Add Isomap reduction in the Seurat Object 
+data[["isomap"]] <- CreateDimReducObject(
+  embeddings = iso$points,
+  key = "ISO_",
+  assay = DefaultAssay(data)
+)
+
+DimPlot(data, reduction = "isomap") + 
+  ggtitle("Isomap projection with the cells annoted")
+```
+
+## Focus on monocytes, macrophages and CLL cells (B cells)
