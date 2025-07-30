@@ -102,9 +102,9 @@ CLL_qc$qc_final <- ifelse(CLL_qc$qc.pass == "pass" & CLL_qc$label == "live", "TR
 ```
 
 ```{r}
-plot<-DimPlot(CLL_qc, group.by = "qc_final", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle(paste("QC status of cells (red = failed) using \nvaliDrops tool (filtering the empty barcodes \nand dead cells,", params$patient))
-plot
-ggsave(paste("valiDrops_qc_", params$patient, ".jpeg"), plot)
+plot1<-DimPlot(CLL_qc, group.by = "qc_final", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle(paste("QC status of cells (red = failed) using \nvaliDrops tool (filtering the empty barcodes \nand dead cells,", params$patient))
+plot1
+ggsave(paste0("valiDrops_qc_", params$patient, ".jpeg"), plot1)
 ```
 
 Filtering
@@ -319,8 +319,8 @@ Run the UMAP on the resolution chosen below.
 #| warning: false
 CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
 DimPlot(CLL_merged, reduction = "umap")
-plotumap<-DimPlot(CLL_merged, reduction = "umap")
-ggsave(paste("valiDrops_umap_", params$patient, ".jpeg"), plotumap)
+plotumap<-DimPlot(CLL_merged, reduction = "umap")  + ggtitle(paste("UMAP after QC and filtering \nby valiDrops,", params$patient))
+ggsave(paste0("valiDrops_umap_", params$patient, ".jpeg"), plotumap)
 ```
 
 ```{r}
@@ -333,16 +333,16 @@ plot<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", spli
   ggtitle(paste("UMAP by timepoint after QC and filtering \nby valiDrops,", params$patient)) +
   theme(plot.title = element_text(hjust = 0.5))
 plot
-ggsave(paste("valiDrops_umap_timepoint_", params$patient, ".jpeg"), plotumap)
+ggsave(paste0("valiDrops_umap_timepoint_", params$patient, ".jpeg"), plotumap)
 ```
 
 ## t-SNE
 
 ```{r}
 CLL_merged <- RunTSNE(CLL_merged, reduction.use = "pca", dims.use = 1:10)
-plot<-TSNEPlot(CLL_merged) + ggtitle(paste("t-SNE after QC and filtering \nby valiDrops,", params$patient))
-plot
-ggsave(paste("valiDrops_tsne_", params$patient, ".jpeg"), plot)
+plot1<-TSNEPlot(CLL_merged) + ggtitle(paste("t-SNE after QC and filtering \nby valiDrops,", params$patient))
+plot1
+ggsave(paste0("valiDrops_tsne_", params$patient, ".jpeg"), plot1)
 ```
 
 ## Bonsai
@@ -370,7 +370,7 @@ CLL_merged <- run_wnnumap(CLL_merged, params$resolution, "RNA")
 plotwnn <- DimPlot(CLL_merged, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
   NoLegend() + ggtitle(paste("wnnUMAP after QC and filtering \nby valiDrops,", params$patient))
 plotwnn
-ggsave(paste("valiDrops_wnnumap_", params$patient, ".jpeg"), plotwnn)
+ggsave(paste0("valiDrops_wnnumap_", params$patient, ".jpeg"), plotwnn)
 DefaultAssay(CLL_merged) <- 'RNA'
 ```
 
