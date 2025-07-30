@@ -260,7 +260,7 @@ time2
 ggsave(paste0("withdoublets_umap_timepoint_", params$patient, ".jpeg"), time2)
 ```
 
-##  t-SNE
+## t-SNE
 
 ```{r}
 CLL_merged <- RunTSNE(CLL_merged, reduction.use = "pca", dims.use = 1:10)
