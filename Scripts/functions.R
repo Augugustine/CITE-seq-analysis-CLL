@@ -43,15 +43,27 @@ load_data_cellbender <- function(patient_id, jours, base_dir, name_file) {
   # Data load
   data_list <- lapply(paths, Read_CellBender_h5_Mat)
   names(data_list) <- paste0("CLL", "_D", jours, "_filtered.data")
-  # Seurat Object creation
+  # Seurat Object creation RNA and ADT assays
   seurat_list <- lapply(seq_along(data_list), function(i) {
-    CreateSeuratObject(
-      counts = data_list[[i]],
-      project = paste0(patient_id, "_D", jours[i], "_filtered")
+    # RNA and ADT extraction
+    rna_counts <- data_list[[i]]$`Gene Expression`
+    adt_counts <- data_list[[i]]$`Antibody Capture`
+    # Align cell barcodes across RNA and ADT
+    common_barcodes <- intersect(colnames(rna_counts), colnames(adt_counts))
+    rna_counts <- rna_counts[, common_barcodes]
+    adt_counts <- adt_counts[, common_barcodes]
+    adt_counts <- adt_counts[, match(colnames(rna_counts), colnames(adt_counts))]
+    # Seurat Object with RNA
+    seurat_obj <- CreateSeuratObject(
+    counts = rna_counts,
+    project = paste0(patient_id, "_D", jours[i], "_filtered")
     )
-  })
   
-  # Name the data
+    # Add ADT in 2nd assay
+    seurat_obj[["ADT"]] <- CreateAssayObject(counts = adt_counts)
+    return(seurat_obj)
+  })
+# Name the data
   names(seurat_list) <- paste0("CLL", "_D", jours, "_filtered")
   return(seurat_list)
 }
