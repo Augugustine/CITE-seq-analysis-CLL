@@ -1,0 +1,68 @@
+---
+title: "Annotation SingleR"
+params: 
+  patient: "P1"
+  file: "CLL_P1_seurat.rds"
+  pre-pro_type: "DDQC"
+format: html
+editor: visual
+---
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(Azimuth)
+#library(vegan)
+library(SingleR)
+library(celldex)
+source("functions.R")
+```
+
+Read the data pre-processed
+
+```{r}
+data<-readRDS(params$file)
+```
+
+### SingleR
+
+Get reference dataset and the count matrix
+
+```{r}
+ref <- celldex::HumanPrimaryCellAtlasData()
+norm_counts <- LayerData(data, assay = "RNA", layer = 'data')
+```
+
+Subset to include only relevant cell types
+
+```{r}
+ref <- ref[,grepl('DC|B_cell|Neutrophils|T_cells|Monocyte|Erythroblast|
+                 Macrophage|NK_cell|Platelets|Myelocyte', ref$label.main)]
+unique(ref$label.main)
+```
+
+```{r}
+annotation<-SingleR(test = norm_counts,
+                  ref = ref, 
+                  labels = ref$label.main,
+                  de.method = 'wilcox')
+```
+
+Add to seurat object
+
+```{r}
+data_annotated <- AddMetaData(data, annotation$pruned.labels, col.name = 'SingleR')
+
+# Visualise them on the UMAP
+data_annotated <- SetIdent(data_annotated, value = "SingleR")
+DimPlot(data_annotated, label = T , repel = T, label.size = 3) + NoLegend()
+
+```
