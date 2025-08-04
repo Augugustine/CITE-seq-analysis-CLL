@@ -186,7 +186,8 @@ CLL_multiplet$Doublet_Status <- ifelse(CLL_multiplet$doublet_finder == "Doublet"
 ```
 
 ```{r}
-doublet<-DimPlot(CLL_multiplet, group.by = "Doublet_Status", cols = c("Other" = "grey80", "Doublet" = "red")) + ggtitle(paste("Doublets position for", params$patient, "with \nDoubletFinder (McGinnis, C. S. and al, 2019)"))
+title=paste("Doublets position for", params$patient, "with DoubletFinder (McGinnis, C. S. and al, 2019)")
+doublet<-DimPlot(CLL_multiplet, group.by = "Doublet_Status", cols = c("Other" = "grey80", "Doublet" = "red")) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 doublet
 ggsave(paste0("doublet_", params$patient, ".jpeg"), doublet)
 ```
@@ -231,7 +232,8 @@ CLL_qc <- run_umap(CLL_qc)
 ```
 
 ```{r}
-qc<-DimPlot(CLL_qc, group.by = "qc_pass", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle(paste("QC status of cells (red = failed) for", params$patient,"based on \npredefined thresholds for nFeature and \nmitochondrial gene percentage (Seurat pipeline)"))
+title=paste("QC status of cells (red = failed) for", params$patient,"based on predefined thresholds for nFeature and mitochondrial gene percentage (Seurat pipeline)")
+qc<-DimPlot(CLL_qc, group.by = "qc_pass", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 qc
 ggsave(paste0("seurat_qc_", params$patient, ".jpeg"), qc)
 ```
@@ -379,7 +381,8 @@ Run the UMAP (visualization) on the resolution chosen below.
 ```{r}
 #| warning: false
 CLL_merged_sctransform <- RunUMAP(CLL_merged_sctransform, dims = 1:10)
-DimPlot(CLL_merged_sctransform, reduction = "umap") + ggtitle(paste("UMAP (SCTransform-normalized, \npost-Seurat pipeline),", params$patient))
+title=paste("UMAP (SCTransform-normalized, post-Seurat pipeline),", params$patient)
+DimPlot(CLL_merged_sctransform, reduction = "umap") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotumap<-DimPlot(CLL_merged_sctransform, reduction = "umap")
 ggsave(paste0("seurat_umap_sct_", params$patient, ".jpeg"), plotumap)
 ```
@@ -391,10 +394,8 @@ CLL_merged_sctransform$timepoint <- factor(
   CLL_merged_sctransform$timepoint,
   levels = c("D1", "D4", "D8", "D11", "D14")
 )
-
-time<-DimPlot(CLL_merged_sctransform, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") +
-  ggtitle(paste("UMAP by timepoint (SCTransform-normalized, \npost-Seurat pipeline),", params$patient)) +
-  theme(plot.title = element_text(hjust = 0.5))
+title=paste("UMAP by timepoint (SCTransform-normalized, post-Seurat pipeline),", params$patient)
+time<-DimPlot(CLL_merged_sctransform, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 time
 ggsave(paste0("seurat_umap_timepoint_sct_", params$patient, ".jpeg"), time)
 ```
@@ -402,7 +403,8 @@ ggsave(paste0("seurat_umap_timepoint_sct_", params$patient, ".jpeg"), time)
 ```{r}
 #| warning: false
 CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
-DimPlot(CLL_merged, reduction = "umap") + ggtitle("UMAP (normalized by LogNormalize)")
+title=paste("UMAP (normalized by LogNormalize, post-Seurat pipeline),", params$patient)
+DimPlot(CLL_merged, reduction = "umap") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotumap<-DimPlot(CLL_merged, reduction = "umap")
 ggsave(paste0("seurat_umap_log_", params$patient, ".jpeg"), plotumap)
 ```
@@ -412,10 +414,8 @@ CLL_merged$timepoint <- factor(
   CLL_merged$timepoint,
   levels = c("D1", "D4", "D8", "D11", "D14")
 )
-
-time2<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") +
-  ggtitle(paste("UMAP by timepoint (LogNormalize-normalized, post-Seurat pipeline),", params$patient)) +
-  theme(plot.title = element_text(hjust = 0.5))
+title=paste("UMAP by timepoint (LogNormalize-normalized, post-Seurat pipeline),", params$patient)
+time2<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 time2
 ggsave(paste0("seurat_umap_timepoint_log_", params$patient, ".jpeg"), time2)
 ```
@@ -424,14 +424,16 @@ ggsave(paste0("seurat_umap_timepoint_log_", params$patient, ".jpeg"), time2)
 
 ```{r}
 CLL_merged_sctransform <- RunTSNE(CLL_merged_sctransform, reduction.use = "pca", dims.use = 1:10)
-tsne<-TSNEPlot(CLL_merged_sctransform) + ggtitle(paste("t-SNE (normalized by SCTransform, \npost-Seurat pipeline),", params$patient))
+title=paste("t-SNE (normalized by SCTransform, post-Seurat pipeline),", params$patient)
+tsne<-TSNEPlot(CLL_merged_sctransform) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 tsne
 ggsave(paste0("seurat_tsne_sct_", params$patient, ".jpeg"), tsne)
 ```
 
 ```{r}
 CLL_merged <- RunTSNE(CLL_merged, reduction.use = "pca", dims.use = 1:10)
-tsne1<-TSNEPlot(CLL_merged) + ggtitle(paste("t-SNE (normalized by LogNormalize, \npost-Seurat pipeline),", params$patient))
+title=paste("t-SNE (normalized by LogNormalize, post-Seurat pipeline),", params$patient)
+tsne1<-TSNEPlot(CLL_merged) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 tsne1
 ggsave(paste0("seurat_tsne_log_", params$patient, ".jpeg"), tsne1)
 ```
@@ -467,8 +469,8 @@ Visualization with wnnUMAP on data SCTransform
 #| warning: false
 CLL_merged_sctransform <-run_adt_umap(CLL_merged_sctransform)
 CLL_merged_sctransform <- run_wnnumap(CLL_merged_sctransform, params$resolution, "SCT")
-plotwnn <- DimPlot(CLL_merged_sctransform, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
-  NoLegend() + ggtitle(paste("wnnUMAP on RNA SCTranform normalization \nand post-Seurat pipeline,", params$patient))
+title=paste("wnnUMAP on RNA SCTranform normalization and post-Seurat pipeline,", params$patient)
+plotwnn <- DimPlot(CLL_merged_sctransform, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend() + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotwnn
 ggsave(paste0("seurat_wnnumpa_sct_", params$patient, ".jpeg"), plotwnn)
 DefaultAssay(CLL_merged_sctransform) <- 'RNA'
@@ -481,8 +483,8 @@ Visualization with wnnUMAP on data LogNormalize
 #| warning: false
 CLL_merged <-run_adt_umap(CLL_merged)
 CLL_merged <- run_wnnumap(CLL_merged, params$resolution, "RNA")
-plotwnn <- DimPlot(CLL_merged, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
-  NoLegend() + ggtitle(paste("wnnUMAP with RNA LogNormalize \nand post-Seurat pipeline,", params$patient))
+title=paste("wnnUMAP with RNA LogNormalize and post-Seurat pipeline,", params$patient)
+plotwnn <- DimPlot(CLL_merged, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend() + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotwnn
 ggsave(paste0("seurat_wnnumpa_log_", params$patient, ".jpeg"), plotwnn)
 DefaultAssay(CLL_merged) <- 'RNA'
