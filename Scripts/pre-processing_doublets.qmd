@@ -135,7 +135,8 @@ CLL_qc <- run_umap(CLL_qc)
 ```
 
 ```{r}
-qc<-DimPlot(CLL_qc, group.by = "qc_pass", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle(paste("QC status of cells (red = failed) for", params$patient,"based on \npredefined thresholds for nFeature and \nmitochondrial gene percentage (Seurat pipeline)\n without the doublets removal"))
+title=paste("QC status of cells (red = failed) for", params$patient,"based on predefined thresholds for nFeature and mitochondrial gene percentage (Seurat pipeline) without the doublets removal")
+qc<-DimPlot(CLL_qc, group.by = "qc_pass", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 qc
 ggsave(paste0("withdoublets_qc_", params$patient, ".jpeg"), qc)
 ```
@@ -240,8 +241,9 @@ Run the UMAP (visualization) on the resolution chosen below.
 ```{r}
 #| warning: false
 CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
+title=paste("UMAP without the doublets removal,", params$patient)
 DimPlot(CLL_merged, reduction = "umap")
-plotumap<-DimPlot(CLL_merged, reduction = "umap")  + ggtitle(paste("UMAP without the doublets \nremoval,", params$patient))
+plotumap<-DimPlot(CLL_merged, reduction = "umap") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 ggsave(paste0("withdoublets_umap_", params$patient, ".jpeg"), plotumap)
 ```
 
@@ -252,10 +254,8 @@ CLL_merged$timepoint <- factor(
   CLL_merged$timepoint,
   levels = c("D1", "D4", "D8", "D11", "D14")
 )
-
-time2<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") +
-  ggtitle(paste("UMAP by timepoint without the doublets \nremoval,", params$patient)) +
-  theme(plot.title = element_text(hjust = 0.5))
+title=paste("UMAP by timepoint without the doublets removal,", params$patient)
+time2<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 time2
 ggsave(paste0("withdoublets_umap_timepoint_", params$patient, ".jpeg"), time2)
 ```
@@ -264,7 +264,8 @@ ggsave(paste0("withdoublets_umap_timepoint_", params$patient, ".jpeg"), time2)
 
 ```{r}
 CLL_merged <- RunTSNE(CLL_merged, reduction.use = "pca", dims.use = 1:10)
-tsne1<-TSNEPlot(CLL_merged) + ggtitle(paste("t-SNE without the doublets \nremoval,", params$patient))
+title=paste("t-SNE without the doublets removal,", params$patient)
+tsne1<-TSNEPlot(CLL_merged) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 tsne1
 ggsave(paste0("withdoublets_tsne_", params$patient, ".jpeg"), tsne1)
 ```
@@ -293,8 +294,9 @@ Visualization with wnnUMAP
 #| warning: false
 CLL_merged <-run_adt_umap(CLL_merged)
 CLL_merged <- run_wnnumap(CLL_merged, params$resolution, "RNA")
+title=paste("wnnUMAP without the doublets removal,", params$patient)
 plotwnn <- DimPlot(CLL_merged, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
-  NoLegend() + ggtitle(paste("wnnUMAP without the doublets \nremoval,", params$patient))
+  NoLegend() + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotwnn
 ggsave(paste0("withdoublets_wnnumpa_", params$patient, ".jpeg"), plotwnn)
 DefaultAssay(CLL_merged) <- 'RNA'
