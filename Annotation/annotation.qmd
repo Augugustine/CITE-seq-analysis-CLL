@@ -24,7 +24,9 @@ library(dplyr)
 library(patchwork)
 library(ggplot2)
 library(Azimuth)
-library(vegan)
+#library(vegan)
+library(SingleR)
+library(celldex)
 source("functions.R")
 ```
 
@@ -94,36 +96,67 @@ write.table(annotation, file = "barcode_annotation.tsv", sep = "\t", quote = FAL
 
 ## Automatic annotation
 
-With Azimuth
+### Azimuth
 
 Retrieve the Seurat object (containing both RNA and ADT data), but perform cell type annotation using only the RNA modality. The object must already be filtered (cells and genes), and must contain raw RNA counts, as Azimuth will apply its own normalization consistent with the reference dataset used (Hao et al., 2021).
 
 ```{r}
-DefaultAssay(data) <- "RNA"
+#InstallData("pbmcref")
 data <- RunAzimuth(data, reference = "pbmcref")
 ```
 
 ```{r}
-DimPlot(data, group.by = "predicted.celltype.l1", label = TRUE, label.size = 3) + NoLegend()
+title=paste("UMAP annotated, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
+DimPlot(data, group.by = "predicted.celltype.l1", label = TRUE, label.size = 3) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 ```
 
 check the score prediction
 
-With SingleR
+### SingleR
 
-exportation annotation pour Bonsai
+Get reference dataset and the count matrix
+
+```{r}
+ref <- celldex::HumanPrimaryCellAtlasData()
+norm_counts <- LayerData(data, assay = "RNA", layer = 'data')
+```
+
+Subset to include only relevant cell types
+
+```{r}
+ref <- ref[,grepl('DC|B_cell|Neutrophils|T_cells|Monocyte|Erythroblast|
+                 Macrophage|NK_cell|Platelets|Myelocyte', ref$label.main)]
+unique(ref$label.main)
+```
+
+```{r}
+annotation<-SingleR(test = norm_counts,
+                  ref = ref, 
+                  labels = ref$label.main,
+                  de.method = 'wilcox')
+```
+
+Add to seurat object
+
+```{r}
+data_annotated <- AddMetaData(data, annotation$pruned.labels, col.name = 'SingleR')
+
+# Visualise them on the UMAP
+data_annotated <- SetIdent(data_annotated, value = "SingleR")
+DimPlot(data_annotated, label = T , repel = T, label.size = 3) + NoLegend()
+
+```
 
 Checker les ADT pour confirmer les cell types
-
-Graph UMAP, wnnUMAP, t-sne, Bonsai, Isomap avec les annotations
 
 ## Visualization
 
 UMAP
 
 ```{r}
+title=paste("UMAP annotated, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
 DimPlot(data, reduction = "umap")
-plotumap<-DimPlot(data, reduction = "umap") + ggtitle(paste("UMAP annotated with QC using \nthe DDQC tool,", params$patient))
+plotumap<-DimPlot(data, reduction = "umap") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 ggsave(paste0(params$pre-pro_type,"_umap_annoted", params$patient, ".jpeg"), plotumap)
 ```
 
@@ -134,10 +167,8 @@ data$timepoint <- factor(
   data$timepoint,
   levels = c("D1", "D4", "D8", "D11", "D14")
 )
-
-plot1<-DimPlot(data, reduction = "umap", group.by = "???", split.by = "timepoint") +
-  ggtitle(paste("UMAP annotated by timepoint with QC \nusing the DDQC tool,", params$patient)) +
-  theme(plot.title = element_text(hjust = 0.5))
+title=paste("UMAP annotated by timepoint, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
+plot1<-DimPlot(data, reduction = "umap", group.by = "???", split.by = "timepoint") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plot1
 ggsave(paste0(params$pre-pro_type, "_umap_timepoint_", params$patient, ".jpeg"), plot1)
 ```
@@ -147,8 +178,10 @@ wnnUMAP
 ```{r}
 #| message: false
 #| warning: false
+data <-run_adt_umap(data)
+title=paste("wnnUMAP annotated, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
 plotwnn <- DimPlot(data, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
-  NoLegend() + ggtitle(paste("wnnUMAP annotated with QC using \nthe DDQC tool,", params$patient))
+  NoLegend() + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotwnn
 ggsave(paste0(params$pre-pro_type,"_wnnumap_", params$patient, ".jpeg"), plotwnn)
 DefaultAssay(data) <- 'RNA'
@@ -157,7 +190,8 @@ DefaultAssay(data) <- 'RNA'
 t-SNE
 
 ```{r}
-plot1<-TSNEPlot(data) + ggtitle(paste("t-SNE annotated with QC using \nthe DDQC tool,", params$patient))
+title=paste("t-SNE annotated, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
+plot1<-TSNEPlot(data) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plot1
 ggsave(paste0(params$pre-pro_type,"_tsne_", params$patient, ".jpeg"), plot1)
 ```
@@ -184,8 +218,8 @@ data[["isomap"]] <- CreateDimReducObject(
   assay = DefaultAssay(data)
 )
 
-DimPlot(data, reduction = "isomap") + 
-  ggtitle("Isomap projection with the cells annoted")
+title=paste("Isomap annotated, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
+DimPlot(data, reduction = "isomap") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 ```
 
 ## Focus on monocytes, macrophages and CLL cells (B cells)
