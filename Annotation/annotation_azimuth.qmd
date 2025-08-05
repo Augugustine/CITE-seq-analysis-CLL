@@ -1,0 +1,138 @@
+---
+title: "Annotation Azimuth"
+params: 
+  patient: "P1"
+  file: "CLL_P1_seurat_reduit.rds"
+  type: "DDQC"
+format: html
+editor: visual
+---
+
+Automatic annotation with Azimuth. This script and Azimuth needs Seurat 5.2.1.
+
+```{r}
+renv::remove("Seurat")
+devtools::install_github("satijalab/seurat", ref = "v5.2.1")
+```
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(Azimuth)
+library(vegan)
+library(SingleR)
+library(celldex)
+library(stringr)
+source("functions.R")
+```
+
+Read the data pre-processed
+
+```{r}
+data<-readRDS(params$file)
+```
+
+### Azimuth
+
+Retrieve the Seurat object (containing both RNA and ADT data), but perform cell type annotation using only the RNA modality. The object must already be filtered (cells and genes), and must contain raw RNA counts, as Azimuth will apply its own normalization consistent with the reference dataset used (Hao et al., 2021).
+
+```{r}
+InstallData("pbmcref")
+data_annotated <- RunAzimuth(data, reference = "pbmcref")
+```
+
+## Visualization
+
+UMAP
+
+```{r}
+title=paste("UMAP annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_annotated, group.by = "predicted.celltype.l1", reduction = "umap") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_umap_annotated_", params$patient, ".jpeg"), plotumap)
+```
+
+UMAP by timepoint
+
+```{r}
+data_annotated$timepoint <- factor(
+  data_annotated$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("UMAP annotated by Azimuth by timepoint, pre-processing type :", params$type, ", patient", params$patient)
+plot1<-DimPlot(data_annotated, group.by = "predicted.celltype.l1", reduction = "umap", split.by = "timepoint") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plot1
+ggsave(paste0(params$type, "_umap_timepoint_", params$patient, ".jpeg"), plot1)
+```
+
+wnnUMAP
+
+```{r}
+#| message: false
+#| warning: false
+data_annotated <-run_adt_umap(data_annotated)
+title=paste("wnnUMAP annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
+plotwnn <- DimPlot(data_annotated, group.by = "predicted.celltype.l1", reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
+  NoLegend() + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotwnn
+ggsave(paste0(params$type,"_wnnumap_", params$patient, ".jpeg"), plotwnn)
+DefaultAssay(data_annotated) <- 'RNA'
+```
+
+t-SNE
+
+```{r}
+title=paste("t-SNE annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
+plot1<-TSNEPlot(data_annotated, group.by = "predicted.celltype.l1") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plot1
+ggsave(paste0(params$type,"_tsne_", params$patient, ".jpeg"), plot1)
+```
+
+Bonsai
+
+In this analysis, we use the single-cell Bonsai pipeline available at <https://bonsai.unibas.ch/bonsai/>. The TSV matrix is exported in the pre-processing script, and we supplemented it with an annotation TSV file containing cell barcodes and their corresponding cell type annotations.
+
+```{r}
+barcodes <- colnames(data_annotated)
+annotations <- data_annotated$predicted.celltype.l1
+
+df <- data.frame(
+  barcode = barcodes,
+  predicted_celltype = annotations
+)
+namefile=paste0("azimuth_annotation_", params$type, "_", params$patient, ".tsv")
+write.table(df, file = namefile, sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+Isomap
+
+```{r}
+pc_mat <- Embeddings(data_annotated, reduction = "pca")[, 1:10]
+
+iso <- isomap(dist(pc_mat), ndim = 2, k = 10)  # k = nb voisins, à ajuster
+
+# Add Isomap reduction in the Seurat Object 
+data_annotated[["isomap"]] <- CreateDimReducObject(
+  embeddings = iso$points,
+  key = "ISO_",
+  assay = DefaultAssay(data_annotated)
+)
+
+title=paste("Isomap annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
+DimPlot(data_annotated, reduction = "isomap") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+```
+
+## Save the annotation file 
+
+```{r}
+namepath=paste0("CLL_azimuth_annotated_", params$type, "_", params$patient, ".rds")
+saveRDS(data_annotated, file = namepath)
+```
