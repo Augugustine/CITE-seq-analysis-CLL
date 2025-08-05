@@ -178,7 +178,7 @@ CLL_multiplet$Doublet_Status <- ifelse(CLL_multiplet$doublet_finder == "Doublet"
 
 ```{r}
 title=paste("Doublets position for", params$patient, "with DoubletFinder (McGinnis, C. S. and al, 2019)")
-DimPlot(CLL_multiplet, group.by = "Doublet_Status", cols = c("Other" = "grey80", "Doublet" = "red")) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+DimPlot(CLL_multiplet, group.by = "Doublet_Status", cols = c("Other" = "grey50", "Doublet" = "red")) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 ```
 
 Cell number after doublets removal
@@ -218,7 +218,7 @@ CLL_qc <- run_umap(CLL_qc)
 
 ```{r}
 title=paste("QC status of cells (red = failed) for", params$patient,"using the DDQC tool (adaptive threshold based on the median absolute deviation on four QC metrics, gene and UMI complexity, fraction of reads mapping to mitochondrial and ribosomal genes)")
-plot1<-DimPlot(CLL_qc, group.by = "passed.qc", cols = c("TRUE" = "grey80", "FALSE" = "red")) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plot1<-DimPlot(CLL_qc, group.by = "passed.qc", cols = c("TRUE" = "grey50", "FALSE" = "red")) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plot1
 ggsave(paste0("DDQC_qc_", params$patient, ".jpeg"), plot1)
 ```
@@ -313,7 +313,7 @@ Run the UMAP (visualization) on the resolution chosen below.
 CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
 title=paste("UMAP with QC using the DDQC tool,", params$patient)
 DimPlot(CLL_merged, reduction = "umap")
-plotumap<-DimPlot(CLL_merged, reduction = "umap") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotumap<-DimPlot(CLL_merged, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 ggsave(paste0("DDQC_umap_", params$patient, ".jpeg"), plotumap)
 ```
 
@@ -325,7 +325,7 @@ CLL_merged$timepoint <- factor(
   levels = c("D1", "D4", "D8", "D11", "D14")
 )
 title=paste("UMAP by timepoint with QC using the DDQC tool,", params$patient)
-plot1<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plot1<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plot1
 ggsave(paste0("DDQC_umap_timepoint_", params$patient, ".jpeg"), plot1)
 ```
@@ -335,7 +335,7 @@ ggsave(paste0("DDQC_umap_timepoint_", params$patient, ".jpeg"), plot1)
 ```{r}
 CLL_merged <- RunTSNE(CLL_merged, reduction.use = "pca", dims.use = 1:10)
 title=paste("t-SNE with QC using the DDQC tool,", params$patient)
-plot1<-TSNEPlot(CLL_merged) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plot1<-TSNEPlot(CLL_merged) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plot1
 ggsave(paste0("DDQC_tsne_", params$patient, ".jpeg"), plot1)
 ```
@@ -366,7 +366,7 @@ CLL_merged <-run_adt_umap(CLL_merged)
 CLL_merged <- run_wnnumap(CLL_merged, params$resolution, "RNA")
 title=paste("wnnUMAP with QC using the DDQC tool,", params$patient)
 plotwnn <- DimPlot(CLL_merged, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
-  NoLegend() + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+  NoLegend() + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotwnn
 ggsave(paste0("DDQC_wnnumap_", params$patient, ".jpeg"), plotwnn)
 DefaultAssay(CLL_merged) <- 'RNA'
