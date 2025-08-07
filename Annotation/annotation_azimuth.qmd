@@ -43,7 +43,8 @@ data<-readRDS(params$file)
 Retrieve the Seurat object (containing both RNA and ADT data), but perform cell type annotation using only the RNA modality. The object must already be filtered (cells and genes), and must contain raw RNA counts, as Azimuth will apply its own normalization consistent with the reference dataset used (Hao et al., 2021).
 
 ```{r}
-InstallData("pbmcref")
+#| include: false
+#InstallData("pbmcref")
 data_annotated <- RunAzimuth(data, reference = "pbmcref")
 ```
 
