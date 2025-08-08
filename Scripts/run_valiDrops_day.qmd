@@ -1,0 +1,60 @@
+---
+title: "Run valiDrops on days separately"
+params: 
+  patient: "P1"
+  day: 1
+  directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
+  file: "raw_feature_bc_matrix.h5"
+format: html
+editor: visual
+---
+
+This script runs the valiDrops tool on files from individual days, as it is too slow to run on the merged data (all days combined). It processes one day's file for a given patient and applies valiDrops. It outputs a Seurat object (with a new metadata column, where cells are marked) in the corresponding patient/day folder, which is then used in the `_pre-processing_valiDrops` script.
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+#library(scDblFinder)
+library(DoubletFinder)
+#library(SingleCellExperiment)
+library(tibble)
+library(biomaRt)
+library(ggplot2)
+library(ddqcR)
+library(SummarizedExperiment)
+library(valiDrops)
+library(stringr)
+library(presto)
+source("functions.R")
+```
+
+```{r}
+#| include: false
+seurat <- load_data_10XG(params$patient, params$day, params$directory, params$file)
+list2env(seurat, envir = .GlobalEnv)
+```
+
+## QC and filtering, valid barcodes and cells alive
+
+This step in done on the data days merged. The tool valiDrops is a tool used for the quality control in single cell RNA seq by identifying valid barcodes and predicting whether each cell is alive or dead, based on expression profiles and quality metrics. It sequentially filters low-quality barcodes using adaptive thresholds on standard QC metrics (UMIs, features number, coding genes, ribosomal genes) and gene expression-based clustering. It improves data quality by removing noisy or dead cells without requiring manual parameter tuning (Kavaliauskaite G and Madsen JGS, 2023).
+
+Run valiDrops
+
+```{r}
+filename<-paste0("CLL_D",params$day,"_filtered")
+valid <- valiDrops(filename, label_dead = TRUE)
+```
+
+## Save the object after the pre-processing
+
+```{r}
+filepaths <- file.path(params$directory, params$patient, paste0("run_count_J", params$day), "outs", "raw_valiDrops.rds")
+saveRDS(CLL_merged, file = filepaths)
+```
