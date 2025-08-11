@@ -27,8 +27,9 @@ library(dplyr)
 library(patchwork)
 library(ggplot2)
 library(Azimuth)
-library(vegan)
 library(stringr)
+library(SeuratData)
+library(celldex)
 source("functions.R")
 ```
 
@@ -41,6 +42,26 @@ data<-readRDS(params$file)
 ### Azimuth
 
 Retrieve the Seurat object (containing both RNA and ADT data), but perform cell type annotation using only the RNA modality. The object must already be filtered (cells and genes), and must contain raw RNA counts, as Azimuth will apply its own normalization consistent with the reference dataset used (Hao et al., 2021).
+
+Create an Azimuth reference using the BlueprintEncode dataset.
+
+```{r}
+bp <- celldex::BlueprintEncodeData()
+logcounts <- assay(ref, "logcounts")
+seurat_ref <- CreateSeuratObject(counts = logcounts)
+
+seurat_ref <- NormalizeData(seurat_ref)
+seurat_ref <- FindVariableFeatures(seurat_ref)
+seurat_ref <- ScaleData(seurat_ref)
+seurat_ref <- RunPCA(seurat_ref)
+seurat_ref <- RunUMAP(seurat_ref, dims = 1:50, return.model = TRUE )
+
+# Add labels
+seurat_ref$celltype <- bp$label.fine
+
+# Azimuth ref
+azimuth_ref <- AzimuthReference(seurat_ref, refDR="pca",refUMAP = "umap", refAssay="RNA", metadata = "celltype")
+```
 
 ```{r}
 #| include: false

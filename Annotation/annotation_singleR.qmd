@@ -124,24 +124,6 @@ namefile=paste0("singler_annotation_", params$type, "_", params$patient, ".tsv")
 write.table(df, file = namefile, sep = "\t", row.names = FALSE, quote = FALSE)
 ```
 
-Isomap
-
-```{r}
-pc_mat <- Embeddings(data_annotated, reduction = "pca")[, 1:10]
-
-iso <- isomap(dist(pc_mat), ndim = 2, k = 10)  # k = nb voisins, à ajuster
-
-# Add Isomap reduction in the Seurat Object 
-data_annotated[["isomap"]] <- CreateDimReducObject(
-  embeddings = iso$points,
-  key = "ISO_",
-  assay = DefaultAssay(data)
-)
-
-title=paste("Isomap annotated by SingleR, pre-processing type :", params$type, ", patient", params$patient)
-DimPlot(data_annotated, group.by="SingleR", reduction = "isomap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-```
-
 ## Save the annotation file
 
 ```{r}
