@@ -37,8 +37,14 @@ source("functions.R")
 
 ```{r}
 #| include: false
-seurat <- load_data_10XG(params$patient, params$day, params$directory, params$file)
+path<-file.path(params$directory, params$patient, paste0("run_count_J", params$day), "outs", params$file)
+data<-Read10X_h5(path)
+data_rna<-data$`Gene Expression`
+
+seurat<-load_data_10XG(params$patient,params$day,params$directory,params$file)
 list2env(seurat, envir = .GlobalEnv)
+nameseurat<-paste0("CLL_D",params$day)
+seurat_object <- get(nameseurat)
 ```
 
 ## QC and filtering, valid barcodes and cells alive
@@ -48,13 +54,22 @@ This step in done on the data days merged. The tool valiDrops is a tool used for
 Run valiDrops
 
 ```{r}
-filename<-paste0("CLL_D",params$day,"_filtered")
-valid <- valiDrops(filename, label_dead = TRUE)
+valid <- valiDrops(data_rna, label_dead = TRUE)
+```
+
+Add the valiDrops cell annotation in the seurat object
+
+```{r}
+valid <- valid[, c("barcode", "qc.pass", "label")]
+rownames(valid) <- valid$barcode
+valid$barcode <- NULL
+
+seurat_object <- AddMetaData(seurat_object, valid)
 ```
 
 ## Save the object after the pre-processing
 
 ```{r}
 filepaths <- file.path(params$directory, params$patient, paste0("run_count_J", params$day), "outs", "raw_valiDrops.rds")
-saveRDS(CLL_merged, file = filepaths)
+saveRDS(seurat_object, file = filepaths)
 ```

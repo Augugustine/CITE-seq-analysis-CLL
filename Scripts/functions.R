@@ -8,7 +8,7 @@ load_data_10XG <- function(patient_id, jours, base_dir, name_file) {
   paths <- file.path(base_dir, patient_id, paste0("run_count_J", jours), "outs", name_file)
   # Data load
   data_list <- lapply(paths, Read10X_h5)
-  names(data_list) <- paste0("CLL", "_D", jours, "_filtered.data")
+  names(data_list) <- paste0("CLL", "_D", jours, ".data")
   # Seurat Object creation RNA and ADT assays
   seurat_list <- lapply(seq_along(data_list), function(i) {
     # RNA and ADT extraction
@@ -22,7 +22,7 @@ load_data_10XG <- function(patient_id, jours, base_dir, name_file) {
     # Seurat Object with RNA
     seurat_obj <- CreateSeuratObject(
       counts = rna_counts,
-      project = paste0(patient_id, "_D", jours[i], "_filtered")
+      project = paste0(patient_id, "_D", jours[i])
     )
     
     # Add ADT in 2nd assay
@@ -30,7 +30,7 @@ load_data_10XG <- function(patient_id, jours, base_dir, name_file) {
     return(seurat_obj)
   })
   # Name the data
-  names(seurat_list) <- paste0("CLL", "_D", jours, "_filtered")
+  names(seurat_list) <- paste0("CLL", "_D", jours)
   return(seurat_list)
 }
 
@@ -42,7 +42,7 @@ load_data_cellbender <- function(patient_id, jours, base_dir, name_file) {
   paths <- file.path(base_dir, patient_id, paste0("run_count_J", jours), "outs", name_file)
   # Data load
   data_list <- lapply(paths, Read_CellBender_h5_Mat)
-  names(data_list) <- paste0("CLL", "_D", jours, "_filtered.data")
+  names(data_list) <- paste0("CLL", "_D", jours, ".data")
   # Seurat Object creation RNA and ADT assays
   seurat_list <- lapply(seq_along(data_list), function(i) {
     # RNA and ADT extraction
@@ -56,7 +56,7 @@ load_data_cellbender <- function(patient_id, jours, base_dir, name_file) {
     # Seurat Object with RNA
     seurat_obj <- CreateSeuratObject(
     counts = rna_counts,
-    project = paste0(patient_id, "_D", jours[i], "_filtered")
+    project = paste0(patient_id, "_D", jours[i])
     )
   
     # Add ADT in 2nd assay
@@ -64,7 +64,7 @@ load_data_cellbender <- function(patient_id, jours, base_dir, name_file) {
     return(seurat_obj)
   })
 # Name the data
-  names(seurat_list) <- paste0("CLL", "_D", jours, "_filtered")
+  names(seurat_list) <- paste0("CLL", "_D", jours)
   return(seurat_list)
 }
 

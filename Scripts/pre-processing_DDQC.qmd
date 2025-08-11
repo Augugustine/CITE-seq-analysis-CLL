@@ -55,18 +55,17 @@ list2env(seurat, envir = .GlobalEnv)
 Add an identity with the time point
 
 ```{r}
-CLL_D1_filtered$timepoint <- "D1"
-CLL_D4_filtered$timepoint <- "D4"
-CLL_D8_filtered$timepoint <- "D8"
-CLL_D11_filtered$timepoint <- "D11"
-CLL_D14_filtered$timepoint <- "D14"
+CLL_D1$timepoint <- "D1"
+CLL_D4$timepoint <- "D4"
+CLL_D8$timepoint <- "D8"
+CLL_D11$timepoint <- "D11"
+CLL_D14$timepoint <- "D14"
 ```
 
 Merge all the data filtered, in order to have one SeuratObject with all the time point for one patient (and the total cells and genes number).
 
 ```{r}
-CLL_merged <- merge(CLL_D1_filtered, y = list(CLL_D4_filtered, CLL_D8_filtered,
-                                                    CLL_D11_filtered, CLL_D14_filtered),
+CLL_merged <- merge(CLL_D1, y = list(CLL_D4, CLL_D8, CLL_D11, CLL_D14),
                        add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), project = "TimeCourse")
 
 CLL_merged[["RNA"]] <- JoinLayers(CLL_merged[["RNA"]])
@@ -118,7 +117,7 @@ days <- c("D1","D4","D8","D11", "D14")
 results_list <- list()
 
 for (day in days) {
-  obj_name <- paste0("CLL_", day, "_filtered")
+  obj_name <- paste0("CLL_", day)
   obj <- get(obj_name)
   obj <- complete_DoubletFinder(obj)
   assign(obj_name, obj) 

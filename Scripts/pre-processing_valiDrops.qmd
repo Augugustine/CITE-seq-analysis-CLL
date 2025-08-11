@@ -3,7 +3,6 @@ title: "Pre-processing valiDrops"
 params: 
   patient: "P1"
   resolution: 0.1
-  mito_gene_percent: 10
   directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
   file: "raw_feature_bc_matrix.h5"
 format: html
@@ -57,18 +56,17 @@ list2env(seurat, envir = .GlobalEnv)
 Add an identity with the time point
 
 ```{r}
-CLL_D1_filtered$timepoint <- "D1"
-CLL_D4_filtered$timepoint <- "D4"
-CLL_D8_filtered$timepoint <- "D8"
-CLL_D11_filtered$timepoint <- "D11"
-CLL_D14_filtered$timepoint <- "D14"
+CLL_D1$timepoint <- "D1"
+CLL_D4$timepoint <- "D4"
+CLL_D8$timepoint <- "D8"
+CLL_D11$timepoint <- "D11"
+CLL_D14$timepoint <- "D14"
 ```
 
 Merge all the data filtered, in order to have one SeuratObject with all the time point for one patient (and the total cells and genes number).
 
 ```{r}
-CLL_merged <- merge(CLL_D1_filtered, y = list(CLL_D4_filtered, CLL_D8_filtered,
-                                                    CLL_D11_filtered, CLL_D14_filtered),
+CLL_merged <- merge(CLL_D1, y = list(CLL_D4, CLL_D8, CLL_D11, CLL_D14),
                        add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), project = "TimeCourse")
 
 CLL_merged[["RNA"]] <- JoinLayers(CLL_merged[["RNA"]])
@@ -84,10 +82,16 @@ ncol(CLL_merged)
 
 This step in done on the data days merged. The tool valiDrops is a tool used for the quality control in single cell RNA seq by identifying valid barcodes and predicting whether each cell is alive or dead, based on expression profiles and quality metrics. It sequentially filters low-quality barcodes using adaptive thresholds on standard QC metrics (UMIs, features number, coding genes, ribosomal genes) and gene expression-based clustering. It improves data quality by removing noisy or dead cells without requiring manual parameter tuning (Kavaliauskaite G and Madsen JGS, 2023).
 
+Extract the gene expression
+
+```{r}
+data_rna<-CLL_merged$RNA$counts
+```
+
 Run valiDrops
 
 ```{r}
-valid <- valiDrops(CLL_merged, label_dead = TRUE)
+valid <- valiDrops(data_rna, label_dead = TRUE)
 ```
 
 Keeping the cells alive and barcodes that passed the quality control
@@ -104,7 +108,7 @@ CLL_qc$qc_final <- ifelse(CLL_qc$qc.pass == "pass" & CLL_qc$label == "live", "TR
 ```
 
 ```{r}
-title=paste("QC status of cells (red = failed) using valiDrops tool (filtering the empty barcodes and dead cells,", params$patient)
+title=paste("QC status of cells (red = failed) using valiDrops tool (filtering the empty barcodes and dead cells),", params$patient)
 plot1<-DimPlot(CLL_qc, group.by = "qc_final", cols = c("TRUE" = "grey50", "FALSE" = "red")) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plot1
 ggsave(paste0("valiDrops_qc_", params$patient, ".jpeg"), plot1)
@@ -161,7 +165,7 @@ days <- c("D1","D4","D8","D11", "D14")
 results_list <- list()
 
 for (day in days) {
-  obj_name <- paste0("CLL_", day, "_filtered")
+  obj_name <- paste0("CLL_", day)
   obj <- get(obj_name)
   obj <- complete_DoubletFinder(obj)
   assign(obj_name, obj) 
