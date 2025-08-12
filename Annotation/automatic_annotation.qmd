@@ -219,6 +219,15 @@ p2<-pheatmap(
 p1+p2
 ```
 
+Annotation comparison
+
+comparer les 2 colonnes Azimuth et SingleR et si le type cellulaire trouvé est commun alors il est accepté sinon il sera dtéreminé par l'annotation manuelle.
+
+```{r}
+table(data_annotated$SingleR)
+table(data_annotated$)
+```
+
 ## Save the annotation file
 
 ```{r}

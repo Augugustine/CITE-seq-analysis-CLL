@@ -32,9 +32,11 @@ Read the data pre-processed
 data<-readRDS(params$file)
 ```
 
-## Manual annotation
+## Manual annotation on RNA
 
 With WebCSEA and Seurat
+
+Choisir les marqeurs par la literatures ou donné par le site de Azimuth
 
 ```{r}
 cluster6.markers <- FindMarkers(data, ident.1 = 6, ident.2 = c(0, 1, 2, 3, 4, 5))
@@ -138,7 +140,7 @@ t-SNE
 
 ```{r}
 title=paste("t-SNE annotated, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
-plot1<-TSNEPlot(data) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plot1<-DimPlot(data_annotated, group.by="predicted.celltype.l1", reduction = 'tsne', label = TRUE, repel = TRUE, label.size = 2.5) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plot1
 ggsave(paste0(params$pre-pro_type,"_tsne_", params$patient, ".jpeg"), plot1)
 ```
@@ -171,7 +173,7 @@ DimPlot(data, reduction = "isomap") + ggtitle(str_wrap(title, width = 80)) + the
 
 ## Focus on monocytes, macrophages and CLL cells (B cells)
 
-## Save the annotation file 
+## Save the annotation file
 
 ```{r}
 namepath=paste0("CLL_annotated_", params$type, "_", params$patient, ".rds")
