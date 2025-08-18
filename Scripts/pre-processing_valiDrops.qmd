@@ -101,15 +101,15 @@ valid <- valid[, c("barcode", "qc.pass", "label")]
 rownames(valid) <- valid$barcode
 valid$barcode <- NULL
 CLL_merged <- AddMetaData(CLL_merged, valid)
+CLL_merged <- subset(CLL_merged, subset = qc.pass == "pass")
 
 CLL_qc <-CLL_merged
 CLL_qc <- run_umap(CLL_qc)
-CLL_qc$qc_final <- ifelse(CLL_qc$qc.pass == "pass" & CLL_qc$label == "live", "TRUE", "FALSE")
 ```
 
 ```{r}
-title=paste("QC status of cells (red = failed) using valiDrops tool (filtering the empty barcodes and dead cells),", params$patient)
-plot1<-DimPlot(CLL_qc, group.by = "qc_final", cols = c("TRUE" = "grey50", "FALSE" = "red")) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+title=paste("QC status of dead cells (red = dead) using valiDrops tool (filtering the empty barcodes and dead cells),", params$patient)
+plot1<-DimPlot(CLL_qc, group.by = "label", cols = c("live" = "grey50", "dead" = "red")) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plot1
 ggsave(paste0("valiDrops_qc_", params$patient, ".jpeg"), plot1)
 ```
@@ -117,7 +117,7 @@ ggsave(paste0("valiDrops_qc_", params$patient, ".jpeg"), plot1)
 Filtering
 
 ```{r}
-CLL_merged <- subset(CLL_merged, subset = qc.pass == "pass" & label == "live")
+CLL_merged <- subset(CLL_merged, subset = label == "live")
 ```
 
 ```{r}
