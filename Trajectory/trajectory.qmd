@@ -1,0 +1,46 @@
+---
+title: "Trajectory"
+params: 
+  patient: "P1"
+  file: "CLL_P1_seurat_reduit.rds"
+  type: "Seurat"
+format: html
+editor: visual
+---
+
+## Trajectory analysis 
+
+The analyzed dataset consists of five timepoints. The goal of trajectory analysis in single-cell data is to reconstruct the dynamic processes that cells undergo, such as differentiation or activation. In our study, we aim to determine whether specific clusters or transitional states, particularly the bridge between B cells and macrophages, emerge or evolve over the 14-day time course. This approach allows us to capture temporal changes in cell states.
+
+```{r}
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(SeuratData)
+library(pheatmap)
+library(viridis)
+source("functions.R")
+```
+
+```{r}
+data<-readRDS(params$file)
+```
+
+Change the day color?
+
+```{r}
+title=paste("Trajectory UMAP, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data, group.by = "timepoint", reduction = "umap", label = TRUE, repel = TRUE, label.size = 2.5) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_trajectory_umap_", params$patient, ".jpeg"), plotumap)
+```
+
+Focus on B cell
+
+Focus on the T cell
+
+Focus on the bridge?
