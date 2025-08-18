@@ -21,6 +21,7 @@ library(celldex)
 library(stringr)
 library(Azimuth)
 library(SeuratData)
+library(SeuratDisk)
 library(pheatmap)
 library(viridis)
 source("functions.R")
@@ -111,24 +112,25 @@ write.table(df, file = namefile, sep = "\t", row.names = FALSE, quote = FALSE)
 
 Retrieve the Seurat object (containing both RNA and ADT data), but perform cell type annotation using only the RNA modality. The object must already be filtered (cells and genes), and must contain raw RNA counts, as Azimuth will apply its own normalization consistent with the reference dataset used (Hao et al., 2021).
 
-Create an Azimuth reference using the BlueprintEncode dataset.
+Create an Azimuth reference using the ?? dataset.
+
+The dataset is in h5ad format, so transformation in h5 for Seurat. (website : ??)
 
 ```{r}
-bp <- celldex::BlueprintEncodeData()
-logcounts <- assay(ref, "logcounts")
-seurat_ref <- CreateSeuratObject(counts = logcounts)
+Convert("tabula_sapiens_immune.h5ad", dest = "h5seurat", overwrite = TRUE)
+ref_tabula <- LoadH5Seurat("tabula_sapiens_immune.h5seurat")
+```
 
-seurat_ref <- NormalizeData(seurat_ref)
-seurat_ref <- FindVariableFeatures(seurat_ref)
-seurat_ref <- ScaleData(seurat_ref)
-seurat_ref <- RunPCA(seurat_ref)
-seurat_ref <- RunUMAP(seurat_ref, dims = 1:50, return.model = TRUE )
+```{r}
+ref_tabula <- SCTransform(ref_tabula)
+ref_tabula <- RunPCA(ref_tabula)
+ref_tabula <- RunUMAP(ref_tabula, dims = 1:50, return.model = TRUE )
 
 # Add labels
-seurat_ref$celltype <- bp$label.fine
+#ref_tabula$celltype <- bp$label.fine
 
 # Azimuth ref
-azimuth_ref <- AzimuthReference(seurat_ref, refDR="pca",refUMAP = "umap", refAssay="RNA", metadata = "celltype")
+azimuth_ref <- AzimuthReference(ref_tabula, refDR="pca",refUMAP = "umap", refAssay="SCT", metadata = "celltype")
 ```
 
 ```{r}
@@ -224,8 +226,47 @@ Annotation comparison
 comparer les 2 colonnes Azimuth et SingleR et si le type cellulaire trouvé est commun alors il est accepté sinon il sera dtéreminé par l'annotation manuelle.
 
 ```{r}
+data_annotated$combined <- ifelse(
+  data_annotated$SingleR  %in% c("B_cell", "Pre-B_cell_CD34-","Pro-B_cell_CD34+") & data_annotated$Azimuth == "B",
+  data_annotated$SingleR,
+  "unknown"
+)
+```
+
+```{r}
+data_annotated$combined <- ifelse(
+  data_annotated$SingleR %in% c("B_cell", "Pre-B_cell_CD34-", "Pro-B_cell_CD34+") & data_annotated$Azimuth == "B",
+  data_annotated$SingleR,
+  ifelse(
+    data_annotated$SingleR == "T_cell" & data_annotated$Azimuth %in% c("CD4 T", "CD8 T", "other T"),
+    data_annotated$Azimuth,
+    ifelse(
+      data_annotated$SingleR == "Monocyte" & data_annotated$Azimuth == "Mono",
+      data_annotated$SingleR,
+      ifelse(
+        data_annotated$SingleR == "NK_cell" & data_annotated$Azimuth == "NK",
+        data_annotated$SingleR,
+      )
+      
+    )
+  
+    "unknown"
+  )
+)
+
+```
+
+```{r}
+
+```
+
+```{r}
+
+```
+
+```{r}
 table(data_annotated$SingleR)
-table(data_annotated$)
+table(data_annotated$Azimuth)
 ```
 
 ## Save the annotation file
