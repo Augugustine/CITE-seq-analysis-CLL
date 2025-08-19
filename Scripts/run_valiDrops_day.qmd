@@ -67,6 +67,53 @@ valid$barcode <- NULL
 seurat_object <- AddMetaData(seurat_object, valid)
 ```
 
+## Non coding genes removal
+
+Features number before non-coding genes removal
+
+```{r}
+nrow(seurat_object)
+```
+
+The non-coding genes removal is based on the database Ensembl in order to select the genes coding for proteins. The function used is explain on the file functions.R
+
+This function accepts a Seurat object at any stage (pre- or post-processing) and returns a version of the object with all non-coding genes filtered out.
+
+```{r}
+seurat_object <- removal_noncoding_gene(seurat_object)
+```
+
+Features number after non-coding genes removal
+
+```{r}
+nrow(seurat_object)
+```
+
+## Doublet removal
+
+Number of cell before doublet removal
+
+```{r}
+ncol(seurat_object)
+```
+
+```{r}
+seurat_object <-complete_DoubletFinder(seurat_object)
+```
+
+Percentage calculation
+
+```{r}
+#| include: false
+table_classes <- table(seurat_object$doublet_finder)
+percentages <- prop.table(table_classes) * 100
+
+seurat_object@meta.data %>%
+  group_by(timepoint, doublet_finder) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n / sum(n) * 100) -> timepoint_percent
+```
+
 ## Save the object after the pre-processing
 
 ```{r}

@@ -1,0 +1,84 @@
+---
+title: "Pre-processing valiDrops"
+params: 
+  patient: "P1"
+  resolution: 0.1
+  directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
+  file: "raw_valiDrops.rds"
+editor: visual
+---
+
+## Steps of this pre-processing, valiDrops, Seurat and DoubletFinder
+
+-   Downloading the raw data by 10X Genomics pipeline and merging all days into one Seurat object.
+
+-   Applying the **valiDrops** tool. This tool performs quality control on single-cell data by identifying valid barcodes and predicting whether each cell is alive or dead, based on expression profiles and quality metrics
+
+-   Removing non-coding genes using **Ensembl** gene annotations (via a reusable custom function).
+
+-   Detecting doublets (Singlet or Doublet) using **DoubletFinder** on each day separately, then adding this metadata to the merged object and removing doublets (also done via a reusable function).
+
+-   Selecting the top 2000 variable genes, normalization, and scaling using **Seurat**.
+
+-   Visualizations: PCA, Heatmap, and UMAP (resolution 0.1)
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+library(DoubletFinder)
+library(tibble)
+library(ggplot2)
+library(SummarizedExperiment)
+library(valiDrops)
+source("functions.R")
+```
+
+```{r}
+#| include: false
+paths <- file.path(base_dir, params$patient, paste0("run_count_J", jours), "outs", params$file)
+data_list <- lapply(paths, readRDS)
+names(data_list) <- paste0("CLL", "_D", jours)
+```
+
+Add an identity with the time point
+
+```{r}
+CLL_D1_filtered$timepoint <- "D1"
+CLL_D4_filtered$timepoint <- "D4"
+CLL_D8_filtered$timepoint <- "D8"
+CLL_D11_filtered$timepoint <- "D11"
+CLL_D14_filtered$timepoint <- "D14"
+```
+
+Merge all the data filtered, in order to have one SeuratObject with all the time point for one patient (and the total cells and genes number).
+
+```{r}
+CLL_merged <- merge(CLL_D1_filtered, y = list(CLL_D4_filtered, CLL_D8_filtered,
+                                                    CLL_D11_filtered, CLL_D14_filtered),
+                       add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), project = "TimeCourse")
+
+CLL_merged[["RNA"]] <- JoinLayers(CLL_merged[["RNA"]])
+```
+
+Total number of cells at the beginning.
+
+```{r}
+ncol(CLL_merged)
+```
+
+Run valiDrops
+
+```{r}
+CLL_merged <- valiDrops(CLL_merged, label_dead = TRUE)
+```
+
+```{r}
+CLL_merged <- subset(CLL_merged, qc.pass == "pass" & label == "live")
+```
