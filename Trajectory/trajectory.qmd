@@ -8,7 +8,7 @@ format: html
 editor: visual
 ---
 
-## Trajectory analysis 
+## Trajectory analysis
 
 The analyzed dataset consists of five timepoints. The goal of trajectory analysis in single-cell data is to reconstruct the dynamic processes that cells undergo, such as differentiation or activation. In our study, we aim to determine whether specific clusters or transitional states, particularly the bridge between B cells and macrophages, emerge or evolve over the 14-day time course. This approach allows us to capture temporal changes in cell states.
 
