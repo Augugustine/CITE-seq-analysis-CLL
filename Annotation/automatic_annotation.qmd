@@ -221,54 +221,6 @@ p2<-pheatmap(
 p1+p2
 ```
 
-Annotation comparison
-
-comparer les 2 colonnes Azimuth et SingleR et si le type cellulaire trouvé est commun alors il est accepté sinon il sera dtéreminé par l'annotation manuelle.
-
-```{r}
-data_annotated$combined <- ifelse(
-  data_annotated$SingleR  %in% c("B_cell", "Pre-B_cell_CD34-","Pro-B_cell_CD34+") & data_annotated$Azimuth == "B",
-  data_annotated$SingleR,
-  "unknown"
-)
-```
-
-```{r}
-data_annotated$combined <- ifelse(
-  data_annotated$SingleR %in% c("B_cell", "Pre-B_cell_CD34-", "Pro-B_cell_CD34+") & data_annotated$Azimuth == "B",
-  data_annotated$SingleR,
-  ifelse(
-    data_annotated$SingleR == "T_cell" & data_annotated$Azimuth %in% c("CD4 T", "CD8 T", "other T"),
-    data_annotated$Azimuth,
-    ifelse(
-      data_annotated$SingleR == "Monocyte" & data_annotated$Azimuth == "Mono",
-      data_annotated$SingleR,
-      ifelse(
-        data_annotated$SingleR == "NK_cell" & data_annotated$Azimuth == "NK",
-        data_annotated$SingleR,
-      )
-      
-    )
-  
-    "unknown"
-  )
-)
-
-```
-
-```{r}
-
-```
-
-```{r}
-
-```
-
-```{r}
-table(data_annotated$SingleR)
-table(data_annotated$Azimuth)
-```
-
 ## Save the annotation file
 
 ```{r}

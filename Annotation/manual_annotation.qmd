@@ -2,7 +2,7 @@
 title: "Manual annotation"
 params: 
   patient: "P1"
-  file: "CLL_P1_seurat.rds"
+  file: "CLL_P1_seurat_reduit.rds"
   type: "DDQC"
 format: html
 editor: visual
@@ -39,7 +39,7 @@ With WebCSEA and Seurat
 Choisir les marqeurs par la literatures ou donné par le site de Azimuth
 
 ```{r}
-cluster0.markers <- FindMarkers(data, ident.1 = 0, ident.2 = c(1, 2, 3, 4, 5,6,7))
+#cluster0.markers <- FindMarkers(data, ident.1 = 0, ident.2 = c(1, 2, 3, 4, 5,6,7))
 ```
 
 ```{r}
@@ -55,131 +55,37 @@ VlnPlot(data, features = c("MS4A1", "CD79A"))
 ```
 
 ```{r}
-FeaturePlot(data, features = c("MS4A1", "GNLY", "CD3E", "CD14", "FCER1A", "FCGR3A", "LYZ", "PPBP",
-    "CD8A"))
+# Macrophages markers
+FeaturePlot(data, features = c("SPIC","FABP3","CD5L","CCL18","C1QC","C1QB","FABP4","C1QA","APOE","SELENOP"))
 ```
 
 Extraction of differentially expressed markers, followed by input of these markers into the WebCSEA tool (Dai Y, Hu R, Liu A, Cho KS, Manuel AM, Li X, Dong X, Jia P, Zhao Z, 2022).
 
 ```{r}
-new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono",
-    "NK", "DC", "Platelet","Neutrophils")
-names(new.cluster.ids) <- levels(data)
-data <- RenameIdents(data, new.cluster.ids)
-DimPlot(data, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+#new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono",
+ #   "NK", "DC", "Platelet","Neutrophils")
+#names(new.cluster.ids) <- levels(data)
+#data <- RenameIdents(data, new.cluster.ids)
+#DimPlot(data, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
 ```
 
 ```{r}
-plot <- DimPlot(data, reduction = "umap", label = TRUE, label.size = 4.5) + xlab("UMAP 1") + ylab("UMAP 2") +
-    theme(axis.title = element_text(size = 18), legend.text = element_text(size = 18)) + guides(colour = guide_legend(override.aes = list(size = 10)))
-ggsave(filename = "./Plots/umap_annotated.jpg", height = 7, width = 12, plot = plot, quality = 50)
+#plot <- DimPlot(data, reduction = "umap", label = TRUE, label.size = 4.5) + xlab("UMAP 1") + ylab("UMAP 2") +
+ #   theme(axis.title = element_text(size = 18), legend.text = element_text(size = 18)) + guides(colour = #guide_legend(override.aes = list(size = 10)))
+#ggsave(filename = "./Plots/umap_annotated.jpg", height = 7, width = 12, plot = plot, quality = 50)
 ```
 
 ## Visualization
-
-```{r}
-DimPlot(data, reduction = "umap", group.by = ) + ggtitle()
-```
-
-In Bonsai tool we can add a file with the cell annotation. The file required is a tsv file with in column the cell barcodes and the cell type.
-
-```{r}
-annotation_column <- "seurat_clusters"  # column name : to change
-barcode_annotation <- data.frame(
-  barcode = colnames(data),
-  annotation = data@meta.data[[annotation_column]]
-)
-write.table(annotation, file = "barcode_annotation.tsv", sep = "\t", quote = FALSE, col.names = NA)
-
-barcodes <- colnames(data_annotated)
-annotations <- data_annotated$??
-
-df <- data.frame(
-  barcode = barcodes,
-  predicted_celltype = annotations
-)
-namefile=paste0("azimuth_annotation_", params$type, "_", params$patient, ".tsv")
-write.table(df, file = namefile, sep = "\t", row.names = FALSE, quote = FALSE)
-```
-
-## Visualization
-
-UMAP
-
-```{r}
-title=paste("UMAP annotated, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
-DimPlot(data, reduction = "umap")
-plotumap<-DimPlot(data, reduction = "umap") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-ggsave(paste0(params$pre-pro_type,"_umap_annoted", params$patient, ".jpeg"), plotumap)
-```
-
-UMAP by timepoint
-
-```{r}
-data$timepoint <- factor(
-  data$timepoint,
-  levels = c("D1", "D4", "D8", "D11", "D14")
-)
-title=paste("UMAP annotated by timepoint, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
-plot1<-DimPlot(data, reduction = "umap", group.by = "???", split.by = "timepoint") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-plot1
-ggsave(paste0(params$pre-pro_type, "_umap_timepoint_", params$patient, ".jpeg"), plot1)
-```
-
-wnnUMAP
-
-```{r}
-#| message: false
-#| warning: false
-data <-run_adt_umap(data)
-title=paste("wnnUMAP annotated, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
-plotwnn <- DimPlot(data, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
-  NoLegend() + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-plotwnn
-ggsave(paste0(params$pre-pro_type,"_wnnumap_", params$patient, ".jpeg"), plotwnn)
-DefaultAssay(data) <- 'RNA'
-```
-
-t-SNE
-
-```{r}
-title=paste("t-SNE annotated, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
-plot1<-DimPlot(data_annotated, group.by="predicted.celltype.l1", reduction = 'tsne', label = TRUE, repel = TRUE, label.size = 2.5) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-plot1
-ggsave(paste0(params$pre-pro_type,"_tsne_", params$patient, ".jpeg"), plot1)
-```
 
 Bonsai
 
 In this analysis, we use the single-cell Bonsai pipeline available at <https://bonsai.unibas.ch/bonsai/>. The TSV matrix is exported in the pre-processing script, and we supplemented it with an annotation TSV file containing cell barcodes and their corresponding cell type annotations.
 
-```{r}
-
-```
-
-Isomap
-
-```{r}
-pc_mat <- Embeddings(data, reduction = "pca")[, 1:10]
-
-iso <- isomap(dist(pc_mat), ndim = 2, k = 10)  # k = nb voisins, à ajuster
-
-# Add Isomap reduction in the Seurat Object 
-data[["isomap"]] <- CreateDimReducObject(
-  embeddings = iso$points,
-  key = "ISO_",
-  assay = DefaultAssay(data)
-)
-
-title=paste("Isomap annotated, pre-processing type :", params$pre-pro_type, ", patient", params$patient)
-DimPlot(data, reduction = "isomap") + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-```
-
-## Focus on monocytes, macrophages and CLL cells (B cells)
+In Bonsai tool we can add a file with the cell annotation. The file required is a tsv file with in column the cell barcodes and the cell type.
 
 ## Save the annotation file
 
 ```{r}
 namepath=paste0("CLL_annotated_", params$type, "_", params$patient, ".rds")
-saveRDS(data_annotated, file = namepath)
+#saveRDS(data_annotated, file = namepath)
 ```
