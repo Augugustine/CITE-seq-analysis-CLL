@@ -163,11 +163,14 @@ return(seuratobj)
 }
 
 # Run graph reduction as UMAP
-run_umap <- function(seuratobj){
+run_umap <- function(seuratobj, Resolution){
   seuratobj <- NormalizeData(seuratobj)
-  seuratobj <- FindVariableFeatures(seuratobj)
-  seuratobj <- ScaleData(seuratobj)
-  seuratobj <- RunPCA(seuratobj)
+  seuratobj <- FindVariableFeatures(seuratobj, selection.method = "vst", nfeatures = 2000)
+  all.genes <- rownames(seuratobj)
+  seuratobj <- ScaleData(seuratobj, features = all.genes)
+  seuratobj <- RunPCA(seuratobj, features = VariableFeatures(object = seuratobj))
+  seuratobj <- FindNeighbors(seuratobj, dims = 1:10)
+  seuratobj <- FindClusters(seuratobj, resolution=Resolution)
   seuratobj <- RunUMAP(seuratobj, dims = 1:10)
   return(seuratobj)
 }

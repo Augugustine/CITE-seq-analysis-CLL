@@ -104,7 +104,7 @@ CLL_merged <- AddMetaData(CLL_merged, valid)
 CLL_merged <- subset(CLL_merged, subset = qc.pass == "pass")
 
 CLL_qc <-CLL_merged
-CLL_qc <- run_umap(CLL_qc)
+CLL_qc <- run_umap(CLL_qc, params$resolution)
 ```
 
 ```{r}
@@ -218,7 +218,7 @@ Identify the doublets on the UMAP
 
 ```{r}
 #| include: false
-CLL_multiplet <- run_umap(CLL_multiplet)
+CLL_multiplet <- run_umap(CLL_multiplet, params$resolution)
 
 CLL_multiplet$Doublet_Status <- ifelse(CLL_multiplet$doublet_finder == "Doublet", "Doublet", "Other")
 ```

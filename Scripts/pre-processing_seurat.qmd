@@ -180,7 +180,7 @@ Identify the doublets on the UMAP
 
 ```{r}
 #| include: false
-CLL_multiplet <- run_umap(CLL_multiplet)
+CLL_multiplet <- run_umap(CLL_multiplet, params$resolution)
 
 CLL_multiplet$Doublet_Status <- ifelse(CLL_multiplet$doublet_finder == "Doublet", "Doublet", "Other")
 ```
@@ -228,7 +228,7 @@ CLL_merged$qc_pass <- with(CLL_merged@meta.data,
                            nFeature_RNA < 6000 &
                            percent.mt < params$mito_gene_percent)
 CLL_qc <-CLL_merged
-CLL_qc <- run_umap(CLL_qc)
+CLL_qc <- run_umap(CLL_qc, params$resolution)
 ```
 
 ```{r}
