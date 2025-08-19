@@ -47,7 +47,24 @@ markers <- FindAllMarkers(data, only.pos = TRUE)
 markers %>%
   group_by(cluster) %>%
   dplyr::filter(avg_log2FC > 1)
-head(markers)
+```
+
+Create a gene list for each cluster
+
+```{r}
+gene_lists <- split(markers$gene, markers$cluster)
+
+#for (cl in names(gene_lists)) {
+ # filename <- paste0("cluster", cl, "_genes.tsv")
+#  write.table(gene_lists[[cl]], file = filename, sep = "\t", quote = FALSE, row.names = FALSE,
+#    col.names = FALSE
+#  )
+#}
+
+# pour tester pour l'instant sur 1
+test<-head(gene_lists[["0"]],n=2000)
+write.table(test, file = "test_gene.tsv", sep = "\t", quote = FALSE, row.names = FALSE,
+    col.names = FALSE)
 ```
 
 ```{r}
@@ -56,7 +73,8 @@ VlnPlot(data, features = c("MS4A1", "CD79A"))
 
 ```{r}
 # Macrophages markers
-FeaturePlot(data, features = c("SPIC","FABP3","CD5L","CCL18","C1QC","C1QB","FABP4","C1QA","APOE","SELENOP"))
+fig<-FeaturePlot(data, features = c("SPIC","FABP3","CD5L","CCL18","C1QC","C1QB","FABP4","C1QA","APOE","SELENOP"))
+ggsave(paste0("macro_", params$patient, ".jpeg"), fig)
 ```
 
 Extraction of differentially expressed markers, followed by input of these markers into the WebCSEA tool (Dai Y, Hu R, Liu A, Cho KS, Manuel AM, Li X, Dong X, Jia P, Zhao Z, 2022).

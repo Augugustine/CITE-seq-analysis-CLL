@@ -4,7 +4,7 @@ format: html
 editor: visual
 ---
 
-## Final annotation 
+## Final annotation
 
 comparaison entre les autaomatiques et la manuelle
 
