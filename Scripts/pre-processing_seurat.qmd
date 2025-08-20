@@ -412,7 +412,7 @@ Run the UMAP (visualization) on the resolution chosen below.
 #| warning: false
 CLL_merged_sctransform <- RunUMAP(CLL_merged_sctransform, dims = 1:10)
 title=paste("UMAP (SCTransform-normalized, post-Seurat pipeline),", params$patient)
-DimPlot(CLL_merged_sctransform, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+DimPlot(CLL_merged_sctransform, reduction = "umap", label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend() + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotumap<-DimPlot(CLL_merged_sctransform, reduction = "umap")
 ggsave(paste0("seurat_umap_sct_", params$patient, ".jpeg"), plotumap)
 ```
@@ -421,7 +421,7 @@ ggsave(paste0("seurat_umap_sct_", params$patient, ".jpeg"), plotumap)
 #| warning: false
 CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
 title=paste("UMAP (normalized by LogNormalize, post-Seurat pipeline),", params$patient)
-DimPlot(CLL_merged, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+DimPlot(CLL_merged, reduction = "umap", label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend() + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotumap<-DimPlot(CLL_merged, reduction = "umap")
 ggsave(paste0("seurat_umap_log_", params$patient, ".jpeg"), plotumap)
 ```
@@ -469,9 +469,9 @@ write.table(counts, file = namefile, sep = "\t", quote = FALSE, col.names = NA)
 ## Save the object after the pre-processing
 
 ```{r}
-namepath=paste0("./CLL_LogNorm", params$patient, "_seurat.rds")
+namepath=paste0("./CLL_LogNorm_", params$patient, "_seurat.rds")
 saveRDS(CLL_merged, file = namepath)
 
-namepath=paste0("./CLL_SCT", params$patient, "_seurat.rds")
+namepath=paste0("./CLL_SCT_", params$patient, "_seurat.rds")
 saveRDS(CLL_merged_sctransform, file = namepath)
 ```

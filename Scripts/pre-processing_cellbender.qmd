@@ -182,7 +182,7 @@ Identify the doublets on the UMAP
 
 ```{r}
 #| include: false
-CLL_multiplet <- run_umap(CLL_multiplet)
+CLL_multiplet <- run_umap(CLL_multiplet, params$resolution)
 
 CLL_multiplet$Doublet_Status <- ifelse(CLL_multiplet$doublet_finder == "Doublet", "Doublet", "Other")
 ```
@@ -230,7 +230,7 @@ CLL_merged$qc_pass <- with(CLL_merged@meta.data,
                            nFeature_RNA < 6000 &
                            percent.mt < params$mito_gene_percent)
 CLL_qc <-CLL_merged
-CLL_qc <- run_umap(CLL_qc)
+CLL_qc <- run_umap(CLL_qc, params$resolution)
 ```
 
 ```{r}
@@ -376,52 +376,6 @@ CLL_merged <- FindNeighbors(CLL_merged, dims = 1:10)
 CLL_merged <- FindClusters(CLL_merged, resolution = params$resolution)
 ```
 
-## UMAP
-
-Run the UMAP (visualization) on the resolution chosen below.
-
-```{r}
-#| warning: false
-CLL_merged_sctransform <- RunUMAP(CLL_merged_sctransform, dims = 1:10)
-title=paste("UMAP (SCTransform-normalized, post-Seurat pipeline and CellBender),", params$patient)
-DimPlot(CLL_merged_sctransform, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-plotumap<-DimPlot(CLL_merged_sctransform, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-ggsave(paste0("cellbender_umap_sct_", params$patient, ".jpeg"), plotumap)
-```
-
-UMAP by timepoint
-
-```{r}
-CLL_merged_sctransform$timepoint <- factor(
-  CLL_merged_sctransform$timepoint,
-  levels = c("D1", "D4", "D8", "D11", "D14")
-)
-title=paste("UMAP by timepoint (SCTransform-normalized, post-Seurat pipeline and CellBender),", params$patient)
-time<-DimPlot(CLL_merged_sctransform, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-time
-ggsave(paste0("cellbender_umap_timepoint_sct_", params$patient, ".jpeg"), time)
-```
-
-```{r}
-#| warning: false
-CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
-title=paste("UMAP (normalized by LogNormalize, post-Seurat pipeline and CellBender),", params$patient)
-DimPlot(CLL_merged, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-plotumap<-DimPlot(CLL_merged, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-ggsave(paste0("cellbender_umap_log_", params$patient, ".jpeg"), plotumap)
-```
-
-```{r}
-CLL_merged$timepoint <- factor(
-  CLL_merged$timepoint,
-  levels = c("D1", "D4", "D8", "D11", "D14")
-)
-title=paste("UMAP by timepoint (LogNormalize-normalized, post-Seurat pipeline and CellBender),", params$patient)
-time2<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
-time2
-ggsave(paste0("cellbender_umap_timepoint_log_", params$patient, ".jpeg"), time2)
-```
-
 ## t-SNE
 
 ```{r}
@@ -485,6 +439,30 @@ plotwnn <- DimPlot(CLL_merged, reduction = 'wnn.umap', label = TRUE, repel = TRU
 plotwnn
 ggsave(paste0("cellbender_wnnumpa_log_", params$patient, ".jpeg"), plotwnn)
 DefaultAssay(CLL_merged) <- 'RNA'
+```
+
+## UMAP
+
+Run the UMAP (visualization) on the resolution chosen below.
+
+```{r}
+#| warning: false
+CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
+title=paste("UMAP (normalized by LogNormalize, post-Seurat pipeline and CellBender),", params$patient)
+DimPlot(CLL_merged, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotumap<-DimPlot(CLL_merged, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+ggsave(paste0("cellbender_umap_log_", params$patient, ".jpeg"), plotumap)
+```
+
+```{r}
+CLL_merged$timepoint <- factor(
+  CLL_merged$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("UMAP by timepoint (LogNormalize-normalized, post-Seurat pipeline and CellBender),", params$patient)
+time2<-DimPlot(CLL_merged, reduction = "umap", group.by = "seurat_clusters", split.by = "timepoint") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+time2
+ggsave(paste0("cellbender_umap_timepoint_log_", params$patient, ".jpeg"), time2)
 ```
 
 ## Save the object after the pre-processing

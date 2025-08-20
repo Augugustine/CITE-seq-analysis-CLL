@@ -9,7 +9,7 @@ format: html
 editor: visual
 ---
 
-This script runs the valiDrops tool on files from individual days, as it is too slow to run on the merged data (all days combined). It processes one day's file for a given patient and applies valiDrops. It outputs a Seurat object (with a new metadata column, where cells are marked) in the corresponding patient/day folder, which is then used in the `_pre-processing_valiDrops` script.
+This script applies the valiDrops tool to files from individual days, since running it on merged data (all days combined) is computationally too slow. The valiDrops method identifies and filters empty barcodes as well as dead cells, with empty barcodes being removed directly in this step. And the non coding genes are removed. The script processes one day’s dataset for a given patient, applies valiDrops, and then performs doublet removal using DoubletFinder. The output is a Seurat object stored in the corresponding patient/day folder, where metadata columns indicate whether cells are alive or dead, singlets or doublets, and with empty barcodes already removed. This object is subsequently used in the `pre-processing_valiDrops` script.
 
 ## Data and libraries initialization
 
@@ -65,6 +65,8 @@ rownames(valid) <- valid$barcode
 valid$barcode <- NULL
 
 seurat_object <- AddMetaData(seurat_object, valid)
+
+seurat_object <- subset(seurat_object, subset = qc.pass == "pass")
 ```
 
 ## Non coding genes removal
@@ -107,16 +109,12 @@ Percentage calculation
 #| include: false
 table_classes <- table(seurat_object$doublet_finder)
 percentages <- prop.table(table_classes) * 100
-
-seurat_object@meta.data %>%
-  group_by(timepoint, doublet_finder) %>%
-  summarise(n = n()) %>%
-  mutate(percent = n / sum(n) * 100) -> timepoint_percent
+print(percentages)
 ```
 
 ## Save the object after the pre-processing
 
 ```{r}
-filepaths <- file.path(params$directory, params$patient, paste0("run_count_J", params$day), "outs", "raw_valiDrops.rds")
+filepaths <- file.path(params$directory, params$patient, paste0("run_count_J", params$day), "outs", "valiDrops.rds")
 saveRDS(seurat_object, file = filepaths)
 ```
