@@ -42,8 +42,18 @@ Choisir les marqeurs par la literatures ou donné par le site de Azimuth
 #cluster0.markers <- FindMarkers(data, ident.1 = 0, ident.2 = c(1, 2, 3, 4, 5,6,7))
 ```
 
+Adaptation to the normalization type
+
 ```{r}
-markers <- FindAllMarkers(data, only.pos = TRUE)
+if ("SCT" %in% Assays(data)) {
+  assay_to_use <- "SCT"
+} else {
+  assay_to_use <- "RNA"
+}
+```
+
+```{r}
+markers <- FindAllMarkers(data, assay=assay_to_use, only.pos = TRUE)
 markers %>%
   group_by(cluster) %>%
   dplyr::filter(avg_log2FC > 1)
@@ -73,13 +83,18 @@ VlnPlot(data, features = c("MS4A1", "CD79A"))
 
 ```{r}
 # Macrophages markers
-fig<-FeaturePlot(data, features = c("SPIC","FABP3","CD5L","CCL18","C1QC","C1QB","FABP4","C1QA","APOE","SELENOP"))
-ggsave(paste0("macro_", params$patient, ".jpeg"), fig)
+if ("SCT" %in% Assays(data)) {
+  DefaultAssay(data) <- "SCT"
+} 
+fig<-FeaturePlot(data, features = c("SELENOP","FABP3","CD5L","CCL18","C1QC","C1QB","FABP4","C1QA","APOE"))
+fig2<- FeaturePlot(data, features = c("STX11","CD74","ADAM9","CD24","NFKBIA","PGK1","SERPINA1"))
+ggsave(paste0("macro_", params$patient, ".jpeg"), fig2, width = 6000, height = 5000, units = "px")
 ```
 
 Extraction of differentially expressed markers, followed by input of these markers into the WebCSEA tool (Dai Y, Hu R, Liu A, Cho KS, Manuel AM, Li X, Dong X, Jia P, Zhao Z, 2022).
 
 ```{r}
+cluster 5= macrophages
 #new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono",
  #   "NK", "DC", "Platelet","Neutrophils")
 #names(new.cluster.ids) <- levels(data)

@@ -9,6 +9,7 @@ editor: visual
 ---
 
 ```{r}
+#| message: false
 library(SeuratObject)
 library(sp)
 library(Seurat)
@@ -24,6 +25,7 @@ library(SeuratData)
 library(SeuratDisk)
 library(pheatmap)
 library(viridis)
+library(gridExtra)
 source("functions.R")
 ```
 
@@ -43,7 +45,7 @@ norm_counts <- LayerData(data, assay = "RNA", layer = 'data')
 Subset to include only relevant cell types
 
 ```{r}
-#ref <- ref[,grepl('DC|B_cell|Neutrophils|T_cells|Monocyte|Erythroblast|Macrophage|NK_cell|Platelets|Myelocyte', ref$label.main, ignore.case = TRUE)]
+ref <- ref[,grepl('DC|B_cell|Neutrophils|T_cells|Monocyte|Erythroblast|Macrophage|NK_cell|Platelets|Myelocyte', ref$label.main, ignore.case = TRUE)]
 #unique(ref$label.main)
 ```
 
@@ -66,9 +68,10 @@ UMAP
 
 ```{r}
 title=paste("UMAP annotated by SingleR, pre-processing type :", params$type, ", patient", params$patient)
-plotumap<-DimPlot(data_annotated, group.by="SingleR", reduction = "umap", label = TRUE, repel = TRUE, label.size = 2.5) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotumap<-DimPlot(data_annotated, group.by="SingleR", reduction = "umap", label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
 plotumap
-ggsave(paste0(params$type,"_umap_SingleR_", params$patient, ".jpeg"), plotumap)
+ggsave(paste0(params$type,"_umap_SingleR_", params$patient, ".jpeg"), plotumap, width = 3000,
+  height = 2000, units = "px")
 ```
 
 wnnUMAP
@@ -78,9 +81,10 @@ wnnUMAP
 #| warning: false
 data_annotated <-run_adt_umap(data_annotated)
 title=paste("wnnUMAP annotated by SingleR, pre-processing type :", params$type, ", patient", params$patient)
-plotwnn <- DimPlot(data_annotated, group.by="SingleR", reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotwnn <- DimPlot(data_annotated, group.by="SingleR", reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = ))
 plotwnn
-ggsave(paste0(params$type,"_wnnumap_SingleR_", params$patient, ".jpeg"), plotwnn)
+ggsave(paste0(params$type,"_wnnumap_SingleR_", params$patient, ".jpeg"), plotwnn, width = 3000,
+  height = 2000, units = "px")
 DefaultAssay(data_annotated) <- 'RNA'
 ```
 
@@ -88,9 +92,10 @@ t-SNE
 
 ```{r}
 title=paste("t-SNE annotated by SingleR, pre-processing type :", params$type, ", patient", params$patient)
-plot1<-DimPlot(data_annotated, group.by="SingleR", reduction = 'tsne', label = TRUE, repel = TRUE, label.size = 2.5) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plot1<-DimPlot(data_annotated, group.by="SingleR", reduction = 'tsne', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size =15, hjust = 0.5), legend.text = element_text(size = 12))
 plot1
-ggsave(paste0(params$type,"_tsne_SingleR_", params$patient, ".jpeg"), plot1)
+ggsave(paste0(params$type,"_tsne_SingleR_", params$patient, ".jpeg"), plot1, width = 3000,
+  height = 2000, units = "px")
 ```
 
 Bonsai
@@ -117,20 +122,20 @@ Create an Azimuth reference using the ?? dataset.
 The dataset is in h5ad format, so transformation in h5 for Seurat. (website : ??)
 
 ```{r}
-Convert("tabula_sapiens_immune.h5ad", dest = "h5seurat", overwrite = TRUE)
-ref_tabula <- LoadH5Seurat("tabula_sapiens_immune.h5seurat")
+#Convert("tabula_sapiens_immune.h5ad", dest = "h5seurat", overwrite = TRUE)
+#ref_tabula <- LoadH5Seurat("tabula_sapiens_immune.h5seurat")
 ```
 
 ```{r}
-ref_tabula <- SCTransform(ref_tabula)
-ref_tabula <- RunPCA(ref_tabula)
-ref_tabula <- RunUMAP(ref_tabula, dims = 1:50, return.model = TRUE )
+#ref_tabula <- SCTransform(ref_tabula)
+#ref_tabula <- RunPCA(ref_tabula)
+#ref_tabula <- RunUMAP(ref_tabula, dims = 1:50, return.model = TRUE )
 
 # Add labels
 #ref_tabula$celltype <- bp$label.fine
 
 # Azimuth ref
-azimuth_ref <- AzimuthReference(ref_tabula, refDR="pca",refUMAP = "umap", refAssay="SCT", metadata = "celltype")
+#azimuth_ref <- AzimuthReference(ref_tabula, refDR="pca",refUMAP = "umap", refAssay="SCT", metadata = "celltype")
 ```
 
 ```{r}
@@ -145,16 +150,18 @@ UMAP
 
 ```{r}
 title=paste("UMAP annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
-plotumap<-DimPlot(data_annotated, group.by = "predicted.celltype.l1", reduction = "umap", label = TRUE, repel = TRUE, label.size = 2.5) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotumap<-DimPlot(data_annotated, group.by = "predicted.celltype.l1", reduction = "umap", label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
 plotumap
-ggsave(paste0(params$type,"_umap_Azimuth_", params$patient, ".jpeg"), plotumap)
+ggsave(paste0(params$type,"_umap_Azimuth_", params$patient, ".jpeg"), plotumap, width = 3000,
+  height = 2000, units = "px")
 ```
 
 ```{r}
 title=paste("UMAP annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
-plotumap<-DimPlot(data_annotated, group.by = "predicted.celltype.l2", reduction = "umap", label = TRUE, repel = TRUE, label.size = 2.5) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotumap<-DimPlot(data_annotated, group.by = "predicted.celltype.l2", reduction = "umap", label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
 plotumap
-ggsave(paste0(params$type,"_umap_Azimuth_l2_", params$patient, ".jpeg"), plotumap)
+ggsave(paste0(params$type,"_umap_Azimuth_l2_", params$patient, ".jpeg"), plotumap, width = 3000,
+  height = 2000, units = "px")
 ```
 
 wnnUMAP
@@ -164,10 +171,11 @@ wnnUMAP
 #| warning: false
 data_annotated <-run_adt_umap(data_annotated)
 title=paste("wnnUMAP annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
-plotwnn <- DimPlot(data_annotated, group.by = "predicted.celltype.l1", reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + 
-  NoLegend() + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotwnn <- DimPlot(data_annotated, group.by = "predicted.celltype.l1", reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 4) + 
+  NoLegend() + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
 plotwnn
-ggsave(paste0(params$type,"_wnnumap_Azimuth_", params$patient, ".jpeg"), plotwnn)
+ggsave(paste0(params$type,"_wnnumap_Azimuth_", params$patient, ".jpeg"), plotwnn, width = 3000,
+  height = 2000, units = "px")
 DefaultAssay(data_annotated) <- 'RNA'
 ```
 
@@ -175,9 +183,10 @@ t-SNE
 
 ```{r}
 title=paste("t-SNE annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
-plot1<-DimPlot(data_annotated, group.by="predicted.celltype.l1", reduction = 'tsne', label = TRUE, repel = TRUE, label.size = 2.5) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plot1<-DimPlot(data_annotated, group.by="predicted.celltype.l1", reduction = 'tsne', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
 plot1
-ggsave(paste0(params$type,"_tsne_Azimuth_", params$patient, ".jpeg"), plot1)
+ggsave(paste0(params$type,"_tsne_Azimuth_", params$patient, ".jpeg"), plot1, width = 3000,
+  height = 2000, units = "px")
 ```
 
 Bonsai
@@ -224,8 +233,6 @@ p2<-pheatmap(
   border_color = NA,
   main = "Clusters vs Cell Types (Azimuth)"
 )
-
-p1+p2
 ```
 
 ## Save the annotation file
