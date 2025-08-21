@@ -2,7 +2,7 @@
 title: "Pre-processing valiDrops"
 params: 
   patient: "P1"
-  resolution: 0.2
+  resolution: 0.1
   directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
   file: "valiDrops.rds"
 editor: visual
@@ -30,17 +30,19 @@ library(DoubletFinder)
 library(tibble)
 library(ggplot2)
 library(SummarizedExperiment)
+library(stringr)
 source("functions.R")
 ```
 
 ```{r}
 #| include: false
 days <- c(1, 4, 8, 11, 14)
+data_list <- list()
 for (day in days) {
-  paths <- file.path(base_dir, params$patient, paste0("run_count_J", day), "outs", params$file)
-  data_list <- lapply(paths, readRDS)
-  names(data_list) <- paste0("CLL", "_D", day)
+  path <- file.path(params$directory, params$patient, paste0("run_count_J", day), "outs", params$file)
+  data_list[[paste0("CLL_D", day)]] <- readRDS(path)
 }
+list2env(data_list, envir = .GlobalEnv)
 ```
 
 Add an identity with the time point
@@ -182,7 +184,7 @@ Export the count matrix to a tsv file from a Seurat object
 counts <- GetAssayData(object = CLL_merged, assay = "RNA", slot = "counts")
 counts <- as.matrix(counts)
 namefile=paste0("CLL_", params$patient, "_valiDrops.tsv")
-write.table(counts, file = namefile, sep = "\t", quote = FALSE, valiDrops and DoubletFindercol.names = NA)
+write.table(counts, file = namefile, sep = "\t", quote = FALSE, col.names = NA)
 ```
 
 ## wnnUMAP (ADT+RNA)
