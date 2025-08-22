@@ -46,7 +46,7 @@ Subset to include only relevant cell types
 
 ```{r}
 ref <- ref[,grepl('DC|B_cell|Neutrophils|T_cells|Monocyte|Erythroblast|Macrophage|NK_cell|Platelets|Myelocyte', ref$label.main, ignore.case = TRUE)]
-#unique(ref$label.main)
+unique(ref$label.main)
 ```
 
 ```{r}
@@ -81,7 +81,7 @@ wnnUMAP
 #| warning: false
 data_annotated <-run_adt_umap(data_annotated)
 title=paste("wnnUMAP annotated by SingleR, pre-processing type :", params$type, ", patient", params$patient)
-plotwnn <- DimPlot(data_annotated, group.by="SingleR", reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = ))
+plotwnn <- DimPlot(data_annotated, group.by="SingleR", reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
 plotwnn
 ggsave(paste0(params$type,"_wnnumap_SingleR_", params$patient, ".jpeg"), plotwnn, width = 3000,
   height = 2000, units = "px")

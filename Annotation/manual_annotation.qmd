@@ -3,14 +3,14 @@ title: "Manual annotation"
 params: 
   patient: "P1"
   file: "CLL_P1_seurat_reduit.rds"
-  type: "DDQC"
+  type: "Seurat LogNormalize"
 format: html
 editor: visual
 ---
 
 # Cell types annotation
 
-This script aims to annotate cell clusters in order to identify the corresponding cell types. It combines both automatic and manual annotation approaches to improve accuracy and biological relevance.
+This script aims to annotate cell clusters by us, in order to identify the corresponding cell types.
 
 ## Data and libraries initialization
 
@@ -23,6 +23,7 @@ library(hdf5r)
 library(dplyr)
 library(patchwork)
 library(ggplot2)
+library(stringr)
 source("functions.R")
 ```
 
@@ -33,14 +34,6 @@ data<-readRDS(params$file)
 ```
 
 ## Manual annotation on RNA
-
-With WebCSEA and Seurat
-
-Choisir les marqeurs par la literatures ou donné par le site de Azimuth
-
-```{r}
-#cluster0.markers <- FindMarkers(data, ident.1 = 0, ident.2 = c(1, 2, 3, 4, 5,6,7))
-```
 
 Adaptation to the normalization type
 
@@ -59,66 +52,91 @@ markers %>%
   dplyr::filter(avg_log2FC > 1)
 ```
 
-Create a gene list for each cluster
+Generate a gene list for each cluster to use as input for the WebCSEA tool (Dai Y, Hu R, Liu A, Cho KS, Manuel AM, Li X, Dong X, Jia P, Zhao Z, 2022)
 
 ```{r}
 gene_lists <- split(markers$gene, markers$cluster)
 
-#for (cl in names(gene_lists)) {
- # filename <- paste0("cluster", cl, "_genes.tsv")
-#  write.table(gene_lists[[cl]], file = filename, sep = "\t", quote = FALSE, row.names = FALSE,
-#    col.names = FALSE
-#  )
-#}
-
-# pour tester pour l'instant sur 1
-test<-head(gene_lists[["0"]],n=2000)
-write.table(test, file = "test_gene.tsv", sep = "\t", quote = FALSE, row.names = FALSE,
-    col.names = FALSE)
+for (cl in names(gene_lists)) {
+  filename <- paste0("cluster", cl, "_genes.tsv")
+  genelist<-head(gene_lists[[cl]],n=2000)
+  write.table(genelist, file = filename, sep = "\t", quote = FALSE, row.names = FALSE,
+    col.names = FALSE
+  )
+}
 ```
 
-```{r}
-VlnPlot(data, features = c("MS4A1", "CD79A"))
-```
+Classic cell type markers expressed by clusters
 
 ```{r}
-# Macrophages markers
+vln <-VlnPlot(data, features = c("MS4A1", "CD79A"))
+ggsave(paste0("B_vln", params$patient, ".jpeg"), vln, width = 6000, height = 2000, units = "px")
+
+vln1 <-VlnPlot(data, features = c("CD68", "CD163"))
+ggsave(paste0("macro_vln", params$patient, ".jpeg"), vln1, width = 6000, height = 2000, units = "px")
+
+vln2 <-VlnPlot(data, features = c("CSF3R", "S100A8"))
+ggsave(paste0("neutro_vln", params$patient, ".jpeg"), vln2, width = 6000, height = 2000, units = "px")
+
+vln3 <-VlnPlot(data, features = c("ITGAX", "CD86"))
+ggsave(paste0("dc_vln", params$patient, ".jpeg"), vln3, width = 6000, height = 2000, units = "px")
+
+vln4 <-VlnPlot(data, features = c("TRBC2", "CD3D"))
+ggsave(paste0("T_vln", params$patient, ".jpeg"), vln4, width = 6000, height = 2000, units = "px")
+
+vln5 <-VlnPlot(data, features = c("NKG7", "GNLY"))
+ggsave(paste0("nk_vln", params$patient, ".jpeg"), vln5, width = 6000, height = 2000, units = "px")
+
+vln6 <-VlnPlot(data, features = c("CD14", "APOBEC3A"))
+ggsave(paste0("mono_vln", params$patient, ".jpeg"), vln6, width = 6000, height = 2000, units = "px")
+```
+
+Markers of cell types expressed and visualized on the UMAP
+
+```{r}
 if ("SCT" %in% Assays(data)) {
   DefaultAssay(data) <- "SCT"
 } 
-fig<-FeaturePlot(data, features = c("SELENOP","FABP3","CD5L","CCL18","C1QC","C1QB","FABP4","C1QA","APOE"))
-fig2<- FeaturePlot(data, features = c("STX11","CD74","ADAM9","CD24","NFKBIA","PGK1","SERPINA1"))
-ggsave(paste0("macro_", params$patient, ".jpeg"), fig2, width = 6000, height = 5000, units = "px")
+fig<-FeaturePlot(data, features = c("SELENOP","FABP3","CD5L","CCL18","C1QC","C1QB","FABP4","C1QA","APOE"), reduction = "umap")
+fig2<- FeaturePlot(data, features = c("SOD2","NAMPT","CXCL8","S100A9","G0S2","S100A8","TYROBP", "FCER1G", "MXD1"), reduction = "umap")
+fig3<- FeaturePlot(data, features = c("CD79A", "RALGPS2", "CD79B", "MS4A1", "BANK1", "CD74", "TNFRSF13C", "HLA-DQA1", "IGHM", "MEF2C"), reduction = "umap")
+fig4<- FeaturePlot(data, features = c("LYZ", "CST3", "LGALS2", "CPVL", "FGL2", "AIF1", "LST1", "SAMHD1", "GSN"), reduction = "umap")
+fig5<- FeaturePlot(data, features = c("IL7R", "MAL", "LTB", "CD4", "LDHB", "TPT1", "TRAC", "TMSB10", "CD3D"), reduction = "umap")
+fig6<- FeaturePlot(data, features = c("CD8B", "CD8A", "CD3D", "TMSB10", "HCST", "CD3G", "LINC02446", "CTSW", "CD3E"), reduction = "umap")
+fig7<- FeaturePlot(data, features = c("NKG7", "KLRD1", "TYROBP", "GNLY", "FCER1G", "PRF1", "CD247", "KLRF1", "CST7"), reduction = "umap")
+fig8<- FeaturePlot(data, features = c("CTSS", "FCN1", "NEAT1", "LYZ", "PSAP", "S100A9", "AIF1", "MNDA", "SERPINA1"), reduction = "umap")
+
+ggsave(paste0("macro_", params$patient, ".jpeg"), fig, width = 6000, height = 5000, units = "px")
+ggsave(paste0("neutro_", params$patient, ".jpeg"), fig2, width = 6000, height = 5000, units = "px")
+ggsave(paste0("B_", params$patient, ".jpeg"), fig3, width = 6000, height = 5000, units = "px")
+ggsave(paste0("dc_", params$patient, ".jpeg"), fig4, width = 6000, height = 5000, units = "px")
+ggsave(paste0("Tcd4_", params$patient, ".jpeg"), fig5, width = 6000, height = 5000, units = "px")
+ggsave(paste0("Tcd8_", params$patient, ".jpeg"), fig6, width = 6000, height = 5000, units = "px")
+ggsave(paste0("nk_", params$patient, ".jpeg"), fig7, width = 6000, height = 5000, units = "px")
+ggsave(paste0("mono_", params$patient, ".jpeg"), fig8, width = 6000, height = 5000, units = "px")
 ```
 
-Extraction of differentially expressed markers, followed by input of these markers into the WebCSEA tool (Dai Y, Hu R, Liu A, Cho KS, Manuel AM, Li X, Dong X, Jia P, Zhao Z, 2022).
+Manual annotation
 
 ```{r}
-cluster 5= macrophages
-#new.cluster.ids <- c("Naive CD4 T", "CD14+ Mono", "Memory CD4 T", "B", "CD8 T", "FCGR3A+ Mono",
- #   "NK", "DC", "Platelet","Neutrophils")
-#names(new.cluster.ids) <- levels(data)
-#data <- RenameIdents(data, new.cluster.ids)
-#DimPlot(data, reduction = "umap", label = TRUE, pt.size = 0.5) + NoLegend()
+manual_annot <- c("B cell", "B cell", "CD8 T", "CD4 T", "B cell", "B cell", "Macrophage", "B cell", "NK", "Erythroblast", "Neutrophil","Monocyte", "Neutrophil", "B cell", "B cell", "DC")
+names(manual_annot) <- levels(data)
+data <- RenameIdents(data, manual_annot)
+data$manual_annotation <- Idents(data)
 ```
+
+Visualization
 
 ```{r}
-#plot <- DimPlot(data, reduction = "umap", label = TRUE, label.size = 4.5) + xlab("UMAP 1") + ylab("UMAP 2") +
- #   theme(axis.title = element_text(size = 18), legend.text = element_text(size = 18)) + guides(colour = #guide_legend(override.aes = list(size = 10)))
-#ggsave(filename = "./Plots/umap_annotated.jpg", height = 7, width = 12, plot = plot, quality = 50)
+title=paste("UMAP manual annotation, pre-processing type :", params$type, ", patient", params$patient)
+plot <- DimPlot(data, reduction = 'umap', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 13, hjust = 0.5), legend.text = element_text(size =12 ))
+plot
+ggsave(paste0(params$type,"_manual_", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
-
-## Visualization
-
-Bonsai
-
-In this analysis, we use the single-cell Bonsai pipeline available at <https://bonsai.unibas.ch/bonsai/>. The TSV matrix is exported in the pre-processing script, and we supplemented it with an annotation TSV file containing cell barcodes and their corresponding cell type annotations.
-
-In Bonsai tool we can add a file with the cell annotation. The file required is a tsv file with in column the cell barcodes and the cell type.
 
 ## Save the annotation file
 
 ```{r}
-namepath=paste0("CLL_annotated_", params$type, "_", params$patient, ".rds")
+namepath=paste0("CLL_manual_annotated_", params$type, "_", params$patient, ".rds")
 #saveRDS(data_annotated, file = namepath)
 ```
