@@ -207,3 +207,65 @@ run_wnnumap <- function(seuratobj, resolution, normalization_type) {
 }
 
 
+# Names normalized for the comparison of annotation Azimuth, SingleR and manual
+name_norm <- function(x){
+  x <- as.character(x)
+  # B cells
+  x[x %in% c("B_cell","B cell","B","Pre-B_cell_CD34-","Pro-B_cell_CD34+")] <- "B"
+  # T cells
+  x[x %in% c("T_cells","T","other T","other")] <- "T"
+  # Specific T
+  x[x %in% c("CD4 T","CD4_T")] <- "CD4 T"
+  x[x %in% c("CD8 T","CD8_T")] <- "CD8 T"
+  # NK
+  x[x %in% c("NK_cell","NK")] <- "NK"
+  # Monocytes
+  x[x %in% c("Monocyte","Mono")] <- "Monocyte"
+  # Macrophages
+  x[x %in% c("Macrophage","Macrophages")] <- "Macrophage"
+  # Neutrophils
+  x[x %in% c("Neutrophil","Neutrophils")] <- "Neutrophil"
+  # DC
+  x[x %in% c("DC")] <- "DC"
+  # Erythroblasts
+  x[x %in% c("Erythroblast","Erythroblasts")] <- "Erythroblast"
+  # other
+  return(x)
+}
+
+# Consensus between the 3 annotations
+# This code integrates three sources of single-cell annotations (SingleR, Azimuth, and manual) into a final consensus label. 
+# For each cell, a consensus function is applied: if two or more methods agree, that label is kept; if the consensus is broad (T or B),
+# but one source provides a more specific subtype (e.g. CD4 T vs T), the more granular label is retained. If there is no agreement 
+# across the three sources, the cell is annotated as Unknown. The final labels are stored in the Seurat object under final_annot and 
+# can be visualized on a UMAP plot.
+consensus <- function(s, m, a){
+  labs <- c(s,m,a)
+  labs <- labs[!is.na(labs)]
+  if(length(labs) == 0) return("Unknown")
+  
+  # Count
+  tb <- table(labs)
+  
+  # if majority >=2 (2/3 ou 3/3)
+  if(max(tb) >= 2){
+    winner <- names(tb)[which.max(tb)]
+    
+    # If consensus in "T" but can be more precise (CD4 or CD8)
+    if(winner == "T" && any(c("CD4 T","CD8 T") %in% labs)){
+      return(labs[labs %in% c("CD4 T","CD8 T")][1])
+    }
+    
+    # If consensus in "B" but can be more precise Pre-B or Pro-B
+    if(winner == "B" && any(c("Pre-B_cell_CD34-","Pro-B_cell_CD34+") %in% c(s,m,a))){
+      return("B (precursor)")
+    }
+    
+    return(winner)
+  }
+  
+  # No majority -> Unknown
+  return("Unknown")
+}
+
+
