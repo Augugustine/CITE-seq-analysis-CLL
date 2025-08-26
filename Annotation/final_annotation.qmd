@@ -2,8 +2,8 @@
 title: "Final annotation"
 params: 
   patient: "P2"
-  file: "CLL_P1_seurat_reduit.rds"
-  type: "Seurat LogNormalize"
+  file: "CLL_manual_annotated_valiDrops_P2.rds"
+  type: "valiDrops"
 format: html
 editor: visual
 ---
@@ -12,6 +12,7 @@ editor: visual
 
 ```{r}
 #| message: false
+.libPaths("/work/user/ablanc/NetBIO2/renv/library/linux-rhel-8.10/R-4.5/x86_64-pc-linux-gnu")
 library(SeuratObject)
 library(sp)
 library(Seurat)
@@ -31,31 +32,81 @@ data<-readRDS(params$file)
 
 ## Final annotation
 
-It combines both automatic and manual annotation approaches to improve accuracy and biological relevance. The input Seurat object needs to be annotated by Azimuth, SingleR and manual annotation. (Scritps `automatic_annotation.qmd` and `manual_annotation.qmd`)
+comparaison entre les automatiques et la manuelle
 
-This code integrates three sources of single-cell annotations (SingleR, Azimuth, and manual) into a final consensus label. First, cell type names are harmonized so that equivalent terms (e.g. *B_cell*, *B cell*, *B*) are standardized. Then, for each cell, a consensus function is applied: if two or more methods agree, that label is kept; if the consensus is broad (*T* or *B*), but one source provides a more specific subtype (e.g. *CD4 T* vs *T*), the more granular label is retained. If there is no agreement across the three sources, the cell is annotated as *Unknown*. The final labels are stored in the Seurat object under `final_annot` and can be visualized on a UMAP plot.
+Annotation comparison
+
+comparer les 2 colonnes Azimuth et SingleR et si le type cellulaire trouvé est commun alors il est accepté sinon il sera dtéreminé par l'annotation manuelle.
 
 Consensus between the 3 annotations
 
-```{r}
-data$SingleR_clean <- name_norm(data$SingleR)
-data$Manual_clean <- name_norm(data$manual_annotation)
-data$Azimuth_clean  <- name_norm(data$predicted.celltype.l1)
-```
 
 ```{r}
-final <- mapply(consensus, data$SingleR_clean, data$Manual_clean, data$Azimuth_clean)
-data$final_annot <- final
+meta <- data@meta.data
+final_annot <- mapply(final_consensus, meta$SingleR, meta$manual_annotation, meta$predicted.celltype.l2)
+names(final_annot) <- colnames(data)
+data$final_annot <- final_annot
 ```
 
 ```{r}
 title=paste("UMAP annotated, pre-processing type :", params$type, ", patient", params$patient)
-plot <- DimPlot(data, reduction = 'umap', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 13, hjust = 0.5), legend.text = element_text(size =12 ))
+cell_palette <- c(
+  "CD4 T" = "#1f77b4",
+  "CD8 T" = "#2ca02c",
+  "NK" = "#e7298a",
+  "B naive" = "#ff7f0e",
+  "B intermediate" = "#ffd92f",
+  "B memory" = "#582d15ff",
+  "Monocyte" = "#e41a1c",
+  "Macrophage" = "#984ea3",
+  "DC" = "#4daf4a",
+  "Neutrophil" = "#377eb8",
+  "Platelet" = "#999999",
+  "Erythroblast" = "#17becf",
+  "Plasmablast" = "#fdbf6f",
+  "HSPC" = "#6a3d9a",
+  "B" = "#f2a890ff",
+  "T" = "#93f290ff")
+plot <- DimPlot(data, group.by="final_annot", reduction = 'umap', label = TRUE, repel = TRUE, label.size = 4, cols = cell_palette) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 13, hjust = 0.5), legend.text = element_text(size =12 ))
 plot
-ggsave(paste0(params$type,"_annotated_", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$type,"_umap_annotated_", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 ```{r}
-#table(data_annotated$SingleR)
-#table(data_annotated$Azimuth)
+table(data$SingleR)
+table(data$predicted.celltype.l2)
+table(data$manual_annotation)
+table(data$final_annot)
+```
+
+t-SNE
+
+```{r}
+title=paste("t-SNE annotated, pre-processing type :", params$type, ", patient", params$patient)
+plot1<-DimPlot(data, group.by="final_annot", reduction = 'tsne', label = TRUE, , cols = cell_palette, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 90)) + theme(plot.title = element_text(size = 13, hjust = 0.5), legend.text = element_text(size =12 ))
+plot1
+ggsave(paste0(params$type,"_tsne_annotated_", params$patient, ".jpeg"), plot1, width = 3000, height = 2000, units = "px")
+```
+
+Bonsai
+
+In this analysis, we use the single-cell Bonsai pipeline available at <https://bonsai.unibas.ch/bonsai/>. The TSV matrix is exported in the pre-processing script, and we supplemented it with an annotation TSV file containing cell barcodes and their corresponding cell type annotations.
+
+```{r}
+barcodes <- colnames(data)
+annotations <- data$final_annot
+
+df <- data.frame(
+  barcode = barcodes,
+  predicted_celltype = annotations
+)
+namefile=paste0("annotation_", params$type, "_", params$patient, ".tsv")
+write.table(df, file = namefile, sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+## Save the annotation file
+
+```{r}
+namepath=paste0("CLL_annotated_", params$type, "_", params$patient, ".rds")
+saveRDS(data, file = namepath)
 ```
