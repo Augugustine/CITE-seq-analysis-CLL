@@ -206,66 +206,117 @@ run_wnnumap <- function(seuratobj, resolution, normalization_type) {
   return(seuratobj)
 }
 
+library(Seurat)
 
-# Names normalized for the comparison of annotation Azimuth, SingleR and manual
-name_norm <- function(x){
-  x <- as.character(x)
-  # B cells
-  x[x %in% c("B_cell","B cell","B","Pre-B_cell_CD34-","Pro-B_cell_CD34+")] <- "B"
-  # T cells
-  x[x %in% c("T_cells","T","other T","other")] <- "T"
-  # Specific T
-  x[x %in% c("CD4 T","CD4_T")] <- "CD4 T"
-  x[x %in% c("CD8 T","CD8_T")] <- "CD8 T"
-  # NK
-  x[x %in% c("NK_cell","NK")] <- "NK"
-  # Monocytes
-  x[x %in% c("Monocyte","Mono")] <- "Monocyte"
-  # Macrophages
-  x[x %in% c("Macrophage","Macrophages")] <- "Macrophage"
-  # Neutrophils
-  x[x %in% c("Neutrophil","Neutrophils")] <- "Neutrophil"
-  # DC
-  x[x %in% c("DC")] <- "DC"
-  # Erythroblasts
-  x[x %in% c("Erythroblast","Erythroblasts")] <- "Erythroblast"
-  # other
-  return(x)
+
+# Function: harmonize_label
+harmonize_label <- function(label) {
+  label <- as.character(label)
+  if (is.na(label) || label == "") return(NA)
+  l <- tolower(gsub("[ _-]", "", label))
+  
+  if (l %in% c("cd4t","cd4tcell","cd4ctl","cd4tcm","cd4tem","cd4naive","cd4proliferating")) return("CD4 T")
+  if (l %in% c("cd8t","cd8tcell","cd8tcm","cd8tem","cd8naive","cd8proliferating")) return("CD8 T")
+  if (l %in% c("tcell","tcells","t","dnt","gdt","treg","mait")) return("T")
+  if (l %in% c("bnaive","bmemory","bintermediate")) return(label)
+  if (l %in% c("bcell","bcells","b")) return("B")
+  if (grepl("prebcellcd34", l) || grepl("probcellcd34", l)) return("B")
+  if (grepl("monocyte", l) || grepl("cd14mono", l) || grepl("cd16mono", l)) return("Monocyte")
+  if (grepl("macrophage", l)) return("Macrophage")
+  if (grepl("neutrophil", l)) return("Neutrophil")
+  if (grepl("^nk", l)) return("NK")
+  if (grepl("^dc", l) || grepl("dendriticcell", l) || grepl("asdc", l) || 
+      grepl("cdc1", l) || grepl("cdc2", l) || grepl("pdc", l)) return("DC")
+  if (grepl("platelet", l)) return("Platelet")
+  if (grepl("eryth", l)) return("Erythroblast")
+  if (grepl("^myelocyte$", l)) return("Myelocyte")
+  if (grepl("^pro-myelo", l)) return("Pro-Myelocyte")
+  if (grepl("hspc", l)) return("HSPC")
+  if (grepl("ilc", l)) return("ILC")
+  if (grepl("plasma", l) || grepl("plasmablast", l)) return("Plasmablast")
+  
+  return(label)
 }
 
-# Consensus between the 3 annotations
-# This code integrates three sources of single-cell annotations (SingleR, Azimuth, and manual) into a final consensus label. 
-# For each cell, a consensus function is applied: if two or more methods agree, that label is kept; if the consensus is broad (T or B),
-# but one source provides a more specific subtype (e.g. CD4 T vs T), the more granular label is retained. If there is no agreement 
-# across the three sources, the cell is annotated as Unknown. The final labels are stored in the Seurat object under final_annot and 
-# can be visualized on a UMAP plot.
-consensus <- function(s, m, a){
-  labs <- c(s,m,a)
-  labs <- labs[!is.na(labs)]
-  if(length(labs) == 0) return("Unknown")
+final_consensus <- function(singleR, manual, azimuth) {
+  lbls <- list(singleR, manual, azimuth)
+  labs_h <- sapply(lbls, harmonize_label)
+  not_na <- which(!is.na(labs_h))
+  count_labels <- table(labs_h[not_na])
   
-  # Count
-  tb <- table(labs)
+  # Define cell families
+  tb_group <- c("T", "CD4 T", "CD8 T")
+  b_group <- c("B", "B intermediate", "B memory", "B naive")
   
-  # if majority >=2 (2/3 ou 3/3)
-  if(max(tb) >= 2){
-    winner <- names(tb)[which.max(tb)]
-    
-    # If consensus in "T" but can be more precise (CD4 or CD8)
-    if(winner == "T" && any(c("CD4 T","CD8 T") %in% labs)){
-      return(labs[labs %in% c("CD4 T","CD8 T")][1])
+  # If only one valid annotation
+  if(length(not_na) == 1) return(labs_h[not_na])
+  
+  # If two valid annotations
+  if(length(not_na) == 2) {
+    labs_subset <- labs_h[not_na]
+    # If they are identical
+    if(labs_subset[1] == labs_subset[2]) return(labs_subset[1])
+    # T-family: keep the most specific
+    if(all(labs_subset %in% tb_group)) {
+      finer_t <- labs_subset[labs_subset %in% c("CD4 T", "CD8 T")]
+      if(length(finer_t)) return(finer_t[1]) else return("T")
     }
-    
-    # If consensus in "B" but can be more precise Pre-B or Pro-B
-    if(winner == "B" && any(c("Pre-B_cell_CD34-","Pro-B_cell_CD34+") %in% c(s,m,a))){
-      return("B (precursor)")
+    # B-family: keep the most specific
+    if(all(labs_subset %in% b_group)) {
+      finer_b <- labs_subset[labs_subset %in% c("B intermediate", "B memory", "B naive")]
+      if(length(finer_b)) return(finer_b[1]) else return("B")
     }
-    
-    return(winner)
+    # No agreement: return manual
+    return(harmonize_label(manual))
   }
   
-  # No majority -> Unknown
-  return("Unknown")
+  # If three valid annotations
+  if(length(not_na) == 3) {
+    labs_all <- labs_h[not_na]
+    
+    # If exact majority exists (2 or 3 identical)
+    if(any(count_labels >= 2)) {
+      maj_label <- names(count_labels)[which.max(count_labels)]
+      # T-family: keep the most specific
+      if(maj_label == "T" && any(labs_all %in% c("CD4 T", "CD8 T"))) {
+        finer_t <- labs_all[labs_all %in% c("CD4 T", "CD8 T")]
+        return(finer_t[1])
+      }
+      # B-family: keep the most specific
+      if(maj_label == "B" && any(labs_all %in% c("B intermediate", "B memory", "B naive"))) {
+        finer_b <- labs_all[labs_all %in% c("B intermediate", "B memory", "B naive")]
+        return(finer_b[1])
+      }
+      return(maj_label)
+    }
+    
+    # If all different, check for majority families
+    # Count how many annotations belong to each family
+    t_count <- sum(labs_all %in% tb_group)
+    b_count <- sum(labs_all %in% b_group)
+    
+    # If at least 2 annotations are in T-family
+    if(t_count >= 2) {
+      t_labels <- labs_all[labs_all %in% tb_group]
+      finer_t <- t_labels[t_labels %in% c("CD4 T", "CD8 T")]
+      if(length(finer_t)) return(finer_t[1]) else return("T")
+    }
+    
+    # If at least 2 annotations are in B-family
+    if(b_count >= 2) {
+      b_labels <- labs_all[labs_all %in% b_group]
+      finer_b <- b_labels[b_labels %in% c("B intermediate", "B memory", "B naive")]
+      if(length(finer_b)) return(finer_b[1]) else return("B")
+    }
+    
+    # Otherwise return harmonized manual
+    return(harmonize_label(manual))
+  }
+  
+  # If no valid annotation
+  return(NA)
 }
+
+
 
 

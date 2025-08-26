@@ -1,10 +1,10 @@
 ---
 title: "Pre-processing"
 params: 
-  patient: "P1"
+  patient: "P2"
   resolution: 0.1
   mito_gene_percent: 10
-  directory: "/home/a.blanc-boekholt/Documents/Singlecell-R"
+  directory: "/home/ablanc/work/NetBIO2"
   file: "filtered_feature_bc_matrix.h5"
 format: html
 editor: visual
@@ -32,6 +32,7 @@ Libraries required
 
 ```{r}
 #| message: false
+.libPaths("/work/user/ablanc/NetBIO2/renv/library/linux-rhel-8.10/R-4.5/x86_64-pc-linux-gnu")
 library(SeuratObject)
 library(sp)
 library(Seurat)
@@ -272,6 +273,8 @@ There are two ways to perform this step. One option is to use SCTransform, which
 #| include: false
 CLL_merged_sctransform <- CLL_merged
 CLL_merged_sctransform <- SCTransform(CLL_merged_sctransform)
+Assays(CLL_merged_sctransform)
+class(CLL_merged_sctransform)
 ```
 
 -   With LogNormalize
@@ -315,6 +318,8 @@ First step of visualization is to run a PCA.
 #| warning: false
 CLL_merged <- RunPCA(CLL_merged, features = VariableFeatures(object = CLL_merged))
 CLL_merged_sctransform <- RunPCA(CLL_merged_sctransform, features = VariableFeatures(object = CLL_merged_sctransform))
+Assays(CLL_merged_sctransform)
+class(Assays(CLL_merged_sctransform))
 ```
 
 Ranking of principle components based on the percentage of variance explained by each one, in order to choose how many components for the representation
@@ -364,6 +369,8 @@ ggsave(paste0("kmean_", params$patient, ".jpeg"), kmeanplot)
 #| include: false
 CLL_merged_sctransform <- FindNeighbors(CLL_merged_sctransform, dims = 1:10)
 CLL_merged_sctransform <- FindClusters(CLL_merged_sctransform, resolution = params$resolution)
+Assays(CLL_merged_sctransform)
+class(Assays(CLL_merged_sctransform))
 ```
 
 ```{r}
@@ -387,7 +394,9 @@ title=paste("wnnUMAP on RNA SCTranform normalization and post-Seurat pipeline,",
 plotwnn <- DimPlot(CLL_merged_sctransform, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend() + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotwnn
 ggsave(paste0("seurat_wnnumpa_sct_", params$patient, ".jpeg"), plotwnn)
-DefaultAssay(CLL_merged_sctransform) <- 'RNA'
+DefaultAssay(CLL_merged_sctransform) <- 'SCT'
+Assays(CLL_merged_sctransform)
+class(Assays(CLL_merged_sctransform))
 ```
 
 Visualization with wnnUMAP on data LogNormalize
@@ -412,16 +421,18 @@ Run the UMAP (visualization) on the resolution chosen below.
 #| warning: false
 CLL_merged_sctransform <- RunUMAP(CLL_merged_sctransform, dims = 1:10)
 title=paste("UMAP (SCTransform-normalized, post-Seurat pipeline),", params$patient)
-DimPlot(CLL_merged_sctransform, reduction = "umap", label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend() + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+DimPlot(CLL_merged_sctransform, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotumap<-DimPlot(CLL_merged_sctransform, reduction = "umap")
 ggsave(paste0("seurat_umap_sct_", params$patient, ".jpeg"), plotumap)
+Assays(CLL_merged_sctransform)
+class(Assays(CLL_merged_sctransform))
 ```
 
 ```{r}
 #| warning: false
 CLL_merged <- RunUMAP(CLL_merged, dims = 1:10)
 title=paste("UMAP (normalized by LogNormalize, post-Seurat pipeline),", params$patient)
-DimPlot(CLL_merged, reduction = "umap", label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend() + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+DimPlot(CLL_merged, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 plotumap<-DimPlot(CLL_merged, reduction = "umap")
 ggsave(paste0("seurat_umap_log_", params$patient, ".jpeg"), plotumap)
 ```
@@ -434,6 +445,8 @@ title=paste("t-SNE (normalized by SCTransform, post-Seurat pipeline),", params$p
 tsne<-TSNEPlot(CLL_merged_sctransform) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 tsne
 ggsave(paste0("seurat_tsne_sct_", params$patient, ".jpeg"), tsne)
+Assays(CLL_merged_sctransform)
+class(Assays(CLL_merged_sctransform))
 ```
 
 ```{r}
@@ -469,9 +482,11 @@ write.table(counts, file = namefile, sep = "\t", quote = FALSE, col.names = NA)
 ## Save the object after the pre-processing
 
 ```{r}
-namepath=paste0("./CLL_LogNorm_", params$patient, "_seurat.rds")
-saveRDS(CLL_merged, file = namepath)
+#namepath=paste0("./CLL_LogNorm_", params$patient, "_seurat.rds")
+#saveRDS(CLL_merged, file = namepath)
 
+Assays(CLL_merged_sctransform)
+class(CLL_merged_sctransform)
 namepath=paste0("./CLL_SCT_", params$patient, "_seurat.rds")
-saveRDS(CLL_merged_sctransform, file = namepath)
+SaveSeuratRds(CLL_merged_sctransform, file = namepath)
 ```
