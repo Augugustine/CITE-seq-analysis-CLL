@@ -2,14 +2,15 @@
 title: "Annotation"
 params: 
   patient: "P1"
-  file: "CLL_P1_seurat_reduit.rds"
-  type: "Seurat"
+  file: "/home/ablanc/work/NetBIO2/DDQC/P1/CLL_P1_DDQC.rds"
+  type: "DDQC"
 format: html
 editor: visual
 ---
 
 ```{r}
 #| message: false
+.libPaths("/work/user/ablanc/NetBIO2/renv/library/linux-rhel-8.10/R-4.5/x86_64-pc-linux-gnu")
 library(SeuratObject)
 library(sp)
 library(Seurat)
@@ -31,6 +32,16 @@ source("functions.R")
 
 ```{r}
 data<-readRDS(params$file)
+Assays(data)
+class(Assays(data))
+```
+
+```{r}
+if ("SCT" %in% names(Assays(data))) {
+  assay_to_use <- "SCT"
+} else {
+  assay_to_use <- "RNA"
+}
 ```
 
 ### SingleR
@@ -39,7 +50,7 @@ Get reference dataset and the count matrix
 
 ```{r}
 ref <- celldex::HumanPrimaryCellAtlasData()
-norm_counts <- LayerData(data, assay = "RNA", layer = 'data')
+norm_counts <- LayerData(data, assay = assay_to_use, layer = 'data')
 ```
 
 Subset to include only relevant cell types
@@ -141,7 +152,7 @@ The dataset is in h5ad format, so transformation in h5 for Seurat. (website : ??
 ```{r}
 #| include: false
 #InstallData("pbmcref")
-data_annotated <- RunAzimuth(data_annotated, reference = "pbmcref")
+data_annotated <- RunAzimuth(data_annotated, reference = "pbmcref", assay=assay_to_use)
 ```
 
 ## Visualization

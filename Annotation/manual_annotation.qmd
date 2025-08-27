@@ -38,7 +38,7 @@ data<-readRDS(params$file)
 Adaptation to the normalization type
 
 ```{r}
-if ("SCT" %in% Assays(data)) {
+if ("SCT" %in% names(Assays(data))) {
   assay_to_use <- "SCT"
 } else {
   assay_to_use <- "RNA"
