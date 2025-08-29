@@ -32,7 +32,6 @@ Libraries required
 
 ```{r}
 #| message: false
-.libPaths("/work/user/ablanc/NetBIO2/renv/library/linux-rhel-8.10/R-4.5/x86_64-pc-linux-gnu")
 library(SeuratObject)
 library(sp)
 library(Seurat)
@@ -482,11 +481,11 @@ write.table(counts, file = namefile, sep = "\t", quote = FALSE, col.names = NA)
 ## Save the object after the pre-processing
 
 ```{r}
-#namepath=paste0("./CLL_LogNorm_", params$patient, "_seurat.rds")
-#saveRDS(CLL_merged, file = namepath)
+namepath=paste0("./CLL_LogNorm_", params$patient, "_seurat.rds")
+saveRDS(CLL_merged, file = namepath)
 
 Assays(CLL_merged_sctransform)
 class(CLL_merged_sctransform)
 namepath=paste0("./CLL_SCT_", params$patient, "_seurat.rds")
-SaveSeuratRds(CLL_merged_sctransform, file = namepath)
+saveRDS(CLL_merged_sctransform, file = namepath)
 ```
