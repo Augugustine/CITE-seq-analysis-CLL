@@ -12,7 +12,6 @@ editor: visual
 
 ```{r}
 #| message: false
-.libPaths("/work/user/ablanc/NetBIO2/renv/library/linux-rhel-8.10/R-4.5/x86_64-pc-linux-gnu")
 library(SeuratObject)
 library(sp)
 library(Seurat)
@@ -32,14 +31,9 @@ data<-readRDS(params$file)
 
 ## Final annotation
 
-comparaison entre les automatiques et la manuelle
-
-Annotation comparison
-
-comparer les 2 colonnes Azimuth et SingleR et si le type cellulaire trouvé est commun alors il est accepté sinon il sera dtéreminé par l'annotation manuelle.
+We compared the cell type annotations obtained from the three methods, Azimuth, SingleR and manual. If both methods or 2/3 assigned the same cell type to a given cluster, this annotation was accepted. In cases where the annotations differed, the cell type was determined based on manual annotation.
 
 Consensus between the 3 annotations
-
 
 ```{r}
 meta <- data@meta.data

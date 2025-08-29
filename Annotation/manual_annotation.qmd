@@ -89,6 +89,12 @@ ggsave(paste0("nk_vln", params$patient, ".jpeg"), vln5, width = 6000, height = 2
 
 vln6 <-VlnPlot(data, features = c("CD14", "APOBEC3A"))
 ggsave(paste0("mono_vln", params$patient, ".jpeg"), vln6, width = 6000, height = 2000, units = "px")
+
+vln7 <-VlnPlot(data, features = c("CD8A", "CD8B"))
+ggsave(paste0("cd8_vln", params$patient, ".jpeg"), vln7, width = 6000, height = 2000, units = "px")
+
+vln8 <-VlnPlot(data, features = c("MAL", "CD4"))
+ggsave(paste0("cd4_vln", params$patient, ".jpeg"), vln8, width = 6000, height = 2000, units = "px")
 ```
 
 Markers of cell types expressed and visualized on the UMAP
@@ -138,5 +144,5 @@ ggsave(paste0(params$type,"_manual_", params$patient, ".jpeg"), plot, width = 30
 
 ```{r}
 namepath=paste0("CLL_manual_annotated_", params$type, "_", params$patient, ".rds")
-#saveRDS(data_annotated, file = namepath)
+saveRDS(data_annotated, file = namepath)
 ```
