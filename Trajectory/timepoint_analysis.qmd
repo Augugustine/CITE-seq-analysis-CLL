@@ -1,0 +1,150 @@
+---
+title: "Timepoint analysis"
+params: 
+  patient: "P1"
+  file: "/home/ablanc/work/NetBIO2/DDQC/P1/Annotation_v2/CLL_annotated_DDQC_P1.rds"
+  type: "DDQC"
+format: html
+editor: visual
+---
+
+## Timepoint analysis
+
+The analyzed dataset consists of five timepoints. The goal of timepoint analysis in single-cell data is to reconstruct the dynamic processes that cells undergo, such as differentiation or activation. In our study, we aim to determine whether specific clusters or transitional states, particularly the bridge between B cells and macrophages and T cells, emerge or evolve over the 14-day time course. This approach allows us to capture temporal changes in cell states.
+
+```{r}
+#| message: false
+.libPaths("/work/user/ablanc/NetBIO2/renv/library/linux-rhel-8.10/R-4.5/x86_64-pc-linux-gnu")
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(SeuratData)
+library(pheatmap)
+library(viridis)
+library(stringr)
+source("functions.R")
+```
+
+```{r}
+data<-readRDS(params$file)
+```
+
+## Complete data
+
+UMAP by time
+
+```{r}
+data$timepoint <- factor(
+  data$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("UMAP timepoint, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data, group.by = "timepoint", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 60)) + theme(plot.title = element_text(size = 12, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_days_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+UMAP by timepoint
+
+```{r}
+data$timepoint <- factor(
+  data$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+cell_palette <- c(
+  "CD4 T" = "#1f77b4",
+  "CD8 T" = "#2ca02c",
+  "NK" = "#e7298a",
+  "B naive" = "#ff7f0e",
+  "B intermediate" = "#ffd92f",
+  "B memory" = "#582d15ff",
+  "Monocyte" = "#e41a1c",
+  "Macrophage" = "#984ea3",
+  "DC" = "#4daf4a",
+  "Neutrophil" = "#377eb8",
+  "Platelet" = "#999999",
+  "Erythroblast" = "#17becf",
+  "Plasmablast" = "#fdbf6f",
+  "HSPC" = "#6a3d9a",
+  "B" = "#f2a890ff",
+  "T" = "#93f290ff")
+
+title=paste("UMAP by timepoint, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data, reduction = "umap", group.by = "final_annot", split.by = "timepoint", cols = cell_palette) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 13, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_timepoint_umap_", params$patient, ".jpeg"), plotumap, width = 5000,
+  height = 2000, units = "px")
+```
+
+## Focus on B cells + macrophages
+
+```{r}
+data_Bxmacro<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="Macrophage")
+```
+
+UMAP by time
+
+```{r}
+data_Bxmacro$timepoint <- factor(
+  data_Bxmacro$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("UMAP timepoint, only B cells and macrophages, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_Bxmacro, group.by = "timepoint", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_bxmacr_days_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+UMAP by timepoint
+
+```{r}
+data_Bxmacro$timepoint <- factor(
+  data_Bxmacro$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("UMAP by timepoint, only B cells and macrophages, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_Bxmacro, reduction = "umap", group.by = "final_annot", split.by = "timepoint", cols = cell_palette) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_bxmacr_timepoint_umap_", params$patient, ".jpeg"), plotumap, width = 5000,
+  height = 2000, units = "px")
+```
+
+## Focus on the B cells + T cells
+
+```{r}
+data_BxT<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="CD4 T"|final_annot=="CD8 T"|final_annot=="T")
+```
+
+UMAP by time
+
+```{r}
+data_BxT$timepoint <- factor(
+  data_BxT$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("Trajectory UMAP, only B cells and T cells, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_BxT, group.by = "timepoint", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_bxt_days_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+UMAP by timepoint
+
+```{r}
+data_BxT$timepoint <- factor(
+  data_BxT$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("UMAP by timepoint, only B cells and T cells, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_BxT, reduction = "umap", group.by = "final_annot", split.by = "timepoint", cols = cell_palette) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_bxt_timepoint_umap_", params$patient, ".jpeg"), plotumap, width = 5000,
+  height = 2000, units = "px")
+```
+
+## 
