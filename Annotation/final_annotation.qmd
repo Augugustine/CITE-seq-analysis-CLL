@@ -29,7 +29,7 @@ Read the data pre-processed
 data<-readRDS(params$file)
 ```
 
-## Final annotation
+# Final annotation
 
 We compared the cell type annotations obtained from the three methods, Azimuth, SingleR and manual. If both methods or 2/3 assigned the same cell type to a given cluster, this annotation was accepted. In cases where the annotations differed, the cell type was determined based on manual annotation.
 
@@ -41,6 +41,8 @@ final_annot <- mapply(final_consensus, meta$SingleR, meta$manual_annotation, met
 names(final_annot) <- colnames(data)
 data$final_annot <- final_annot
 ```
+
+## Visualization complete data 
 
 ```{r}
 title=paste("UMAP annotated, pre-processing type :", params$type, ", patient", params$patient)
@@ -66,13 +68,6 @@ plot
 ggsave(paste0(params$type,"_umap_annotated_", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
-```{r}
-table(data$SingleR)
-table(data$predicted.celltype.l2)
-table(data$manual_annotation)
-table(data$final_annot)
-```
-
 t-SNE
 
 ```{r}
@@ -96,6 +91,49 @@ df <- data.frame(
 )
 namefile=paste0("annotation_", params$type, "_", params$patient, ".tsv")
 write.table(df, file = namefile, sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+Cell number by cell types
+
+```{r}
+table(data$SingleR)
+table(data$predicted.celltype.l2)
+table(data$manual_annotation)
+table(data$final_annot)
+```
+
+```{r}
+
+```
+
+## Focus on B cells + macrophages
+
+```{r}
+data_Bxmacro<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="Macrophages")
+```
+
+UMAP
+
+```{r}
+title=paste("UMAP focus on B cells and macrophages, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_Bxmacro, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), width = 3000, height = 2000, units = "px")
+plotumap
+ggsave(paste0(params$type,"_umap_Bxmacro", params$patient, ".jpeg"), plotumap)
+```
+
+## Focus on the B cells + T cells
+
+```{r}
+data_BxT<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="CD4 T"|final_annot=="CD8 T"|final_annot=="T")
+```
+
+UMAP
+
+```{r}
+title=paste("UMAP focus on B cells and T cells, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_BxT, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), width = 3000, height = 2000, units = "px")
+plotumap
+ggsave(paste0(params$type,"_umap_BxT", params$patient, ".jpeg"), plotumap)
 ```
 
 ## Save the annotation file
