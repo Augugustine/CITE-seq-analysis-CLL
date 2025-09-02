@@ -42,7 +42,7 @@ names(final_annot) <- colnames(data)
 data$final_annot <- final_annot
 ```
 
-## Visualization complete data 
+## Visualization complete data
 
 ```{r}
 title=paste("UMAP annotated, pre-processing type :", params$type, ", patient", params$patient)
@@ -100,10 +100,6 @@ table(data$SingleR)
 table(data$predicted.celltype.l2)
 table(data$manual_annotation)
 table(data$final_annot)
-```
-
-```{r}
-
 ```
 
 ## Focus on B cells + macrophages

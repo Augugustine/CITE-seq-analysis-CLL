@@ -122,6 +122,61 @@ ggsave(paste0("nk_", params$patient, ".jpeg"), fig7, width = 6000, height = 5000
 ggsave(paste0("mono_", params$patient, ".jpeg"), fig8, width = 6000, height = 5000, units = "px")
 ```
 
+ADT expressed
+
+```{r}
+DefaultAssay(data) <- "ADT"
+
+vln <-VlnPlot(data, features = c("MS4A1", "CD79A"))
+ggsave(paste0("B_vln", params$patient, ".jpeg"), vln, width = 6000, height = 2000, units = "px")
+
+vln1 <-VlnPlot(data, features = c("CD68", "CD163"))
+ggsave(paste0("macro_vln", params$patient, ".jpeg"), vln1, width = 6000, height = 2000, units = "px")
+
+vln2 <-VlnPlot(data, features = c("CSF3R", "S100A8"))
+ggsave(paste0("neutro_vln", params$patient, ".jpeg"), vln2, width = 6000, height = 2000, units = "px")
+
+vln3 <-VlnPlot(data, features = c("ITGAX", "CD86"))
+ggsave(paste0("dc_vln", params$patient, ".jpeg"), vln3, width = 6000, height = 2000, units = "px")
+
+vln4 <-VlnPlot(data, features = c("TRBC2", "CD3D"))
+ggsave(paste0("T_vln", params$patient, ".jpeg"), vln4, width = 6000, height = 2000, units = "px")
+
+vln5 <-VlnPlot(data, features = c("NKG7", "GNLY"))
+ggsave(paste0("nk_vln", params$patient, ".jpeg"), vln5, width = 6000, height = 2000, units = "px")
+
+vln6 <-VlnPlot(data, features = c("CD14", "APOBEC3A"))
+ggsave(paste0("mono_vln", params$patient, ".jpeg"), vln6, width = 6000, height = 2000, units = "px")
+
+vln7 <-VlnPlot(data, features = c("CD8A", "CD8B"))
+ggsave(paste0("cd8_vln", params$patient, ".jpeg"), vln7, width = 6000, height = 2000, units = "px")
+
+vln8 <-VlnPlot(data, features = c("MAL", "CD4"))
+ggsave(paste0("cd4_vln", params$patient, ".jpeg"), vln8, width = 6000, height = 2000, units = "px")
+```
+
+```{r}
+fig<-FeaturePlot(data, features = c("SELENOP","FABP3","CD5L","CCL18","C1QC","C1QB","FABP4","C1QA","APOE"), reduction = "umap")
+fig2<- FeaturePlot(data, features = c("SOD2","NAMPT","CXCL8","S100A9","G0S2","S100A8","TYROBP", "FCER1G", "MXD1"), reduction = "umap")
+fig3<- FeaturePlot(data, features = c("CD79A", "RALGPS2", "CD79B", "MS4A1", "BANK1", "CD74", "TNFRSF13C", "HLA-DQA1", "IGHM", "MEF2C"), reduction = "umap")
+fig4<- FeaturePlot(data, features = c("LYZ", "CST3", "LGALS2", "CPVL", "FGL2", "AIF1", "LST1", "SAMHD1", "GSN"), reduction = "umap")
+fig5<- FeaturePlot(data, features = c("IL7R", "MAL", "LTB", "CD4", "LDHB", "TPT1", "TRAC", "TMSB10", "CD3D"), reduction = "umap")
+fig6<- FeaturePlot(data, features = c("CD8B", "CD8A", "CD3D", "TMSB10", "HCST", "CD3G", "LINC02446", "CTSW", "CD3E"), reduction = "umap")
+fig7<- FeaturePlot(data, features = c("NKG7", "KLRD1", "TYROBP", "GNLY", "FCER1G", "PRF1", "CD247", "KLRF1", "CST7"), reduction = "umap")
+fig8<- FeaturePlot(data, features = c("CTSS", "FCN1", "NEAT1", "LYZ", "PSAP", "S100A9", "AIF1", "MNDA", "SERPINA1"), reduction = "umap")
+
+ggsave(paste0("macro_", params$patient, ".jpeg"), fig, width = 6000, height = 5000, units = "px")
+ggsave(paste0("neutro_", params$patient, ".jpeg"), fig2, width = 6000, height = 5000, units = "px")
+ggsave(paste0("B_", params$patient, ".jpeg"), fig3, width = 6000, height = 5000, units = "px")
+ggsave(paste0("dc_", params$patient, ".jpeg"), fig4, width = 6000, height = 5000, units = "px")
+ggsave(paste0("Tcd4_", params$patient, ".jpeg"), fig5, width = 6000, height = 5000, units = "px")
+ggsave(paste0("Tcd8_", params$patient, ".jpeg"), fig6, width = 6000, height = 5000, units = "px")
+ggsave(paste0("nk_", params$patient, ".jpeg"), fig7, width = 6000, height = 5000, units = "px")
+ggsave(paste0("mono_", params$patient, ".jpeg"), fig8, width = 6000, height = 5000, units = "px")
+
+DefaultAssay(data) <- "RNA"
+```
+
 Manual annotation
 
 ```{r}
