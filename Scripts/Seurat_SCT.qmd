@@ -1,0 +1,900 @@
+---
+title: "Seurat SCTransform pre-processing and annotation"
+params: 
+  patient: "P2"
+  resolution: 0.1
+  mito_gene_percent: 10
+  directory: "/home/ablanc/work/NetBIO2"
+  file: "filtered_feature_bc_matrix.h5"
+  type: "Seurat_SCT"
+format: html
+editor: visual
+---
+
+## Steps of this script 
+
+#### Pre-processing Seurat SCTransform
+
+-   Downloading the data and creating one Seurat object per day. Using filtered data without empty drops and remove technical artifacts (from CellRanger 10X Genomics)
+
+-   Merging all days into one Seurat object.
+
+-   Removing non-coding genes using **Ensembl** gene annotations (via a reusable custom function).
+
+-   Detecting doublets (Singlet or Doublet) using **DoubletFinder** on each day separately, then adding this metadata to the merged object and removing doublets (also done via a reusable function).
+
+-   Quality control based on the number of detected features and percentage of mitochondrial genes (thresholds: max 10% mitochondrial genes, between 100 and 6000 features) using **Seurat**.
+
+-   Normalization, top genes and scaling with SCTransform method (**Seurat**).
+
+-   Visualizations: PCA, Heatmap, and UMAP (resolution 0.1)
+
+#### Annotation
+
+-   Automatic annotation with Azimuth and SingleR
+
+-   Manual annotation based on RNA and ADT
+
+-   Vizualisation
+
+#### Timepoint analysis 
+
+## Data and libraries initialization
+
+Libraries required
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+library(DoubletFinder)
+library(tibble)
+library(biomaRt)
+library(ggplot2)
+library(clusterCrit)
+library(stringr)
+library(SingleR)
+library(celldex)
+library(Azimuth)
+library(SeuratData)
+library(SeuratDisk)
+library(pheatmap)
+library(viridis)
+library(gridExtra)
+source("functions.R")
+```
+
+Download the data and Seurat Object creation
+
+```{r}
+#| include: false
+seurat <- load_data_10XG(params$patient, c(1,4,8,11,14), params$directory, params$file)
+list2env(seurat, envir = .GlobalEnv)
+```
+
+Add an identity with the time point
+
+```{r}
+CLL_D1$timepoint <- "D1"
+CLL_D4$timepoint <- "D4"
+CLL_D8$timepoint <- "D8"
+CLL_D11$timepoint <- "D11"
+CLL_D14$timepoint <- "D14"
+```
+
+Merge all the data filtered, in order to have one SeuratObject with all the time point for one patient (and the total cells and genes number).
+
+```{r}
+CLL_merged <- merge(CLL_D1, y = list(CLL_D4, CLL_D8, CLL_D11, CLL_D14),
+                       add.cell.ids = c("D1", "D4", "D8", "D11", "D14"), project = "TimeCourse")
+
+CLL_merged[["RNA"]] <- JoinLayers(CLL_merged[["RNA"]])
+```
+
+Total number of cells at the beginning.
+
+```{r}
+ncol(CLL_merged)
+```
+
+# Pre-processing
+
+## Non coding genes removal
+
+Features number before non-coding genes removal
+
+```{r}
+nrow(CLL_merged)
+```
+
+The non-coding genes removal is based on the database Ensembl in order to select the genes coding for proteins. The function used is explain on the file functions.R
+
+This function accepts a Seurat object at any stage (pre- or post-processing) and returns a version of the object with all non-coding genes filtered out.
+
+```{r}
+#| message: false
+#| warning: false
+CLL_merged <- removal_noncoding_gene(CLL_merged)
+all.equal(colnames(CLL_merged[["RNA"]]), colnames(CLL_merged))
+```
+
+Features number after non-coding genes removal
+
+```{r}
+nrow(CLL_merged)
+```
+
+## Doublet removal
+
+Number of cell before doublet removal
+
+```{r}
+ncol(CLL_merged)
+```
+
+The tool used is DoubletFinder (McGinnis, C. S., Murrow, L. M., & Gartner, Z. J., 2019), and it is important to run it on each sample individually rather than on aggregated data. The input for this step is a Seurat object corresponding to one sample (i.e., one patient at one time point). In this case, we use the custom function `complete_DoubletFinder` defined in the `functions.R` file. This function performs all necessary preprocessing steps prior to running DoubletFinder. The output is a new Seurat object that includes an additional metadata column indicating whether each cell is classified as a singlet or a doublet. For each day, the cell IDs and their corresponding classifications are extracted and then merged across all days.
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+
+days <- c("D1","D4","D8","D11", "D14")
+results_list <- list()
+
+for (day in days) {
+  obj_name <- paste0("CLL_", day)
+  obj <- get(obj_name)
+  obj <- complete_DoubletFinder(obj)
+  assign(obj_name, obj) 
+  
+  # Metadata extraction
+  res <- obj@meta.data["doublet_finder"]
+  
+  # New cells name with _D
+  res$cell_id <- paste0(day, "_", rownames(res))
+  rownames(res) <- res$cell_id
+  res$cell_id <- NULL
+  
+  results_list[[day]] <- res
+}
+
+# Fusion
+results_multiplet <- do.call(dplyr::bind_rows, results_list)
+
+```
+
+Doublet/Singlet class addition in the Seurat Object metadata and removal doublet
+
+```{r}
+CLL_merged <- AddMetaData(CLL_merged, results_multiplet)
+CLL_multiplet <- CLL_merged
+```
+
+Percentage calculation
+
+```{r}
+#| include: false
+table_classes <- table(CLL_merged$doublet_finder)
+percentages <- prop.table(table_classes) * 100
+
+CLL_merged@meta.data %>%
+  group_by(timepoint, doublet_finder) %>%
+  summarise(n = n()) %>%
+  mutate(percent = n / sum(n) * 100) -> timepoint_percent
+```
+
+```{r}
+print(percentages)
+print(timepoint_percent)
+```
+
+```{r}
+CLL_merged <- subset(CLL_merged, doublet_finder == 'Singlet')
+```
+
+Identify the doublets on the UMAP
+
+```{r}
+#| include: false
+CLL_multiplet <- run_umap(CLL_multiplet, params$resolution)
+
+CLL_multiplet$Doublet_Status <- ifelse(CLL_multiplet$doublet_finder == "Doublet", "Doublet", "Other")
+```
+
+```{r}
+title=paste("Doublets position for", params$patient, "with DoubletFinder (McGinnis, C. S. and al, 2019)")
+doublet<-DimPlot(CLL_multiplet, group.by = "Doublet_Status", cols = c("Other" = "grey50", "Doublet" = "red")) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+doublet
+ggsave(paste0("doublet_", params$patient, ".jpeg"), doublet)
+```
+
+Cell number after doublets removal
+
+```{r}
+ncol(CLL_merged)
+```
+
+## QC and filtering
+
+This step in done on the data days merged (same threshold for the 5 time points). Damaged cells removal (mitochondrial gene percentage), related to the cell quality
+
+Mitochondrial gene percentage calculation
+
+```{r}
+CLL_merged[["percent.mt"]] <- PercentageFeatureSet(CLL_merged, pattern = "^MT-")
+```
+
+Observe the distribution on violin plot, in order to adapt the threshold
+
+```{r}
+#| warning: false
+vplot1 <-VlnPlot(CLL_merged, features = c("nFeature_RNA"))
+vplot2 <-VlnPlot(CLL_merged, features = c("nCount_RNA"))
+vplot3 <-VlnPlot(CLL_merged, features = c("percent.mt"))
+(vplot1 / vplot2 / vplot3) + plot_annotation(
+    title =paste("Violon Plots (nFeature, nCount, mitonchondrial genes percentage) \nfor", params$patient, ", before the QC and filtering"))
+```
+
+Visualize the position of cells that failed QC on the UMAP
+
+```{r}
+#| include: false
+CLL_merged$qc_pass <- with(CLL_merged@meta.data,
+                           nFeature_RNA > 100 &
+                           nFeature_RNA < 6000 &
+                           percent.mt < params$mito_gene_percent)
+CLL_qc <-CLL_merged
+CLL_qc <- run_umap(CLL_qc, params$resolution)
+```
+
+```{r}
+title=paste("QC status of cells (red = failed) for", params$patient,"based on predefined thresholds for nFeature and mitochondrial gene percentage (Seurat pipeline)")
+qc<-DimPlot(CLL_qc, group.by = "qc_pass", cols = c("TRUE" = "grey50", "FALSE" = "red")) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+qc
+ggsave(paste0("seurat_qc_", params$patient, ".jpeg"), qc)
+```
+
+Filtering
+
+```{r}
+CLL_merged<-subset(CLL_merged, subset = qc_pass == TRUE)
+```
+
+Cell and features number after filtering
+
+```{r}
+ncol(CLL_merged)
+nrow(CLL_merged)
+```
+
+Violin plot after filtering
+
+```{r}
+#| warning: false
+vplot4 <- VlnPlot(CLL_merged, features = c("nFeature_RNA")) 
+vplot5 <- VlnPlot(CLL_merged, features = c("nCount_RNA")) 
+vplot6 <- VlnPlot(CLL_merged, features = c("percent.mt"))
+(vplot4 / vplot5 / vplot6) + plot_annotation(
+    title =paste("Violon Plots (nFeature, nCount, mitonchondrial genes percentage) \nfor", params$patient, ", after the QC and filtering"))
+```
+
+## Normalization, scaling and most variable features
+
+There are two ways to perform this step. The option chosen is to use SCTransform, which combines normalization, scaling, and the selection of highly variable features in a single function. The normalization is based on a negative binomial regression model that accounts for technical variability.
+
+```{r}
+#| include: false
+CLL_merged_sctransform <- CLL_merged
+CLL_merged_sctransform <- SCTransform(CLL_merged_sctransform)
+Assays(CLL_merged_sctransform)
+class(CLL_merged_sctransform)
+```
+
+# Exploring
+
+First step of visualization is to run a PCA.
+
+```{r}
+#| warning: false
+
+CLL_merged_sctransform <- RunPCA(CLL_merged_sctransform, features = VariableFeatures(object = CLL_merged_sctransform))
+Assays(CLL_merged_sctransform)
+class(Assays(CLL_merged_sctransform))
+DefaultAssay(CLL_merged_sctransform) <- "SCT"
+```
+
+Ranking of principle components based on the percentage of variance explained by each one, in order to choose how many components for the representation
+
+```{r}
+#| warning: false
+ElbowPlot(CLL_merged_sctransform) + ggtitle("with SCTransform")
+```
+
+With those plots, the correlation between genes and components is shown, the PCA in the two first components and the heatmap in PC1.
+
+```{r}
+VizDimLoadings(CLL_merged_sctransform, dims = 1:2, reduction = "pca")
+DimPlot(CLL_merged_sctransform, reduction = "pca") + NoLegend() + ggtitle("PCA with SCTransform")
+DimHeatmap(CLL_merged_sctransform, dims = 1, cells = 500, balanced = TRUE)
+```
+
+## Clustering
+
+Cells were clustered based on the first ten principal components. The `FindClusters` function requires a `resolution` parameter, which controls the clustering granularity, the number of clusters obtained depends directly on this value. That's why different resolutions can be tested, in scripts parameters, in order to identify the most appropriate one.
+
+```{r}
+#| message: false
+#| warning: false
+#| include: false
+CLL_merged_sctransform <- FindNeighbors(CLL_merged_sctransform, dims = 1:10)
+CLL_merged_sctransform <- FindClusters(CLL_merged_sctransform, resolution = params$resolution)
+Assays(CLL_merged_sctransform)
+class(Assays(CLL_merged_sctransform))
+```
+
+## wnnUMAP (ADT+RNA)
+
+Visualization with wnnUMAP on data SCTransform
+
+```{r}
+#| message: false
+#| warning: false
+CLL_merged_sctransform <-run_adt_umap(CLL_merged_sctransform)
+CLL_merged_sctransform <- run_wnnumap(CLL_merged_sctransform, params$resolution, "SCT")
+title=paste("wnnUMAP on RNA SCTranform normalization and post-Seurat pipeline,", params$patient)
+plotwnn <- DimPlot(CLL_merged_sctransform, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5) + NoLegend() + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotwnn
+ggsave(paste0("seurat_wnnumpa_sct_", params$patient, ".jpeg"), plotwnn)
+DefaultAssay(CLL_merged_sctransform) <- 'SCT'
+Assays(CLL_merged_sctransform)
+class(Assays(CLL_merged_sctransform))
+```
+
+Visualization with wnnUMAP on data LogNormalize
+
+## UMAP
+
+Run the UMAP (visualization) on the resolution chosen below.
+
+```{r}
+#| warning: false
+CLL_merged_sctransform <- RunUMAP(CLL_merged_sctransform, dims = 1:10)
+title=paste("UMAP (SCTransform-normalized, post-Seurat pipeline),", params$patient)
+DimPlot(CLL_merged_sctransform, reduction = "umap") + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+plotumap<-DimPlot(CLL_merged_sctransform, reduction = "umap")
+ggsave(paste0("seurat_umap_sct_", params$patient, ".jpeg"), plotumap)
+Assays(CLL_merged_sctransform)
+class(Assays(CLL_merged_sctransform))
+```
+
+## t-SNE
+
+```{r}
+CLL_merged_sctransform <- RunTSNE(CLL_merged_sctransform, reduction.use = "pca", dims.use = 1:10)
+title=paste("t-SNE (normalized by SCTransform, post-Seurat pipeline),", params$patient)
+tsne<-TSNEPlot(CLL_merged_sctransform) + ggtitle(str_wrap(title, width = 50)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+tsne
+ggsave(paste0("seurat_tsne_sct_", params$patient, ".jpeg"), tsne)
+Assays(CLL_merged_sctransform)
+class(Assays(CLL_merged_sctransform))
+```
+
+## Bonsai
+
+Bonsai is a data representation tool that can be applied to single-cell datasets. It reconstructs a tree that best captures the structure present in high-dimensional data (Daan Hugo de Groot, Sarah X. Morillo Leonardo, Mikhail Pachkov, Erik van Nimwegen, 2025).
+
+In this analysis, we use the single-cell Bonsai pipeline available at <https://bonsai.unibas.ch/bonsai/>. To use it, we first extract the gene expression count matrix from the Seurat object and save it in a tsv format. This matrix is then submitted through the web interface, and the results are sent via email once the analysis is complete.
+
+Export the count matrix to a tsv file from a Seurat object
+
+```{r}
+counts <- GetAssayData(object = CLL_merged_sctransform, assay = "RNA", slot = "counts")
+counts <- as.matrix(counts)
+namefile=paste0("CLL_", params$patient, "_seurat_SCTransform.tsv")
+write.table(counts, file = namefile, sep = "\t", quote = FALSE, col.names = NA)
+```
+
+# Annotation
+
+## Automatic annotation
+
+```{r}
+data<-CLL_merged_sctransform
+DefaultAssay(data) <- "SCT"
+```
+
+### SingleR
+
+Get reference dataset and the count matrix
+
+```{r}
+ref <- celldex::HumanPrimaryCellAtlasData()
+norm_counts <- LayerData(data, assay = "SCT", layer = 'data')
+```
+
+Subset to include only relevant cell types
+
+```{r}
+ref <- ref[,grepl('DC|B_cell|Neutrophils|T_cells|Monocyte|Erythroblast|Macrophage|NK_cell|Platelets|Myelocyte', ref$label.main, ignore.case = TRUE)]
+unique(ref$label.main)
+```
+
+```{r}
+annotation<-SingleR(test = norm_counts,
+                  ref = ref, 
+                  labels = ref$label.main,
+                  de.method = 'wilcox')
+```
+
+Add to seurat object
+
+```{r}
+data <- AddMetaData(data, annotation$pruned.labels, col.name = 'SingleR')
+```
+
+Visualization
+
+UMAP
+
+```{r}
+title=paste("UMAP annotated by SingleR, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data, group.by="SingleR", reduction = "umap", label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
+plotumap
+ggsave(paste0(params$type,"_umap_SingleR_", params$patient, ".jpeg"), plotumap, width = 3000,
+  height = 2000, units = "px")
+```
+
+wnnUMAP
+
+```{r}
+#| message: false
+#| warning: false
+data <-run_adt_umap(data)
+title=paste("wnnUMAP annotated by SingleR, pre-processing type :", params$type, ", patient", params$patient)
+plotwnn <- DimPlot(data, group.by="SingleR", reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
+plotwnn
+ggsave(paste0(params$type,"_wnnumap_SingleR_", params$patient, ".jpeg"), plotwnn, width = 3000,
+  height = 2000, units = "px")
+DefaultAssay(data) <- 'RNA'
+```
+
+t-SNE
+
+```{r}
+title=paste("t-SNE annotated by SingleR, pre-processing type :", params$type, ", patient", params$patient)
+plot1<-DimPlot(data, group.by="SingleR", reduction = 'tsne', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size =15, hjust = 0.5), legend.text = element_text(size = 12))
+plot1
+ggsave(paste0(params$type,"_tsne_SingleR_", params$patient, ".jpeg"), plot1, width = 3000,
+  height = 2000, units = "px")
+```
+
+Bonsai
+
+In this analysis, we use the single-cell Bonsai pipeline available at <https://bonsai.unibas.ch/bonsai/>. The TSV matrix is exported in the pre-processing script, and we supplemented it with an annotation TSV file containing cell barcodes and their corresponding cell type annotations.
+
+```{r}
+annotations <- data$SingleR
+df <- data.frame(
+  cell_ID = rownames(annotation),
+  celltype = annotation$pruned.labels
+)
+
+namefile=paste0("singler_annotation_", params$type, "_", params$patient, ".tsv")
+write.table(df, file = namefile, sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+### Azimuth
+
+Retrieve the Seurat object (containing both RNA and ADT data), but perform cell type annotation using only the RNA modality. The object must already be filtered (cells and genes), and must contain raw RNA counts, as Azimuth will apply its own normalization consistent with the reference dataset used (Hao et al., 2021).
+
+```{r}
+#| include: false
+#InstallData("pbmcref")
+data <- RunAzimuth(data, reference = "pbmcref", assay="SCT")
+```
+
+```{r}
+data_ADT<-data
+data_ADT <- RunAzimuth(data_ADT, reference = "pbmcref", assay="SCT", do.adt=TRUE)
+```
+
+Visualization
+
+UMAP
+
+```{r}
+title=paste("UMAP annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data, group.by = "predicted.celltype.l1", reduction = "umap", label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
+plotumap
+ggsave(paste0(params$type,"_umap_Azimuth_", params$patient, ".jpeg"), plotumap, width = 3000,
+  height = 2000, units = "px")
+```
+
+```{r}
+title=paste("UMAP annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data, group.by = "predicted.celltype.l2", reduction = "umap", label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
+plotumap
+ggsave(paste0(params$type,"_umap_Azimuth_l2_", params$patient, ".jpeg"), plotumap, width = 3000,
+  height = 2000, units = "px")
+```
+
+```{r}
+title=paste("UMAP annotated by Azimuth (RNA + ADT), pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_ADT, group.by = "predicted.celltype.l2", reduction = "umap", label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
+plotumap
+ggsave(paste0(params$type,"_umapADT_Azimuth_l2_", params$patient, ".jpeg"), plotumap, width = 3000,
+  height = 2000, units = "px")
+```
+
+t-SNE
+
+```{r}
+title=paste("t-SNE annotated by Azimuth, pre-processing type :", params$type, ", patient", params$patient)
+plot1<-DimPlot(data, group.by="predicted.celltype.l1", reduction = 'tsne', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
+plot1
+ggsave(paste0(params$type,"_tsne_Azimuth_", params$patient, ".jpeg"), plot1, width = 3000,
+  height = 2000, units = "px")
+```
+
+Heatmap to compare automatic annotation
+
+```{r}
+tab <- table(Cluster = Idents(data), CellType = data$SingleR)
+tab_log <- log1p(tab)
+
+# Heatmap
+p1<-pheatmap(
+  tab_log,
+  cluster_rows = TRUE, 
+  cluster_cols = TRUE, 
+  color = viridis::viridis(50), 
+  border_color = NA,
+  main = "Clusters vs Cell Types (SingleR)"
+)
+
+tab <- table(Cluster = Idents(data), CellType = data$predicted.celltype.l1)
+tab_log <- log1p(tab)
+
+# Heatmap
+p2<-pheatmap(
+  tab_log,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  color = viridis::viridis(50),
+  border_color = NA,
+  main = "Clusters vs Cell Types (Azimuth)"
+)
+```
+
+Manual annotation
+
+```{r}
+markers <- FindAllMarkers(data, assay="SCT", only.pos = TRUE)
+markers %>%
+  group_by(cluster) %>%
+  dplyr::filter(avg_log2FC > 1)
+```
+
+Generate a gene list for each cluster to use as input for the WebCSEA tool (Dai Y, Hu R, Liu A, Cho KS, Manuel AM, Li X, Dong X, Jia P, Zhao Z, 2022)
+
+```{r}
+gene_lists <- split(markers$gene, markers$cluster)
+
+for (cl in names(gene_lists)) {
+  filename <- paste0("cluster", cl, "_genes.tsv")
+  genelist<-head(gene_lists[[cl]],n=2000)
+  write.table(genelist, file = filename, sep = "\t", quote = FALSE, row.names = FALSE,
+    col.names = FALSE
+  )
+}
+```
+
+Classic cell type markers expressed by clusters
+
+```{r}
+vln <-VlnPlot(data, features = c("MS4A1", "CD79A"))
+ggsave(paste0("B_vln", params$patient, ".jpeg"), vln, width = 6000, height = 2000, units = "px")
+
+vln1 <-VlnPlot(data, features = c("CD68", "CD163"))
+ggsave(paste0("macro_vln", params$patient, ".jpeg"), vln1, width = 6000, height = 2000, units = "px")
+
+vln2 <-VlnPlot(data, features = c("CSF3R", "S100A8"))
+ggsave(paste0("neutro_vln", params$patient, ".jpeg"), vln2, width = 6000, height = 2000, units = "px")
+
+vln3 <-VlnPlot(data, features = c("ITGAX", "CD86"))
+ggsave(paste0("dc_vln", params$patient, ".jpeg"), vln3, width = 6000, height = 2000, units = "px")
+
+vln4 <-VlnPlot(data, features = c("TRBC2", "CD3D"))
+ggsave(paste0("T_vln", params$patient, ".jpeg"), vln4, width = 6000, height = 2000, units = "px")
+
+vln5 <-VlnPlot(data, features = c("NKG7", "GNLY"))
+ggsave(paste0("nk_vln", params$patient, ".jpeg"), vln5, width = 6000, height = 2000, units = "px")
+
+vln6 <-VlnPlot(data, features = c("CD14", "APOBEC3A"))
+ggsave(paste0("mono_vln", params$patient, ".jpeg"), vln6, width = 6000, height = 2000, units = "px")
+
+vln7 <-VlnPlot(data, features = c("CD8A", "CD8B"))
+ggsave(paste0("cd8_vln", params$patient, ".jpeg"), vln7, width = 6000, height = 2000, units = "px")
+
+vln8 <-VlnPlot(data, features = c("MAL", "CD4"))
+ggsave(paste0("cd4_vln", params$patient, ".jpeg"), vln8, width = 6000, height = 2000, units = "px")
+```
+
+Markers of cell types expressed and visualized on the UMAP
+
+```{r}
+fig<-FeaturePlot(data, features = c("SELENOP","FABP3","CD5L","CCL18","C1QC","C1QB","FABP4","C1QA","APOE"), reduction = "umap")
+fig2<- FeaturePlot(data, features = c("SOD2","NAMPT","CXCL8","S100A9","G0S2","S100A8","TYROBP", "FCER1G", "MXD1"), reduction = "umap")
+fig3<- FeaturePlot(data, features = c("CD79A", "RALGPS2", "CD79B", "MS4A1", "BANK1", "CD74", "TNFRSF13C", "HLA-DQA1", "IGHM", "MEF2C"), reduction = "umap")
+fig4<- FeaturePlot(data, features = c("LYZ", "CST3", "LGALS2", "CPVL", "FGL2", "AIF1", "LST1", "SAMHD1", "GSN"), reduction = "umap")
+fig5<- FeaturePlot(data, features = c("IL7R", "MAL", "LTB", "CD4", "LDHB", "TPT1", "TRAC", "TMSB10", "CD3D"), reduction = "umap")
+fig6<- FeaturePlot(data, features = c("CD8B", "CD8A", "CD3D", "TMSB10", "HCST", "CD3G", "LINC02446", "CTSW", "CD3E"), reduction = "umap")
+fig7<- FeaturePlot(data, features = c("NKG7", "KLRD1", "TYROBP", "GNLY", "FCER1G", "PRF1", "CD247", "KLRF1", "CST7"), reduction = "umap")
+fig8<- FeaturePlot(data, features = c("CTSS", "FCN1", "NEAT1", "LYZ", "PSAP", "S100A9", "AIF1", "MNDA", "SERPINA1"), reduction = "umap")
+
+ggsave(paste0("macro_", params$patient, ".jpeg"), fig, width = 6000, height = 5000, units = "px")
+ggsave(paste0("neutro_", params$patient, ".jpeg"), fig2, width = 6000, height = 5000, units = "px")
+ggsave(paste0("B_", params$patient, ".jpeg"), fig3, width = 6000, height = 5000, units = "px")
+ggsave(paste0("dc_", params$patient, ".jpeg"), fig4, width = 6000, height = 5000, units = "px")
+ggsave(paste0("Tcd4_", params$patient, ".jpeg"), fig5, width = 6000, height = 5000, units = "px")
+ggsave(paste0("Tcd8_", params$patient, ".jpeg"), fig6, width = 6000, height = 5000, units = "px")
+ggsave(paste0("nk_", params$patient, ".jpeg"), fig7, width = 6000, height = 5000, units = "px")
+ggsave(paste0("mono_", params$patient, ".jpeg"), fig8, width = 6000, height = 5000, units = "px")
+```
+
+ADT
+
+```{r}
+
+```
+
+Manual annotation
+
+```{r}
+manual_annot <- c("B cell", "B cell", "CD8 T", "CD4 T", "B cell", "B cell", "Macrophage", "B cell", "NK", "Erythroblast", "Neutrophil","Monocyte", "Neutrophil", "B cell", "B cell", "DC")
+names(manual_annot) <- levels(data)
+data <- RenameIdents(data, manual_annot)
+data$manual_annotation <- Idents(data)
+```
+
+Visualization
+
+```{r}
+title=paste("UMAP manual annotation, pre-processing type :", params$type, ", patient", params$patient)
+plot <- DimPlot(data, reduction = 'umap', label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 13, hjust = 0.5), legend.text = element_text(size =12 ))
+plot
+ggsave(paste0(params$type,"_manual_", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+## Combined annotation
+
+We compared the cell type annotations obtained from the three methods, Azimuth, SingleR and manual. If both methods or 2/3 assigned the same cell type to a given cluster, this annotation was accepted. In cases where the annotations differed, the cell type was determined based on manual annotation.
+
+Consensus between the 3 annotations
+
+```{r}
+meta <- data@meta.data
+final_annot <- mapply(final_consensus, meta$SingleR, meta$manual_annotation, meta$predicted.celltype.l2)
+names(final_annot) <- colnames(data)
+data$final_annot <- final_annot
+```
+
+Visualization complete data
+
+```{r}
+title=paste("UMAP annotated, pre-processing type :", params$type, ", patient", params$patient)
+cell_palette <- c(
+  "CD4 T" = "#1f77b4",
+  "CD8 T" = "#2ca02c",
+  "NK" = "#e7298a",
+  "B naive" = "#ff7f0e",
+  "B intermediate" = "#ffd92f",
+  "B memory" = "#582d15ff",
+  "Monocyte" = "#e41a1c",
+  "Macrophage" = "#984ea3",
+  "DC" = "#4daf4a",
+  "Neutrophil" = "#377eb8",
+  "Platelet" = "#999999",
+  "Erythroblast" = "#17becf",
+  "Plasmablast" = "#fdbf6f",
+  "HSPC" = "#6a3d9a",
+  "B" = "#f2a890ff",
+  "T" = "#93f290ff")
+plot <- DimPlot(data, group.by="final_annot", reduction = 'umap', label = TRUE, repel = TRUE, label.size = 4, cols = cell_palette) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 13, hjust = 0.5), legend.text = element_text(size =12 ))
+plot
+ggsave(paste0(params$type,"_umap_annotated_", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+t-SNE
+
+```{r}
+title=paste("t-SNE annotated, pre-processing type :", params$type, ", patient", params$patient)
+plot1<-DimPlot(data, group.by="final_annot", reduction = 'tsne', label = TRUE, , cols = cell_palette, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 90)) + theme(plot.title = element_text(size = 13, hjust = 0.5), legend.text = element_text(size =12 ))
+plot1
+ggsave(paste0(params$type,"_tsne_annotated_", params$patient, ".jpeg"), plot1, width = 3000, height = 2000, units = "px")
+```
+
+Bonsai
+
+In this analysis, we use the single-cell Bonsai pipeline available at <https://bonsai.unibas.ch/bonsai/>. The TSV matrix is exported in the pre-processing script, and we supplemented it with an annotation TSV file containing cell barcodes and their corresponding cell type annotations.
+
+```{r}
+barcodes <- colnames(data)
+annotations <- data$final_annot
+
+df <- data.frame(
+  barcode = barcodes,
+  predicted_celltype = annotations
+)
+namefile=paste0("annotation_", params$type, "_", params$patient, ".tsv")
+write.table(df, file = namefile, sep = "\t", row.names = FALSE, quote = FALSE)
+```
+
+Cell number by cell types
+
+```{r}
+table(data$SingleR)
+table(data$predicted.celltype.l2)
+table(data$manual_annotation)
+table(data$final_annot)
+```
+
+## Focus on B cells + macrophages
+
+```{r}
+data_Bxmacro<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="Macrophages")
+```
+
+UMAP
+
+```{r}
+title=paste("UMAP focus on B cells and macrophages, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_Bxmacro, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), width = 3000, height = 2000, units = "px")
+plotumap
+ggsave(paste0(params$type,"_umap_Bxmacro", params$patient, ".jpeg"), plotumap)
+```
+
+## Focus on the B cells + T cells
+
+```{r}
+data_BxT<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="CD4 T"|final_annot=="CD8 T"|final_annot=="T")
+```
+
+UMAP
+
+```{r}
+title=paste("UMAP focus on B cells and T cells, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_BxT, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), width = 3000, height = 2000, units = "px")
+plotumap
+ggsave(paste0(params$type,"_umap_BxT", params$patient, ".jpeg"), plotumap)
+```
+
+# Timepoint analysis 
+
+## Complete data
+
+UMAP by time
+
+```{r}
+data$timepoint <- factor(
+  data$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("UMAP timepoint, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data, group.by = "timepoint", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 60)) + theme(plot.title = element_text(size = 12, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_days_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+UMAP by timepoint
+
+```{r}
+data$timepoint <- factor(
+  data$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+cell_palette <- c(
+  "CD4 T" = "#1f77b4",
+  "CD8 T" = "#2ca02c",
+  "NK" = "#e7298a",
+  "B naive" = "#ff7f0e",
+  "B intermediate" = "#ffd92f",
+  "B memory" = "#582d15ff",
+  "Monocyte" = "#e41a1c",
+  "Macrophage" = "#984ea3",
+  "DC" = "#4daf4a",
+  "Neutrophil" = "#377eb8",
+  "Platelet" = "#999999",
+  "Erythroblast" = "#17becf",
+  "Plasmablast" = "#fdbf6f",
+  "HSPC" = "#6a3d9a",
+  "B" = "#f2a890ff",
+  "T" = "#93f290ff")
+
+title=paste("UMAP by timepoint, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data, reduction = "umap", group.by = "final_annot", split.by = "timepoint", cols = cell_palette) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 13, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_timepoint_umap_", params$patient, ".jpeg"), plotumap, width = 5000,
+  height = 2000, units = "px")
+```
+
+## Focus on B cells + macrophages
+
+```{r}
+data_Bxmacro<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="Macrophage")
+```
+
+UMAP by time
+
+```{r}
+data_Bxmacro$timepoint <- factor(
+  data_Bxmacro$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("UMAP timepoint, only B cells and macrophages, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_Bxmacro, group.by = "timepoint", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_bxmacr_days_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+UMAP by timepoint
+
+```{r}
+data_Bxmacro$timepoint <- factor(
+  data_Bxmacro$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("UMAP by timepoint, only B cells and macrophages, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_Bxmacro, reduction = "umap", group.by = "final_annot", split.by = "timepoint", cols = cell_palette) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_bxmacr_timepoint_umap_", params$patient, ".jpeg"), plotumap, width = 5000,
+  height = 2000, units = "px")
+```
+
+## Focus on the B cells + T cells
+
+```{r}
+data_BxT<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="CD4 T"|final_annot=="CD8 T"|final_annot=="T")
+```
+
+UMAP by time
+
+```{r}
+data_BxT$timepoint <- factor(
+  data_BxT$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("Trajectory UMAP, only B cells and T cells, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_BxT, group.by = "timepoint", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_bxt_days_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+UMAP by timepoint
+
+```{r}
+data_BxT$timepoint <- factor(
+  data_BxT$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("UMAP by timepoint, only B cells and T cells, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_BxT, reduction = "umap", group.by = "final_annot", split.by = "timepoint", cols = cell_palette) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_bxt_timepoint_umap_", params$patient, ".jpeg"), plotumap, width = 5000,
+  height = 2000, units = "px")
+```
+
+## Save the object after the pre-processing
+
+```{r}
+Assays(data)
+class(data)
+namepath=paste0("./CLL_annotated_", params$type, "_", params$patient, ".rds")
+saveRDS(data, file = namepath)
+```
