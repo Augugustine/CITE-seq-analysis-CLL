@@ -11,7 +11,7 @@ format: html
 editor: visual
 ---
 
-## Steps of this script 
+## Steps of this script
 
 #### Pre-processing Seurat SCTransform
 
@@ -37,7 +37,7 @@ editor: visual
 
 -   Vizualisation
 
-#### Timepoint analysis 
+#### Timepoint analysis
 
 ## Data and libraries initialization
 
@@ -554,8 +554,10 @@ p1<-pheatmap(
   cluster_cols = TRUE, 
   color = viridis::viridis(50), 
   border_color = NA,
-  main = "Clusters vs Cell Types (SingleR)"
+  main = "Annotation SingleR"
 )
+ggsave(paste0(params$type,"_heatmap_SingleR_", params$patient, ".jpeg"), p1, width = 3000,
+  height = 2000, units = "px")
 
 tab <- table(Cluster = Idents(data), CellType = data$predicted.celltype.l1)
 tab_log <- log1p(tab)
@@ -567,8 +569,10 @@ p2<-pheatmap(
   cluster_cols = TRUE,
   color = viridis::viridis(50),
   border_color = NA,
-  main = "Clusters vs Cell Types (Azimuth)"
+  main = "Annotation Azimuth"
 )
+ggsave(paste0(params$type,"_heatmap_Azimuth_", params$patient, ".jpeg"), p2, width = 3000,
+  height = 2000, units = "px")
 ```
 
 Manual annotation
@@ -647,10 +651,50 @@ ggsave(paste0("nk_", params$patient, ".jpeg"), fig7, width = 6000, height = 5000
 ggsave(paste0("mono_", params$patient, ".jpeg"), fig8, width = 6000, height = 5000, units = "px")
 ```
 
-ADT
+ADT expressed
 
 ```{r}
+DefaultAssay(data) <- "ADT"
 
+vln <-VlnPlot(data, features = "CD19")
+ggsave(paste0("B_adt_vln", params$patient, ".jpeg"), vln, width = 6000, height = 2000, units = "px")
+
+vln1 <-VlnPlot(data, features = c("CD11b", "CD163"))
+ggsave(paste0("macro_adt_vln", params$patient, ".jpeg"), vln1, width = 6000, height = 2000, units = "px")
+
+vln2 <-VlnPlot(data, features = c("CD15", "CD16"))
+ggsave(paste0("neutro_adt_vln", params$patient, ".jpeg"), vln2, width = 6000, height = 2000, units = "px")
+
+vln3 <-VlnPlot(data, features = c("CD1c", "CD83"))
+ggsave(paste0("dc_adt_vln", params$patient, ".jpeg"), vln3, width = 6000, height = 2000, units = "px")
+
+vln4 <-VlnPlot(data, features = c("CD3", "CD25"))
+ggsave(paste0("T_adt_vln", params$patient, ".jpeg"), vln4, width = 6000, height = 2000, units = "px")
+
+vln5 <-VlnPlot(data, features = c("CD56", "CD16"))
+ggsave(paste0("nk_adt_vln", params$patient, ".jpeg"), vln5, width = 6000, height = 2000, units = "px")
+
+vln6 <-VlnPlot(data, features = c("CD14", "CD64"))
+ggsave(paste0("mono_adt_vln", params$patient, ".jpeg"), vln6, width = 6000, height = 2000, units = "px")
+```
+
+```{r}
+markers <- FindAllMarkers(data, assay="ADT", only.pos = TRUE)
+markers %>%
+  group_by(cluster) %>%
+  dplyr::filter(avg_log2FC > 1)
+
+gene_lists <- split(markers$gene, markers$cluster)
+
+for (cl in names(gene_lists)) {
+  filename <- paste0("cluster", cl, "_adt.tsv")
+  genelist<-head(gene_lists[[cl]],n=2000)
+  write.table(genelist, file = filename, sep = "\t", quote = FALSE, row.names = FALSE,
+    col.names = FALSE
+  )
+}
+
+DefaultAssay(data) <- "SCT"
 ```
 
 Manual annotation
@@ -660,6 +704,24 @@ manual_annot <- c("B cell", "B cell", "CD8 T", "CD4 T", "B cell", "B cell", "Mac
 names(manual_annot) <- levels(data)
 data <- RenameIdents(data, manual_annot)
 data$manual_annotation <- Idents(data)
+```
+
+Heatmap
+
+```{r}
+tab <- table(Cluster = data$seurat_clusters, CellType = data$manual_annot)
+tab_log <- log1p(tab)
+
+p1<-pheatmap(
+  tab_log,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  color = viridis::viridis(50),
+  border_color = NA,
+  main = "Manual annotation (RNA + ADT)"
+)
+ggsave(paste0(params$type,"_heatmap_manual_", params$patient, ".jpeg"), p1, width = 3000,
+  height = 2000, units = "px")
 ```
 
 Visualization
@@ -744,6 +806,19 @@ table(data$manual_annotation)
 table(data$final_annot)
 ```
 
+```{r}
+data_D1<-subset(data, subset= timepoint=="D1")
+table(data_D1$final_annot)
+data_D4<-subset(data, subset= timepoint=="D4")
+table(data_D4$final_annot)
+data_D8<-subset(data, subset= timepoint=="D8")
+table(data_D8$final_annot)
+data_D11<-subset(data, subset= timepoint=="D11")
+table(data_D11$final_annot)
+data_D14<-subset(data, subset= timepoint=="D14")
+table(data_D14$final_annot)
+```
+
 ## Focus on B cells + macrophages
 
 ```{r}
@@ -774,7 +849,7 @@ plotumap
 ggsave(paste0(params$type,"_umap_BxT", params$patient, ".jpeg"), plotumap)
 ```
 
-# Timepoint analysis 
+# Timepoint analysis
 
 ## Complete data
 
