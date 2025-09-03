@@ -219,7 +219,12 @@ write.table(df, file = namefile, sep = "\t", row.names = FALSE, quote = FALSE)
 ## Heatmap to compare automatic annotation
 
 ```{r}
-tab <- table(Cluster = Idents(data_annotated), CellType = data_annotated$SingleR)
+cluster_order <- sort(unique(data_annotated$seurat_clusters))
+annotation_order <- sort(unique(data_annotated$SingleR))
+tab <- table(
+  Cluster = factor(data_annotated$seurat_clusters, levels = cluster_order),
+  CellType = factor(data_annotated$SingleR, levels = annotation_order)
+)
 tab_log <- log1p(tab)
 
 # Heatmap
@@ -229,11 +234,18 @@ p1<-pheatmap(
   cluster_cols = TRUE, 
   color = viridis::viridis(50), 
   border_color = NA,
-  main = "Clusters vs Cell Types (SingleR)"
+  main = "Annotation SingleR"
 )
+ggsave(paste0(params$type,"_heatmap_singleR_", params$patient, ".jpeg"), p2, width = 3000,
+  height = 2000, units = "px")
 
-tab <- table(Cluster = Idents(data_annotated), CellType = data_annotated$predicted.celltype.l1)
+annotation_order <- sort(unique(data_annotated$predicted.celltype.l1))
+tab <- table(
+  Cluster = factor(data_annotated$seurat_clusters, levels = cluster_order),
+  CellType = factor(data_annotated$predicted.celltype.l1, levels = annotation_order)
+)
 tab_log <- log1p(tab)
+
 
 # Heatmap
 p2<-pheatmap(
@@ -242,8 +254,10 @@ p2<-pheatmap(
   cluster_cols = TRUE,
   color = viridis::viridis(50),
   border_color = NA,
-  main = "Clusters vs Cell Types (Azimuth)"
+  main = "Annotation Azimuth"
 )
+ggsave(paste0(params$type,"_heatmap_Azimuth_", params$patient, ".jpeg"), p1, width = 3000,
+  height = 2000, units = "px")
 ```
 
 ## Save the annotation file

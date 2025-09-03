@@ -2,8 +2,8 @@
 title: "Manual annotation"
 params: 
   patient: "P1"
-  file: "CLL_P1_seurat_reduit.rds"
-  type: "Seurat LogNormalize"
+  file: "CLL_auto_annotated_Seurat_LogNorm_P1.rds"
+  type: "DDQC"
 format: html
 editor: visual
 ---
@@ -16,6 +16,7 @@ This script aims to annotate cell clusters by us, in order to identify the corre
 
 ```{r}
 #| message: false
+.libPaths("/work/user/ablanc/NetBIO2/renv/library/linux-rhel-8.10/R-4.5/x86_64-pc-linux-gnu")
 library(SeuratObject)
 library(sp)
 library(Seurat)
@@ -24,6 +25,9 @@ library(dplyr)
 library(patchwork)
 library(ggplot2)
 library(stringr)
+library(pheatmap)
+library(viridis)
+library(gridExtra)
 source("functions.R")
 ```
 
@@ -127,52 +131,43 @@ ADT expressed
 ```{r}
 DefaultAssay(data) <- "ADT"
 
-vln <-VlnPlot(data, features = c("MS4A1", "CD79A"))
-ggsave(paste0("B_vln", params$patient, ".jpeg"), vln, width = 6000, height = 2000, units = "px")
+vln <-VlnPlot(data, features = "CD19.1")
+ggsave(paste0("B_adt_vln", params$patient, ".jpeg"), vln, width = 6000, height = 2000, units = "px")
 
-vln1 <-VlnPlot(data, features = c("CD68", "CD163"))
-ggsave(paste0("macro_vln", params$patient, ".jpeg"), vln1, width = 6000, height = 2000, units = "px")
+vln1 <-VlnPlot(data, features = c("CD11b", "CD163.1"))
+ggsave(paste0("macro_adt_vln", params$patient, ".jpeg"), vln1, width = 6000, height = 2000, units = "px")
 
-vln2 <-VlnPlot(data, features = c("CSF3R", "S100A8"))
-ggsave(paste0("neutro_vln", params$patient, ".jpeg"), vln2, width = 6000, height = 2000, units = "px")
+vln2 <-VlnPlot(data, features = c("CD15", "CD16"))
+ggsave(paste0("neutro_adt_vln", params$patient, ".jpeg"), vln2, width = 6000, height = 2000, units = "px")
 
-vln3 <-VlnPlot(data, features = c("ITGAX", "CD86"))
-ggsave(paste0("dc_vln", params$patient, ".jpeg"), vln3, width = 6000, height = 2000, units = "px")
+vln3 <-VlnPlot(data, features = c("CD1c", "CD83"))
+ggsave(paste0("dc_adt_vln", params$patient, ".jpeg"), vln3, width = 6000, height = 2000, units = "px")
 
-vln4 <-VlnPlot(data, features = c("TRBC2", "CD3D"))
-ggsave(paste0("T_vln", params$patient, ".jpeg"), vln4, width = 6000, height = 2000, units = "px")
+vln4 <-VlnPlot(data, features = c("CD3", "CD25"))
+ggsave(paste0("T_adt_vln", params$patient, ".jpeg"), vln4, width = 6000, height = 2000, units = "px")
 
-vln5 <-VlnPlot(data, features = c("NKG7", "GNLY"))
-ggsave(paste0("nk_vln", params$patient, ".jpeg"), vln5, width = 6000, height = 2000, units = "px")
+vln5 <-VlnPlot(data, features = c("CD56", "CD16"))
+ggsave(paste0("nk_adt_vln", params$patient, ".jpeg"), vln5, width = 6000, height = 2000, units = "px")
 
-vln6 <-VlnPlot(data, features = c("CD14", "APOBEC3A"))
-ggsave(paste0("mono_vln", params$patient, ".jpeg"), vln6, width = 6000, height = 2000, units = "px")
-
-vln7 <-VlnPlot(data, features = c("CD8A", "CD8B"))
-ggsave(paste0("cd8_vln", params$patient, ".jpeg"), vln7, width = 6000, height = 2000, units = "px")
-
-vln8 <-VlnPlot(data, features = c("MAL", "CD4"))
-ggsave(paste0("cd4_vln", params$patient, ".jpeg"), vln8, width = 6000, height = 2000, units = "px")
+vln6 <-VlnPlot(data, features = c("CD14", "CD64"))
+ggsave(paste0("mono_adt_vln", params$patient, ".jpeg"), vln6, width = 6000, height = 2000, units = "px")
 ```
 
 ```{r}
-fig<-FeaturePlot(data, features = c("SELENOP","FABP3","CD5L","CCL18","C1QC","C1QB","FABP4","C1QA","APOE"), reduction = "umap")
-fig2<- FeaturePlot(data, features = c("SOD2","NAMPT","CXCL8","S100A9","G0S2","S100A8","TYROBP", "FCER1G", "MXD1"), reduction = "umap")
-fig3<- FeaturePlot(data, features = c("CD79A", "RALGPS2", "CD79B", "MS4A1", "BANK1", "CD74", "TNFRSF13C", "HLA-DQA1", "IGHM", "MEF2C"), reduction = "umap")
-fig4<- FeaturePlot(data, features = c("LYZ", "CST3", "LGALS2", "CPVL", "FGL2", "AIF1", "LST1", "SAMHD1", "GSN"), reduction = "umap")
-fig5<- FeaturePlot(data, features = c("IL7R", "MAL", "LTB", "CD4", "LDHB", "TPT1", "TRAC", "TMSB10", "CD3D"), reduction = "umap")
-fig6<- FeaturePlot(data, features = c("CD8B", "CD8A", "CD3D", "TMSB10", "HCST", "CD3G", "LINC02446", "CTSW", "CD3E"), reduction = "umap")
-fig7<- FeaturePlot(data, features = c("NKG7", "KLRD1", "TYROBP", "GNLY", "FCER1G", "PRF1", "CD247", "KLRF1", "CST7"), reduction = "umap")
-fig8<- FeaturePlot(data, features = c("CTSS", "FCN1", "NEAT1", "LYZ", "PSAP", "S100A9", "AIF1", "MNDA", "SERPINA1"), reduction = "umap")
+markers <- FindAllMarkers(data, assay="ADT", only.pos = TRUE)
+markers %>%
+  group_by(cluster) %>%
+  dplyr::filter(avg_log2FC > 1)
 
-ggsave(paste0("macro_", params$patient, ".jpeg"), fig, width = 6000, height = 5000, units = "px")
-ggsave(paste0("neutro_", params$patient, ".jpeg"), fig2, width = 6000, height = 5000, units = "px")
-ggsave(paste0("B_", params$patient, ".jpeg"), fig3, width = 6000, height = 5000, units = "px")
-ggsave(paste0("dc_", params$patient, ".jpeg"), fig4, width = 6000, height = 5000, units = "px")
-ggsave(paste0("Tcd4_", params$patient, ".jpeg"), fig5, width = 6000, height = 5000, units = "px")
-ggsave(paste0("Tcd8_", params$patient, ".jpeg"), fig6, width = 6000, height = 5000, units = "px")
-ggsave(paste0("nk_", params$patient, ".jpeg"), fig7, width = 6000, height = 5000, units = "px")
-ggsave(paste0("mono_", params$patient, ".jpeg"), fig8, width = 6000, height = 5000, units = "px")
+gene_lists <- split(markers$gene, markers$cluster)
+
+for (cl in names(gene_lists)) {
+  filename <- paste0("cluster", cl, "_adt.tsv")
+  genelist<-head(gene_lists[[cl]],n=2000)
+  write.table(genelist, file = filename, sep = "\t", quote = FALSE, row.names = FALSE,
+    col.names = FALSE
+  )
+}
 
 DefaultAssay(data) <- "RNA"
 ```
@@ -184,6 +179,29 @@ manual_annot <- c("B cell", "B cell", "CD8 T", "CD4 T", "B cell", "B cell", "Mac
 names(manual_annot) <- levels(data)
 data <- RenameIdents(data, manual_annot)
 data$manual_annotation <- Idents(data)
+```
+
+Heatmap
+
+```{r}
+cluster_order <- sort(unique(data$seurat_clusters))
+annotation_order <- sort(unique(data$manual_annotation))
+tab <- table(
+  Cluster = factor(data$seurat_clusters, levels = cluster_order),
+  CellType = factor(data$manual_annotation, levels = annotation_order)
+)
+tab_log <- log1p(tab)
+
+p1<-pheatmap(
+  tab_log,
+  cluster_rows = TRUE,
+  cluster_cols = TRUE,
+  color = viridis::viridis(50),
+  border_color = NA,
+  main = "Manual annotation (RNA + ADT)"
+)
+ggsave(paste0(params$type,"_heatmap_manual_", params$patient, ".jpeg"), p1, width = 3000,
+  height = 2000, units = "px")
 ```
 
 Visualization
@@ -199,5 +217,5 @@ ggsave(paste0(params$type,"_manual_", params$patient, ".jpeg"), plot, width = 30
 
 ```{r}
 namepath=paste0("CLL_manual_annotated_", params$type, "_", params$patient, ".rds")
-saveRDS(data_annotated, file = namepath)
+saveRDS(data, file = namepath)
 ```

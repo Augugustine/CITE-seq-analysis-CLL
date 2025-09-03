@@ -20,6 +20,9 @@ library(dplyr)
 library(patchwork)
 library(ggplot2)
 library(stringr)
+library(pheatmap)
+library(viridis)
+library(gridExtra)
 source("functions.R")
 ```
 
@@ -40,6 +43,7 @@ meta <- data@meta.data
 final_annot <- mapply(final_consensus, meta$SingleR, meta$manual_annotation, meta$predicted.celltype.l2)
 names(final_annot) <- colnames(data)
 data$final_annot <- final_annot
+Idents(data) <- data$final_annot
 ```
 
 ## Visualization complete data
@@ -100,6 +104,19 @@ table(data$SingleR)
 table(data$predicted.celltype.l2)
 table(data$manual_annotation)
 table(data$final_annot)
+```
+
+```{r}
+data_D1<-subset(data, subset= timepoint=="D1")
+table(data_D1$final_annot)
+data_D4<-subset(data, subset= timepoint=="D4")
+table(data_D4$final_annot)
+data_D8<-subset(data, subset= timepoint=="D8")
+table(data_D8$final_annot)
+data_D11<-subset(data, subset= timepoint=="D11")
+table(data_D11$final_annot)
+data_D14<-subset(data, subset= timepoint=="D14")
+table(data_D14$final_annot)
 ```
 
 ## Focus on B cells + macrophages
