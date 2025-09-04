@@ -1,0 +1,124 @@
+---
+title: "Comparison"
+params: 
+  patient: "P1"
+  file1: "CLL_P1_seurat_reduit.rds"
+  file2:
+  file3: 
+  type: "DDQC"
+format: html
+editor: visual
+---
+
+## Comparison between all the pre-processing types
+
+```{r}
+library(mclust)
+library(pheatmap)
+library(ggplot2)
+# library(ggalluvial)
+
+## ---- Paramètres utilisateur ----
+# liste nommée de tes objets Seurat
+# Chaque objet doit avoir une colonne meta.data 'celltype' (ou autre) avec les labels.
+objs <- list(A=params$file1, B=params$file2, C=params$file3)
+label_col <- "final_annot"  
+
+## ---- Utilitaires ----
+# Récupération d’un vecteur nommé (names = barcodes) d’annotations
+get_annotation <- function(obj, colname) {
+  md <- obj@meta.data
+  stopifnot(colname %in% colnames(md))
+  ann <- md[[colname]]
+  names(ann) <- rownames(md)  # rownames(meta.data) == barcodes == colnames(obj)
+  return(ann)
+}
+
+# Harmonisation optionnelle des barcodes (ex: enlever suffixes type "-1")
+# -> désactivée par défaut ; active si besoin :
+normalize_barcodes <- function(x) {
+  # sub("-1$", "", x)  # décommente si nécessaire
+  x
+}
+
+# Comparaison paire à paire (intersection des barcodes)
+compare_pair <- function(ann1, ann2) {
+  names(ann1) <- normalize_barcodes(names(ann1))
+  names(ann2) <- normalize_barcodes(names(ann2))
+  common <- intersect(names(ann1), names(ann2))
+  n_common <- length(common)
+  if (n_common < 2) return(list(ARI=NA_real_, MatchPct=NA_real_, N=n_common))
+  a1 <- as.factor(ann1[common])
+  a2 <- as.factor(ann2[common])
+  ari <- adjustedRandIndex(a1, a2)
+  match_pct <- mean(a1 == a2) * 100
+  list(ARI=ari, MatchPct=match_pct, N=n_common)
+}
+
+# Matrice de confusion (pour une paire choisie)
+confusion_pair <- function(ann1, ann2, top_n = NULL) {
+  names(ann1) <- normalize_barcodes(names(ann1))
+  names(ann2) <- normalize_barcodes(names(ann2))
+  common <- intersect(names(ann1), names(ann2))
+  a1 <- as.factor(ann1[common])
+  a2 <- as.factor(ann2[common])
+  tab <- table(a1, a2)
+  # Optionnel : garder seulement les top_n lignes/colonnes les plus fréquentes
+  if (!is.null(top_n)) {
+    top_rows <- names(sort(rowSums(tab), decreasing = TRUE))[seq_len(min(top_n, nrow(tab)))]
+    top_cols <- names(sort(colSums(tab), decreasing = TRUE))[seq_len(min(top_n, ncol(tab)))]
+    tab <- tab[top_rows, top_cols, drop=FALSE]
+  }
+  tab
+}
+
+## ---- Construction des matrices ARI / % Matching / N commun ----
+obj_names <- names(objs)
+k <- length(objs)
+ari_mat <- matrix(NA_real_, k, k, dimnames = list(obj_names, obj_names))
+match_mat <- matrix(NA_real_, k, k, dimnames = list(obj_names, obj_names))
+n_mat <- matrix(0L, k, k, dimnames = list(obj_names, obj_names))
+
+# Pré-extraire les annotations
+ann_list <- lapply(objs, get_annotation, colname = label_col)
+
+for (i in seq_len(k)) {
+  for (j in seq_len(k)) {
+    if (i == j) {
+      ari_mat[i, j] <- 1
+      match_mat[i, j] <- 100
+      n_mat[i, j] <- length(ann_list[[i]])
+    } else if (j > i) {
+      res <- compare_pair(ann_list[[i]], ann_list[[j]])
+      ari_mat[i, j] <- ari_mat[j, i] <- res$ARI
+      match_mat[i, j] <- match_mat[j, i] <- res$MatchPct
+      n_mat[i, j] <- n_mat[j, i] <- res$N
+    }
+  }
+}
+
+## ---- Heatmaps ----
+# Palette simple ; pheatmap gère l’échelle
+pheatmap(ari_mat, display_numbers = TRUE, number_format = "%.2f",
+         main = "Similarité des annotations (ARI)", border_color = NA)
+
+pheatmap(match_mat, display_numbers = TRUE, number_format = "%.1f",
+         main = "% de matching exact des labels", border_color = NA)
+
+# Heatmap du nombre de cellules effectivement comparées (utile pour interpréter)
+pheatmap(n_mat, display_numbers = TRUE, number_format = "%.0f",
+         main = "Nombre de cellules comparées (intersection)", border_color = NA)
+
+## ---- Dendrogramme basé sur ARI ----
+# distance = 1 - ARI (borne [0,2] car ARI peut être négatif ; on recadre les NA)
+ari_for_dist <- ari_mat
+# Remplacer les NA hors diagonale par la médiane des valeurs non-NA pour stabilité
+fill_val <- median(ari_for_dist[upper.tri(ari_for_dist)], na.rm = TRUE)
+ari_for_dist[is.na(ari_for_dist)] <- fill_val
+d <- as.dist(1 - ari_for_dist)
+hc <- hclust(d, method = "average")
+plot(hc, main = "Clustering des pipelines (distance = 1 - ARI)",
+     sub = "", xlab = "")
+
+
+```

@@ -317,6 +317,34 @@ final_consensus <- function(singleR, manual, azimuth) {
   return(NA)
 }
 
+# Function convert a seurat object v5 like a seurat object v4
+ConvertToV4 <- function(seurat_v5, assay = "RNA") {
+  # Check input
+  if (!inherits(seurat_v5, "Seurat")) {
+    stop("Input object is not a Seurat object.")
+  }
+  
+  # Extract data layers from Seurat v5 Assay5
+  counts <- LayerData(seurat_v5, assay = assay, layer = "counts")
+  data   <- LayerData(seurat_v5, assay = assay, layer = "data")
+  scale  <- LayerData(seurat_v5, assay = assay, layer = "scale.data")
+  
+  # Create a new Seurat object (v4-style) using counts
+  seurat_v4 <- Seurat::CreateSeuratObject(
+    counts = counts,
+    meta.data = seurat_v5@meta.data,
+    assay = assay
+  )
+  
+  # Add the other slots to mimic Seurat v4 structure
+  seurat_v4[[assay]]@data <- data
+  seurat_v4[[assay]]@scale.data <- scale
+  
+  message("Conversion complete: object is now compatible with v4-based functions")
+  return(seurat_v4)
+}
+
+
 
 
 
