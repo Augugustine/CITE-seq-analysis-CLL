@@ -1,0 +1,37 @@
+---
+title: "GRN"
+params: 
+  patient: "P1"
+  file: "CLL_P1_seurat_reduit.rds"
+format: html
+editor: visual
+---
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(SeuratDisk)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(stringr)
+library(pheatmap)
+library(viridis)
+library(gridExtra)
+source("functions.R")
+```
+
+Read the data pre-processed
+
+```{r}
+data<-readRDS(params$file)
+```
+
+```{r}
+SaveLoom(data,filenmae=LoomData)
+```
