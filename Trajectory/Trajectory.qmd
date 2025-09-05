@@ -1,5 +1,5 @@
 ---
-title: "Timepoint analysis"
+title: "Timepoint analysis and trajectory"
 params: 
   patient: "P1"
   file: "CLL_P1_seurat_reduit.rds"
@@ -153,29 +153,29 @@ ggsave(paste0(params$type,"_bxt_timepoint_umap_", params$patient, ".jpeg"), plot
 
 ## Trajectory
 
-Computational trajectory, with the tool Tempora. Tools for the cell trajectory inference using time-series single-cell RNA sequencing data. Tempora is a novel cell trajectory inference method that orders cells using time information from time-series scRNAseq data. Tempora uses biological pathway information to help identify cell type relationships and can identify important time-dependent pathways to help interpret the inferred trajectory.
-
-Monocle3
+We used Monocle 3 to reconstruct cellular trajectories and infer the pseudotime ordering of cells based on their gene expression profiles. This approach allows us to model dynamic biological processes, such as differentiation or activation, by arranging cells along a trajectory that reflects their transcriptional progression.
 
 ```{r}
 cds <- as.cell_data_set(data)
 cds <- cluster_cells(cds, reduction_method = "UMAP")
 cds <- learn_graph(cds)
 cds <- order_cells(cds, root_cells = colnames(data)[data$timepoint == "D1"])
-plot_cells(cds,
+
+title=paste("Trajectory by Monocle3, patient", params$patient)
+plot_traj<-plot_cells(cds,
            color_cells_by = "final_annot",
            label_groups_by_cluster=FALSE,
            label_leaves=FALSE,
-           label_branch_points=FALSE)
+           label_branch_points=FALSE) + ggtitle(title)
+ggsave(paste0(params$type,"_trajectory_", params$patient, ".jpeg"), plot_traj, width = 5000,
+  height = 2000, units = "px")
 ```
 
+Pseudotime
+
 ```{r}
-# Pseudotime en couleur
-plot_cells(cds, color_cells_by = "pseudotime")
-
-# Colorer par timepoint (tes 5 temps)
-plot_cells(cds, color_cells_by = "timepoint")
-
-# Colorer par clusters Seurat
-plot_cells(cds, color_cells_by = "seurat_clusters")
+title=paste("Pseudotime trajectory by Monocle3, patient", params$patient)
+plot_traj<-plot_cells(cds, color_cells_by = "pseudotime") + ggtitle(title)
+ggsave(paste0(params$type,"_trajectory_pseudotime_", params$patient, ".jpeg"), plot_traj, width = 5000,
+  height = 2000, units = "px")
 ```
