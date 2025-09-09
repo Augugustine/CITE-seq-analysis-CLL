@@ -151,31 +151,107 @@ ggsave(paste0(params$type,"_bxt_timepoint_umap_", params$patient, ".jpeg"), plot
   height = 2000, units = "px")
 ```
 
+T cells
+
+```{r}
+data_T<-subset(data, subset = final_annot=="CD4 T"|final_annot=="CD8 T"|final_annot=="T")
+data_T$timepoint <- factor(
+  data_T$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("Trajectory UMAP, only T cells, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_T, group.by = "timepoint", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_t_days_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+B cells
+
+```{r}
+data_B<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive")
+data_B$timepoint <- factor(
+  data_B$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("Trajectory UMAP, only B cells, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_B, group.by = "timepoint", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_b_days_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+Macrophages
+
+```{r}
+data_macro<-subset(data, subset = final_annot=="Macrophage")
+data_macro$timepoint <- factor(
+  data_macro$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+title=paste("Trajectory UMAP, only B cells and T cells, pre-processing type :", params$type, ", patient", params$patient)
+plotumap<-DimPlot(data_macro, group.by = "timepoint", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0(params$type,"_macro_days_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
 ## Trajectory
 
 We used Monocle 3 to reconstruct cellular trajectories and infer the pseudotime ordering of cells based on their gene expression profiles. This approach allows us to model dynamic biological processes, such as differentiation or activation, by arranging cells along a trajectory that reflects their transcriptional progression.
 
-```{r}
-cds <- as.cell_data_set(data)
-cds <- cluster_cells(cds, reduction_method = "UMAP")
-cds <- learn_graph(cds)
-cds <- order_cells(cds, root_cells = colnames(data)[data$timepoint == "D1"])
+Trajectory on days separately macrophage & B cells
 
-title=paste("Trajectory by Monocle3, patient", params$patient)
-plot_traj<-plot_cells(cds,
-           color_cells_by = "final_annot",
-           label_groups_by_cluster=FALSE,
-           label_leaves=FALSE,
-           label_branch_points=FALSE) + ggtitle(title)
-ggsave(paste0(params$type,"_trajectory_", params$patient, ".jpeg"), plot_traj, width = 5000,
-  height = 2000, units = "px")
+```{r}
+D4 <- subset(data, subset = timepoint == "D4" & 
+  (final_annot == "Macrophage" | final_annot == "B" | 
+   final_annot == "B intermediate" | final_annot == "B memory" | 
+   final_annot == "B naive"))
+
+cds <- as.cell_data_set(D4)
+cds@clusters$UMAP$clusters <- D4@active.ident
+partition <- as.factor(rep(1, ncol(D4)))
+names(partition) <- colnames(D4)
+cds@clusters$UMAP$partitions <- partition
+cds@int_colData@listData$reducedDims$UMAP <- D4@reductions$umap@cell.embeddings
+colData(cds)$cell.type <- D4$final_annot
 ```
 
-Pseudotime
+```{r}
+cds <- learn_graph(cds, use_partition=FALSE)
+cds <- order_cells(cds, root_cells = colnames(D4)[D4$final_annot == "B naive"])
+
+title=paste("Start : B naive cells")
+plot2<- plot_cells(
+  cds,
+  color_cells_by = "pseudotime",
+  label_groups_by_cluster = FALSE,
+  label_leaves = FALSE,
+  label_branch_points = FALSE, 
+  graph_label_size = 0
+) + ggtitle(title)
+```
 
 ```{r}
-title=paste("Pseudotime trajectory by Monocle3, patient", params$patient)
-plot_traj<-plot_cells(cds, color_cells_by = "pseudotime") + ggtitle(title)
-ggsave(paste0(params$type,"_trajectory_pseudotime_", params$patient, ".jpeg"), plot_traj, width = 5000,
+cds <- learn_graph(cds, use_partition=FALSE)
+cds <- order_cells(cds, root_cells = colnames(D4)[D4$final_annot == "Macrophage"])
+
+title=paste("Start : macrophages")
+
+plot1<-plot_cells(
+  cds,
+  color_cells_by = "pseudotime",
+  label_groups_by_cluster = FALSE,
+  label_leaves = FALSE,
+  label_branch_points = FALSE, 
+  graph_label_size = 0
+) + ggtitle(title)
+```
+
+```{r}
+title=paste("Trajectory by Monocle3 only on Macrophages and B cells, day 4, patient", params$patient)
+combined_plot <- plot1 + plot2 + 
+  plot_layout(ncol = 2) + plot_annotation(
+    title = str_wrap(title, width = 60),
+    theme = theme(plot.title = element_text(size = 15, hjust = 0.5))
+  )
+ggsave(paste0(params$type,"_trajectory_", params$patient, ".jpeg"), combined_plot, width = 5000,
   height = 2000, units = "px")
 ```
