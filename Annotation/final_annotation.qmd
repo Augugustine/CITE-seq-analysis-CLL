@@ -122,7 +122,7 @@ table(data_D14$final_annot)
 ## Focus on B cells + macrophages
 
 ```{r}
-data_Bxmacro<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="Macrophages")
+data_Bxmacro<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="Macrophage")
 ```
 
 UMAP
@@ -144,9 +144,71 @@ UMAP
 
 ```{r}
 title=paste("UMAP focus on B cells and T cells, pre-processing type :", params$type, ", patient", params$patient)
-plotumap<-DimPlot(data_BxT, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), width = 3000, height = 2000, units = "px")
+plotumap<-DimPlot(data_BxT, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap(title, width = 80)) + theme(plot.title = element_text(size = 15, hjust = 0.5), width = 3000, height = 2000, units = "px")
 plotumap
 ggsave(paste0(params$type,"_umap_BxT", params$patient, ".jpeg"), plotumap)
+```
+
+```{r}
+Idents(data) <- "final_annot"
+title=paste("UMAP focus on B cells and macrophages/monocytes, pre-processing type :", params$type, ", patient", params$patient)
+highlighted_types <- c("Macrophage", "Monocyte", 
+                       "B intermediate", "B memory", "B naive", "B")
+
+data$highlight <- ifelse(data$final_annot %in% highlighted_types,
+                         data$final_annot, "Other")
+
+mycols <- c(
+  "Macrophage"     = "#984ea3",   
+  "Monocyte"       = "#e41a1c",   
+  "B intermediate" = "#ffd92f",  
+  "B memory"       = "#582d15ff", 
+  "B naive"        = "#ff7f0e",   
+  "B"              = "#f2a890ff", 
+  "Other"          = "lightgrey"  
+)
+
+plotumap <- DimPlot(
+  data, reduction = "umap",
+  group.by = "highlight",
+  cols = mycols,
+  pt.size = 0.1
+) + ggtitle(str_wrap(title, width = 80)) +
+  theme(plot.title = element_text(size = 15, hjust = 0.5))
+
+plotumap
+ggsave(paste0(params$type,"_umap_Bxmacro", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+title=paste("UMAP focus on B cells and T cells, pre-processing type :", params$type, ", patient", params$patient)
+highlighted_types <- c("CD4 T", "CD8 T", "T", 
+                       "B intermediate", "B memory", "B naive", "B")
+
+data$highlight <- ifelse(data$final_annot %in% highlighted_types,
+                         data$final_annot, "Other")
+
+mycols <- c(
+  "CD4 T"         = "#1f77b4",  
+  "CD8 T"         = "#2ca02c",   
+  "T"             = "#93f290ff",
+  "B intermediate"= "#ffd92f",
+  "B memory"      = "#582d15ff",  
+  "B naive"       = "#ff7f0e", 
+  "B"             = "#f2a890ff",
+  "Other"         = "lightgrey" 
+)
+
+plotumap <- DimPlot(
+  data, reduction = "umap",
+  group.by = "highlight",
+  cols = mycols,
+  pt.size = 0.1
+) + ggtitle(str_wrap(title, width = 80)) +
+  theme(plot.title = element_text(size = 15, hjust = 0.5))
+
+plotumap
+ggsave(paste0(params$type,"_umap_BxT", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
 ```
 
 ## Save the annotation file
