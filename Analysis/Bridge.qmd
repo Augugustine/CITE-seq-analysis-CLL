@@ -1,0 +1,230 @@
+---
+title: "Bridge B-macro"
+params: 
+  patient: "P2"
+  patientbis: "P3"
+  fileP2: "CLL_manual_annotated_valiDrops_P2.rds"
+  fileP3: "CLL_manual_annotated_valiDrops_P2.rds"
+  type: "valiDrops"
+format: html
+editor: visual
+---
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(stringr)
+library(pheatmap)
+library(viridis)
+library(gridExtra)
+library(ggVennDiagram)
+source("functions.R")
+```
+
+Read the data pre-processed and keep B cells and macrophages
+
+```{r}
+data_p2<-readRDS(params$fileP2)
+data_p2<-subset(data_p2, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage")))
+
+data_p3<-readRDS(params$fileP3)
+data_p3<-subset(data_p3, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage")))
+```
+
+# Explore the bridge
+
+Cells bridge
+
+Patient 2
+
+```{r}
+plotumap<-DimPlot(data_p2, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap("UMAP", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0("macro_B_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+
+umap_coords <- Embeddings(data_p2, "umap")
+umap_df <- as.data.frame(umap_coords)
+colnames(umap_df)
+umap_df$cell <- rownames(umap_df)
+colnames(umap_df)
+
+x_min <- 2.5
+x_max <- 6
+y_min <- 4.5
+y_max <- 6
+
+umap_df$selected <- ifelse(
+  umap_df$umap_1 >= x_min & umap_df$umap_1 <= x_max &
+  umap_df$umap_2 >= y_min & umap_df$umap_2 <= y_max,
+  "bridge",  
+  NA      
+)
+
+# Add "bridge" or final annotation
+umap_df <- umap_df %>%
+  mutate(
+    bridge_annot = ifelse(is.na(selected), data_p2$final_annot[cell], selected)
+  )
+
+data_p2$bridge_annot <- umap_df$bridge_annot[match(colnames(data_p2), umap_df$cell)]
+
+table(data_p2$bridge_annot)
+
+# Plot UMAP
+umap_df$bridge_annot <- data_p2$bridge_annot[match(umap_df$cell, colnames(data_p2))]
+
+plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = bridge_annot)) +
+  geom_point(size = 1) +
+  scale_color_manual(values = c("bridge" = "red", "B" = "grey", "Macrophages" = "grey", "B naive" = "grey", "B memory" = "grey", "B intermediate" = "grey")) +
+  theme_minimal() +
+  ggtitle("Bridge B cells and macrophages")
+plotumap
+ggsave(paste0("bridge_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+Markers RNA and ADT
+
+```{r}
+Idents(data_p2) <- data_p2$bridge_annot
+bridge.markers_p2 <- FindMarkers(data_p2, ident.1 = "bridge", ident.2 = c("Macrophage","B", "B naive","B intermediate","B memory"))
+head(bridge.markers_p2)
+nrow(bridge.markers_p2)
+
+top_genes <- bridge.markers_p2 %>%
+  dplyr::filter(avg_log2FC > 1, p_val_adj < 0.05)
+
+gene_names_p2 <- rownames(top_genes)
+
+write.table(gene_names_p2, file = "bridge_genes_p2", sep = "\t", quote = FALSE, row.names = FALSE,
+    col.names = FALSE)
+```
+
+```{r}
+Idents(data_p2) <- data_p2$bridge_annot
+bridge.adt_p2 <- FindMarkers(data_p2, ident.1 = "bridge", ident.2 = c("Macrophage","B", "B naive","B intermediate","B memory"), assay="ADT", slot = "data")
+head(bridge.adt_p2)
+nrow(bridge.adt_p2)
+
+antibodies_names_p2 <- rownames(bridge.adt_p2)
+
+write.table(antibodies_names_p2, file = "bridge_adt_p2", sep = "\t", quote = FALSE, row.names = FALSE,
+    col.names = FALSE)
+```
+
+## Patient 3
+
+```{r}
+plotumap<-DimPlot(data_p3, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap("UMAP", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0("macro_B_umap_", params$patientbis, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+
+umap_coords <- Embeddings(data_p3, "umap")
+umap_df <- as.data.frame(umap_coords)
+colnames(umap_df)
+umap_df$cell <- rownames(umap_df)
+colnames(umap_df)
+
+x_min <- 3.5
+x_max <- 7.5
+y_min <- -2.5
+y_max <- 0
+
+umap_df$selected <- ifelse(
+  umap_df$umap_1 >= x_min & umap_df$umap_1 <= x_max &
+  umap_df$umap_2 >= y_min & umap_df$umap_2 <= y_max,
+  "bridge",  
+  NA      
+)
+
+# Add "bridge" or final annotation
+umap_df <- umap_df %>%
+  mutate(
+    bridge_annot = ifelse(is.na(selected), data_p3$final_annot[cell], selected)
+  )
+
+data_p3$bridge_annot <- umap_df$bridge_annot[match(colnames(data_p3), umap_df$cell)]
+
+table(data_p3$bridge_annot)
+
+# Plot UMAP
+umap_df$bridge_annot <- data_p3$bridge_annot[match(umap_df$cell, colnames(data_p3))]
+
+plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = bridge_annot)) +
+  geom_point(size = 1) +
+  scale_color_manual(values = c("bridge" = "red", "B" = "grey", "Macrophages" = "grey", "B naive" = "grey", "B memory" = "grey", "B intermediate" = "grey")) +
+  theme_minimal() +
+  ggtitle("Bridge B cells and macrophages")
+plotumap
+ggsave(paste0("bridge_umap_", params$patientbis, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+Markers RNA and ADT
+
+```{r}
+Idents(data_p3) <- data_p3$bridge_annot
+bridge.markers_p3 <- FindMarkers(data_p3, ident.1 = "bridge", ident.2 = c("Macrophage","B", "B naive","B intermediate","B memory"))
+head(bridge.markers_p3)
+nrow(bridge.markers_p3)
+
+top_genes <- bridge.markers_p3 %>%
+  dplyr::filter(avg_log2FC > 1, p_val_adj < 0.05)
+
+gene_names_p3 <- rownames(top_genes)
+
+write.table(gene_names_p3, file = "bridge_genes_p3", sep = "\t", quote = FALSE, row.names = FALSE,
+    col.names = FALSE)
+```
+
+```{r}
+Idents(data_p3) <- data_p3$bridge_annot
+bridge.adt_p3 <- FindMarkers(data_p3, ident.1 = "bridge", ident.2 = c("Macrophage","B", "B naive","B intermediate","B memory"), assay="ADT", slot = "data")
+head(bridge.adt_p3)
+nrow(bridge.adt_p3)
+
+antibodies_names_p3 <- rownames(bridge.adt_p3)
+
+write.table(antibodies_names_p3, file = "bridge_adt_p3", sep = "\t", quote = FALSE, row.names = FALSE,
+    col.names = FALSE)
+```
+
+## Venn diagram
+
+The bridge signatures between patient 2 and 3
+
+```{r}
+venn_plot<-ggVennDiagram(
+  x = list(
+    A = gene_names_p2,
+    B = gene_names_p3),
+  category.names = c("P2", "P3"),
+  filename = NULL
+) + ggtitle(str_wrap("Venn Diagram based on genes expressed in bridge in patient 2 and patient 3", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+
+ggsave("venn_rna.jpeg", venn_plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+venn_plot<-ggVennDiagram(
+  x = list(
+    A = antibodies_names_p2,
+    B = antibodies_names_p3),
+  category.names = c("P2", "P3"),
+  filename = NULL
+) + ggtitle(str_wrap("Venn Diagram based on ADT in bridge in patient 2 and patient 3", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+
+ggsave("venn_adt.jpeg", venn_plot, width = 3000, height = 2000, units = "px")
+```
