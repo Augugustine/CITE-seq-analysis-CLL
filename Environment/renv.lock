@@ -846,6 +846,45 @@
       "NeedsCompilation": "yes",
       "Repository": "CRAN"
     },
+    "CytoTRACE2": {
+      "Package": "CytoTRACE2",
+      "Version": "1.1.0",
+      "Source": "GitHub",
+      "Type": "Package",
+      "Title": "Prediction of absolute developmental potential of single cells",
+      "Authors@R": "c( person(\"Minji\", \"Kang\", role = \"aut\"), person(\"Jose Juan\", \"Almagro Armenteros\", role = \"aut\"), person(\"Gunsagar\", \"Gulati\", role = \"aut\"), person(\"Rachel\", \"Gleyzer\", role = \"aut\"), person(\"Erin\", \"Brown\", role = \"aut\"), person(\"Susanna\", \"Avagyan\", role = \"aut\"), person(\"CytoTRACE 2, Team\", email = \"cytotrace2team@gmail.com\", role = \"cre\"))",
+      "Description": "CytoTRACE 2 is a computational method for predicting cellular potency categories and absolute developmental potential from single-cell RNA-sequencing data.",
+      "License": "STANFORD NON-COMMERCIAL SOFTWARE LICENSE AGREEMENT",
+      "Encoding": "UTF-8",
+      "RoxygenNote": "7.2.3",
+      "Depends": [
+        "R (>= 3.5.0)",
+        "data.table",
+        "doParallel",
+        "dplyr",
+        "ggplot2",
+        "HiClimR",
+        "magrittr",
+        "Matrix",
+        "parallel",
+        "plyr",
+        "Rfast",
+        "RSpectra",
+        "Seurat",
+        "SeuratObject",
+        "stringr"
+      ],
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "cytotrace2",
+      "RemoteUsername": "digitalcytometry",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "23eaec2a6ba6fef44f4e3f9866734168fe61b817",
+      "RemoteSubdir": "cytotrace2_r",
+      "NeedsCompilation": "no",
+      "Author": "Minji Kang [aut], Jose Juan Almagro Armenteros [aut], Gunsagar Gulati [aut], Rachel Gleyzer [aut], Erin Brown [aut], Susanna Avagyan [aut], CytoTRACE 2, Team [cre]",
+      "Maintainer": "\"CytoTRACE 2, Team\" <cytotrace2team@gmail.com>"
+    },
     "DBI": {
       "Package": "DBI",
       "Version": "1.2.3",
@@ -1581,6 +1620,50 @@
       "NeedsCompilation": "no",
       "Author": "Hervé Pagès [aut, cre] (ORCID: <https://orcid.org/0009-0002-8272-4522>)",
       "Maintainer": "Hervé Pagès <hpages.on.github@gmail.com>"
+    },
+    "HiClimR": {
+      "Package": "HiClimR",
+      "Version": "2.2.1",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Hierarchical Climate Regionalization",
+      "Authors@R": "c( person(given = \"Hamada S.\", family = \"Badr\", email = \"badr@jhu.edu\", role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0002-9808-2344\")), person(given = \"Benjamin F.\", family = \"Zaitchik\", email = \"zaitchik@jhu.edu\", role = c(\"aut\"), comment = c(ORCID = \"0000-0002-0698-0658\")), person(given = \"Amin K.\", family = \"Dezfuli\", email = \"amin.dezfuli@nasa.gov\", role = c(\"aut\"), comment = c(ORCID = \"0000-0003-3274-8542\")))",
+      "Description": "A tool for Hierarchical Climate Regionalization applicable to any correlation-based clustering. It adds several features and a new clustering method (called, 'regional' linkage) to hierarchical clustering in R ('hclust' function in 'stats' library): data regridding, coarsening spatial resolution, geographic masking, contiguity-constrained clustering, data filtering by mean and/or variance thresholds, data preprocessing (detrending, standardization, and PCA), faster correlation function with preliminary big data support, different clustering methods, hybrid hierarchical clustering, multivariate clustering (MVC), cluster validation, visualization of regionalization results, and exporting region map and mean timeseries into NetCDF-4 file. The technical details are described in Badr et al. (2015) <doi:10.1007/s12145-015-0221-7>.",
+      "License": "GPL-3",
+      "URL": "https://hsbadr.github.io/HiClimR/, https://github.com/hsbadr/HiClimR",
+      "BugReports": "https://github.com/hsbadr/HiClimR/issues",
+      "Depends": [
+        "R (>= 2.10)"
+      ],
+      "Imports": [
+        "graphics",
+        "grDevices",
+        "stats",
+        "utils",
+        "ncdf4"
+      ],
+      "Suggests": [
+        "covr",
+        "devtools",
+        "knitr",
+        "rmarkdown",
+        "roxygen2",
+        "spelling",
+        "testthat"
+      ],
+      "VignetteBuilder": "knitr",
+      "Encoding": "UTF-8",
+      "RoxygenNote": "7.1.2",
+      "LazyData": "yes",
+      "LazyLoad": "yes",
+      "Biarch": "yes",
+      "ByteCompile": "yes",
+      "NeedsCompilation": "yes",
+      "SystemRequirements": "NetCDF (>= 4.1)",
+      "Language": "en-US",
+      "Author": "Hamada S. Badr [aut, cre] (<https://orcid.org/0000-0002-9808-2344>), Benjamin F. Zaitchik [aut] (<https://orcid.org/0000-0002-0698-0658>), Amin K. Dezfuli [aut] (<https://orcid.org/0000-0003-3274-8542>)",
+      "Maintainer": "Hamada S. Badr <badr@jhu.edu>",
+      "Repository": "CRAN"
     },
     "IRanges": {
       "Package": "IRanges",
@@ -2356,6 +2439,35 @@
       "Maintainer": "Zachary DeBruine <zacharydebruine@gmail.com>",
       "Repository": "CRAN"
     },
+    "RcppParallel": {
+      "Package": "RcppParallel",
+      "Version": "5.1.11-1",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Parallel Programming Tools for 'Rcpp'",
+      "Authors@R": "c( person(\"JJ\", \"Allaire\", role = c(\"aut\"), email = \"jj@rstudio.com\"), person(\"Romain\", \"Francois\", role = c(\"aut\", \"cph\")), person(\"Kevin\", \"Ushey\", role = c(\"aut\", \"cre\"), email = \"kevin@rstudio.com\"), person(\"Gregory\", \"Vandenbrouck\", role = \"aut\"), person(\"Marcus\", \"Geelnard\", role = c(\"aut\", \"cph\"), comment = \"TinyThread library, https://tinythreadpp.bitsnbites.eu/\"), person(\"Hamada S.\", \"Badr\", email = \"badr@jhu.edu\", role = c(\"ctb\"), comment = c(ORCID = \"0000-0002-9808-2344\")), person(family = \"Posit, PBC\", role = \"cph\"), person(family = \"Intel\", role = c(\"aut\", \"cph\"), comment = \"Intel TBB library, https://www.threadingbuildingblocks.org/\"), person(family = \"Microsoft\", role = \"cph\") )",
+      "Description": "High level functions for parallel programming with 'Rcpp'. For example, the 'parallelFor()' function can be used to convert the work of a standard serial \"for\" loop into a parallel one and the 'parallelReduce()' function can be used for accumulating aggregate or other values.",
+      "Depends": [
+        "R (>= 3.0.2)"
+      ],
+      "Suggests": [
+        "Rcpp",
+        "RUnit",
+        "knitr",
+        "rmarkdown"
+      ],
+      "SystemRequirements": "GNU make, Intel TBB, Windows: cmd.exe and cscript.exe, Solaris: g++ is required",
+      "License": "GPL (>= 3)",
+      "URL": "https://rcppcore.github.io/RcppParallel/, https://github.com/RcppCore/RcppParallel",
+      "BugReports": "https://github.com/RcppCore/RcppParallel/issues",
+      "Biarch": "TRUE",
+      "RoxygenNote": "7.1.1",
+      "Encoding": "UTF-8",
+      "NeedsCompilation": "yes",
+      "Author": "JJ Allaire [aut], Romain Francois [aut, cph], Kevin Ushey [aut, cre], Gregory Vandenbrouck [aut], Marcus Geelnard [aut, cph] (TinyThread library, https://tinythreadpp.bitsnbites.eu/), Hamada S. Badr [ctb] (ORCID: <https://orcid.org/0000-0002-9808-2344>), Posit, PBC [cph], Intel [aut, cph] (Intel TBB library, https://www.threadingbuildingblocks.org/), Microsoft [cph]",
+      "Maintainer": "Kevin Ushey <kevin@rstudio.com>",
+      "Repository": "CRAN"
+    },
     "RcppProgress": {
       "Package": "RcppProgress",
       "Version": "0.4.2",
@@ -2436,6 +2548,39 @@
       "NeedsCompilation": "yes",
       "Author": "Dirk Eddelbuettel [aut, cre] (<https://orcid.org/0000-0001-6419-907X>), Mark Gillard [aut] (Author of 'toml++' header library)",
       "Maintainer": "Dirk Eddelbuettel <edd@debian.org>",
+      "Repository": "CRAN"
+    },
+    "Rfast": {
+      "Package": "Rfast",
+      "Version": "2.1.5.1",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "A Collection of Efficient and Extremely Fast R Functions",
+      "Date": "2025-03-10",
+      "Authors@R": "c( person(\"Manos Papadakis\", email = \"rfastofficial@gmail.com\", role = c(\"aut\", \"cre\", \"cph\")),  person(\"Michail Tsagris\", role = c(\"aut\")),  person(\"Marios Dimitriadis\", role = c(\"aut\")),  person(\"Stefanos Fafalios\", role = c(\"aut\")),  person(\"Matteo Fasiolo\", role = c(\"aut\")),  person(\"Morgan Jacob\", role = c(\"ctb\")),  person(\"Giorgos Borboudakis\", role = c(\"aut\")),  person(\"John Burkardt\", role = c(\"aut\")),  person(\"Changliang Zou\", role = c(\"aut\"))  )",
+      "Maintainer": "Manos Papadakis <rfastofficial@gmail.com>",
+      "Depends": [
+        "R (>= 3.5.0)",
+        "Rcpp (>= 0.12.3)",
+        "zigg",
+        "RcppParallel"
+      ],
+      "LinkingTo": [
+        "Rcpp (>= 0.12.3)",
+        "RcppArmadillo",
+        "RcppParallel",
+        "zigg"
+      ],
+      "Suggests": [
+        "philentropy"
+      ],
+      "SystemRequirements": "C++17",
+      "BugReports": "https://github.com/RfastOfficial/Rfast/issues",
+      "URL": "https://github.com/RfastOfficial/Rfast",
+      "Description": "A collection of fast (utility) functions for data analysis. Column and row wise means, medians, variances, minimums, maximums, many t, F and G-square tests, many regressions (normal, logistic, Poisson), are some of the many fast functions. References: a) Tsagris M., Papadakis M. (2018). Taking R to its limits: 70+ tips. PeerJ Preprints 6:e26605v1 <doi:10.7287/peerj.preprints.26605v1>. b) Tsagris M. and Papadakis M. (2018). Forward regression in R: from the extreme slow to the extreme fast. Journal of Data Science, 16(4): 771--780. <doi:10.6339/JDS.201810_16(4).00006>. c) Chatzipantsiou C., Dimitriadis M., Papadakis M. and Tsagris M. (2020). Extremely Efficient Permutation and Bootstrap Hypothesis Tests Using Hypothesis Tests Using R. Journal of Modern Applied Statistical Methods, 18(2), eP2898. <doi:10.48550/arXiv.1806.10947>. d) Tsagris M., Papadakis M., Alenazi A. and Alzeley O. (2024). Computationally Efficient Outlier Detection for High-Dimensional Data Using the MDP Algorithm. Computation, 12(9): 185. <doi:10.3390/computation12090185>. e) Tsagris M. and Papadakis M. (2025). Fast and light-weight energy statistics using the R package Rfast. <doi:10.48550/arXiv.2501.02849>.",
+      "License": "GPL (>= 2.0)",
+      "NeedsCompilation": "yes",
+      "Author": "Manos Papadakis [aut, cre, cph], Michail Tsagris [aut], Marios Dimitriadis [aut], Stefanos Fafalios [aut], Matteo Fasiolo [aut], Morgan Jacob [ctb], Giorgos Borboudakis [aut], John Burkardt [aut], Changliang Zou [aut]",
       "Repository": "CRAN"
     },
     "Rhdf5lib": {
@@ -3049,6 +3194,68 @@
       "Author": "Paul Hoffman [aut] (<https://orcid.org/0000-0002-7693-8957>), Rahul Satija [aut, cre] (<https://orcid.org/0000-0001-9448-8833>), David Collins [aut] (<https://orcid.org/0000-0001-9243-7821>), Yuhan Hao [aut] (<https://orcid.org/0000-0002-1810-0822>), Austin Hartman [aut] (<https://orcid.org/0000-0001-7278-1852>), Gesmira Molla [aut] (<https://orcid.org/0000-0002-8628-5056>), Andrew Butler [aut] (<https://orcid.org/0000-0003-3608-0463>), Tim Stuart [aut] (<https://orcid.org/0000-0002-3044-0897>), Madeline Kowalski [ctb] (<https://orcid.org/0000-0002-5655-7620>), Saket Choudhary [ctb] (<https://orcid.org/0000-0001-5202-7633>), Skylar Li [ctb], Longda Jiang [ctb] (<https://orcid.org/0000-0003-4964-6497>), Jeff Farrell [ctb], Shiwei Zheng [ctb] (<https://orcid.org/0000-0001-6682-6743>), Christoph Hafemeister [ctb] (<https://orcid.org/0000-0001-6365-8254>), Patrick Roelli [ctb]",
       "Maintainer": "Rahul Satija <seurat@nygenome.org>",
       "Repository": "CRAN"
+    },
+    "SeuratWrappers": {
+      "Package": "SeuratWrappers",
+      "Version": "0.4.0",
+      "Source": "GitHub",
+      "Title": "Community-Provided Methods and Extensions for the Seurat Object",
+      "Date": "2024-11-20",
+      "Authors@R": "c( person(given = 'Andrew', family = 'Butler', email = 'abutler@nygenome.org', role = 'aut', comment = c(ORCID = '0000-0003-3608-0463')), person(given = \"Saket\", family = \"Choudhary\", email = \"schoudhary@nygenome.org\", role = \"ctb\", comment = c(ORCID = \"0000-0001-5202-7633\")), person(given = 'David', family = 'Collins', email = 'dcollins@nygenome.org', role = 'ctb', comment = c(ORCID = '0000-0001-9243-7821')), person(given = \"Yuhan\", family = \"Hao\", email = \"yhao@nygenome.org\", role = \"ctb\", comment = c(ORCID = \"0000-0002-1810-0822\")), person(given = \"Austin\", family = \"Hartman\", email = \"ahartman@nygenome.org\", role = \"ctb\", comment = c(ORCID = \"0000-0001-7278-1852\")), person(given = 'Paul', family = 'Hoffman', email = 'nygcSatijalab@nygenome.org', role = c('aut', 'cre'), comment = c(ORCID = '0000-0002-7693-8957')), person(given = \"Gesmira\", family = \"Molla\", email = 'gmolla@nygenome.org', role = 'ctb', comment = c(ORCID = '0000-0002-8628-5056')), person(given = 'Rahul', family = 'Satija', email = 'rsatija@nygenome.org', role = 'aut', comment = c(ORCID = '0000-0001-9448-8833')), person(given = 'Tim', family = 'Stuart', email = 'tstuart@nygenome.org', role = 'aut', comment = c(ORCID = '0000-0002-3044-0897')) )",
+      "Description": "SeuratWrappers is a collection of community-provided methods and extensions for Seurat, curated by the Satija Lab at NYGC. These methods comprise functionality not presently found in Seurat, and are able to be updated much more frequently.",
+      "License": "GPL-3 | file LICENSE",
+      "Remotes": "welch-lab/liger, hms-dbmi/conos, immunogenomics/harmony, immunogenomics/presto, satijalab/seurat-data, velocyto-team/velocyto.R, SaskiaFreytag/schex@031320d, cole-trapnell-lab/monocle3, mojaveazure/seurat-disk, powellgenomicslab/Nebulosa, atakanekiz/CIPR-Package, prabhakarlab/Banksy",
+      "Depends": [
+        "R (>= 3.5.0)"
+      ],
+      "biocViews": "",
+      "Imports": [
+        "BiocManager",
+        "cowplot",
+        "ggplot2",
+        "igraph",
+        "Matrix",
+        "methods",
+        "remotes",
+        "rsvd",
+        "Seurat (>= 5.0.0)",
+        "stats",
+        "utils",
+        "rlang"
+      ],
+      "Collate": "'internal.R' 'alevin.R' 'alra.R' 'banksy.R' 'cellbrowser.R' 'cogaps.R' 'conos.R' 'fast_mnn.R' 'fast_mnn_v5.R' 'glmpca.R' 'liger.R' 'miqc.R' 'monocle3.R' 'pacmap.R' 'presto.R' 'scVI.R' 'tricycle.R' 'velocity.R'",
+      "Encoding": "UTF-8",
+      "RoxygenNote": "7.3.2",
+      "Suggests": [
+        "cipr",
+        "conos",
+        "rliger (>= 0.5.0)",
+        "harmony",
+        "batchelor",
+        "SeuratData",
+        "SeuratDisk",
+        "velocyto.R",
+        "schex",
+        "tximport",
+        "fishpond",
+        "monocle3",
+        "CoGAPS",
+        "glmpca",
+        "Nebulosa",
+        "presto",
+        "flexmix",
+        "tricycle",
+        "Banksy"
+      ],
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "seurat-wrappers",
+      "RemoteUsername": "satijalab",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "a1eb0d8b039ad6d5ef0ff1332fd8eb1c0c223553",
+      "NeedsCompilation": "no",
+      "Author": "Andrew Butler [aut] (ORCID: <https://orcid.org/0000-0003-3608-0463>), Saket Choudhary [ctb] (ORCID: <https://orcid.org/0000-0001-5202-7633>), David Collins [ctb] (ORCID: <https://orcid.org/0000-0001-9243-7821>), Yuhan Hao [ctb] (ORCID: <https://orcid.org/0000-0002-1810-0822>), Austin Hartman [ctb] (ORCID: <https://orcid.org/0000-0001-7278-1852>), Paul Hoffman [aut, cre] (ORCID: <https://orcid.org/0000-0002-7693-8957>), Gesmira Molla [ctb] (ORCID: <https://orcid.org/0000-0002-8628-5056>), Rahul Satija [aut] (ORCID: <https://orcid.org/0000-0001-9448-8833>), Tim Stuart [aut] (ORCID: <https://orcid.org/0000-0002-3044-0897>)",
+      "Maintainer": "Paul Hoffman <nygcSatijalab@nygenome.org>"
     },
     "Signac": {
       "Package": "Signac",
@@ -4978,6 +5185,38 @@
       "NeedsCompilation": "yes",
       "Author": "Dirk Eddelbuettel [aut, cre] (<https://orcid.org/0000-0001-6419-907X>), Antoine Lucas [ctb], Jarek Tuszynski [ctb], Henrik Bengtsson [ctb] (<https://orcid.org/0000-0002-7579-5165>), Simon Urbanek [ctb] (<https://orcid.org/0000-0003-2297-1732>), Mario Frasca [ctb], Bryan Lewis [ctb], Murray Stokely [ctb], Hannes Muehleisen [ctb], Duncan Murdoch [ctb], Jim Hester [ctb], Wush Wu [ctb] (<https://orcid.org/0000-0001-5180-0567>), Qiang Kou [ctb] (<https://orcid.org/0000-0001-6786-5453>), Thierry Onkelinx [ctb] (<https://orcid.org/0000-0001-8804-4216>), Michel Lang [ctb] (<https://orcid.org/0000-0001-9754-0393>), Viliam Simko [ctb], Kurt Hornik [ctb] (<https://orcid.org/0000-0003-4198-9911>), Radford Neal [ctb] (<https://orcid.org/0000-0002-2473-3407>), Kendon Bell [ctb] (<https://orcid.org/0000-0002-9093-8312>), Matthew de Queljoe [ctb], Dmitry Selivanov [ctb], Ion Suruceanu [ctb], Bill Denney [ctb], Dirk Schumacher [ctb], András Svraka [ctb], Sergey Fedorov [ctb], Will Landau [ctb] (<https://orcid.org/0000-0003-1878-3253>), Floris Vanderhaeghe [ctb] (<https://orcid.org/0000-0002-6378-6229>), Kevin Tappe [ctb], Harris McGehee [ctb], Tim Mastny [ctb], Aaron Peikert [ctb] (<https://orcid.org/0000-0001-7813-818X>), Mark van der Loo [ctb] (<https://orcid.org/0000-0002-9807-4686>), Chris Muir [ctb] (<https://orcid.org/0000-0003-2555-3878>), Moritz Beller [ctb] (<https://orcid.org/0000-0003-4852-0526>), Sebastian Campbell [ctb], Winston Chang [ctb] (<https://orcid.org/0000-0002-1576-2126>), Dean Attali [ctb] (<https://orcid.org/0000-0002-5645-3493>), Michael Chirico [ctb] (<https://orcid.org/0000-0003-0787-087X>), Kevin Ushey [ctb]",
       "Maintainer": "Dirk Eddelbuettel <edd@debian.org>",
+      "Repository": "CRAN"
+    },
+    "doParallel": {
+      "Package": "doParallel",
+      "Version": "1.0.17",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Foreach Parallel Adaptor for the 'parallel' Package",
+      "Authors@R": "c(person(\"Folashade\", \"Daniel\", role=\"cre\", email=\"fdaniel@microsoft.com\"), person(\"Microsoft\", \"Corporation\", role=c(\"aut\", \"cph\")), person(\"Steve\", \"Weston\", role=\"aut\"), person(\"Dan\", \"Tenenbaum\", role=\"ctb\"))",
+      "Description": "Provides a parallel backend for the %dopar% function using the parallel package.",
+      "Depends": [
+        "R (>= 2.14.0)",
+        "foreach (>= 1.2.0)",
+        "iterators (>= 1.0.0)",
+        "parallel",
+        "utils"
+      ],
+      "Suggests": [
+        "caret",
+        "mlbench",
+        "rpart",
+        "RUnit"
+      ],
+      "Enhances": [
+        "compiler"
+      ],
+      "License": "GPL-2",
+      "URL": "https://github.com/RevolutionAnalytics/doparallel",
+      "BugReports": "https://github.com/RevolutionAnalytics/doparallel/issues",
+      "NeedsCompilation": "no",
+      "Author": "Folashade Daniel [cre], Microsoft Corporation [aut, cph], Steve Weston [aut], Dan Tenenbaum [ctb]",
+      "Maintainer": "Folashade Daniel <fdaniel@microsoft.com>",
       "Repository": "CRAN"
     },
     "dotCall64": {
@@ -8009,6 +8248,41 @@
       "RoxygenNote": "7.3.2",
       "Repository": "CRAN"
     },
+    "mclust": {
+      "Package": "mclust",
+      "Version": "6.1.1",
+      "Source": "Repository",
+      "Date": "2024-04-29",
+      "Title": "Gaussian Mixture Modelling for Model-Based Clustering, Classification, and Density Estimation",
+      "Description": "Gaussian finite mixture models fitted via EM algorithm for model-based clustering, classification, and density estimation,  including Bayesian regularization, dimension reduction for  visualisation, and resampling-based inference.",
+      "Authors@R": "c(person(\"Chris\", \"Fraley\", role = \"aut\"), person(\"Adrian E.\", \"Raftery\", role = \"aut\", comment = c(ORCID = \"0000-0002-6589-301X\")), person(\"Luca\", \"Scrucca\", role = c(\"aut\", \"cre\"), email = \"luca.scrucca@unipg.it\", comment = c(ORCID = \"0000-0003-3826-0484\")), person(\"Thomas Brendan\", \"Murphy\", role = \"ctb\", comment = c(ORCID = \"0000-0002-5668-7046\")), person(\"Michael\", \"Fop\", role = \"ctb\", comment = c(ORCID = \"0000-0003-3936-2757\")))",
+      "Depends": [
+        "R (>= 3.0)"
+      ],
+      "Imports": [
+        "stats",
+        "utils",
+        "graphics",
+        "grDevices"
+      ],
+      "Suggests": [
+        "knitr (>= 1.4)",
+        "rmarkdown (>= 2.10)",
+        "mix (>= 1.0)",
+        "geometry (>= 0.4)",
+        "MASS"
+      ],
+      "License": "GPL (>= 2)",
+      "URL": "https://mclust-org.github.io/mclust/",
+      "VignetteBuilder": "knitr",
+      "Repository": "CRAN",
+      "ByteCompile": "true",
+      "NeedsCompilation": "yes",
+      "LazyData": "yes",
+      "Encoding": "UTF-8",
+      "Author": "Chris Fraley [aut], Adrian E. Raftery [aut] (<https://orcid.org/0000-0002-6589-301X>), Luca Scrucca [aut, cre] (<https://orcid.org/0000-0003-3826-0484>), Thomas Brendan Murphy [ctb] (<https://orcid.org/0000-0002-5668-7046>), Michael Fop [ctb] (<https://orcid.org/0000-0003-3936-2757>)",
+      "Maintainer": "Luca Scrucca <luca.scrucca@unipg.it>"
+    },
     "memoise": {
       "Package": "memoise",
       "Version": "2.0.1",
@@ -8263,6 +8537,22 @@
       "NeedsCompilation": "yes",
       "Author": "Alan Genz [aut], Frank Bretz [aut], Tetsuhisa Miwa [aut], Xuefei Mi [aut], Friedrich Leisch [ctb], Fabian Scheipl [ctb], Bjoern Bornkamp [ctb] (<https://orcid.org/0000-0002-6294-8185>), Martin Maechler [ctb] (<https://orcid.org/0000-0002-8685-9910>), Torsten Hothorn [aut, cre] (<https://orcid.org/0000-0001-8301-0471>)",
       "Maintainer": "Torsten Hothorn <Torsten.Hothorn@R-project.org>",
+      "Repository": "CRAN"
+    },
+    "ncdf4": {
+      "Package": "ncdf4",
+      "Version": "1.24",
+      "Source": "Repository",
+      "Date": "2025-03-25",
+      "Title": "Interface to Unidata netCDF (Version 4 or Earlier) Format Data Files",
+      "Authors@R": "person(given=\"David\", family=\"Pierce\", email=\"dpierce@ucsd.edu\", role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0002-2453-9030\"))",
+      "Description": "Provides a high-level R interface to data files written using Unidata's netCDF library (version 4 or earlier), which are binary data files that are portable across platforms and include metadata information in addition to the data sets.  Using this package, netCDF files (either version 4 or \"classic\" version 3) can be opened and data sets read in easily.  It is also easy to create new netCDF dimensions, variables, and files, in either version 3 or 4 format, and manipulate existing netCDF files.  This package replaces the former ncdf package, which only worked with netcdf version 3 files.  For various reasons the names of the functions have had to be changed from the names in the ncdf package.  The old ncdf package is still available at the URL given below, if you need to have backward compatibility.  It should be possible to have both the ncdf and ncdf4 packages installed simultaneously without a problem.  However, the ncdf package does not provide an interface for netcdf version 4 files.",
+      "SystemRequirements": "netcdf library version 4.1 or later",
+      "License": "GPL (>= 3)",
+      "URL": "https://cirrus.ucsd.edu/~pierce/ncdf/",
+      "NeedsCompilation": "yes",
+      "Author": "David Pierce [aut, cre] (<https://orcid.org/0000-0002-2453-9030>)",
+      "Maintainer": "David Pierce <dpierce@ucsd.edu>",
       "Repository": "CRAN"
     },
     "nlme": {
@@ -9289,6 +9579,53 @@
       "Maintainer": "Gábor Csárdi <csardi.gabor@gmail.com>",
       "Repository": "CRAN"
     },
+    "remotes": {
+      "Package": "remotes",
+      "Version": "2.5.0",
+      "Source": "Repository",
+      "Title": "R Package Installation from Remote Repositories, Including 'GitHub'",
+      "Authors@R": "c( person(\"Gábor\", \"Csárdi\", , \"csardi.gabor@gmail.com\", role = c(\"aut\", \"cre\")), person(\"Jim\", \"Hester\", role = \"aut\"), person(\"Hadley\", \"Wickham\", role = \"aut\"), person(\"Winston\", \"Chang\", role = \"aut\"), person(\"Martin\", \"Morgan\", role = \"aut\"), person(\"Dan\", \"Tenenbaum\", role = \"aut\"), person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\")), person(\"Ascent Digital Services\", role = \"cph\") )",
+      "Description": "Download and install R packages stored in 'GitHub', 'GitLab', 'Bitbucket', 'Bioconductor', or plain 'subversion' or 'git' repositories.  This package provides the 'install_*' functions in 'devtools'. Indeed most of the code was copied over from 'devtools'.",
+      "License": "MIT + file LICENSE",
+      "URL": "https://remotes.r-lib.org, https://github.com/r-lib/remotes#readme",
+      "BugReports": "https://github.com/r-lib/remotes/issues",
+      "Depends": [
+        "R (>= 3.0.0)"
+      ],
+      "Imports": [
+        "methods",
+        "stats",
+        "tools",
+        "utils"
+      ],
+      "Suggests": [
+        "brew",
+        "callr",
+        "codetools",
+        "covr",
+        "curl",
+        "git2r (>= 0.23.0)",
+        "knitr",
+        "mockery",
+        "pingr",
+        "pkgbuild (>= 1.0.1)",
+        "rmarkdown",
+        "rprojroot",
+        "testthat (>= 3.0.0)",
+        "webfakes",
+        "withr"
+      ],
+      "VignetteBuilder": "knitr",
+      "Config/Needs/website": "tidyverse/tidytemplate",
+      "Config/testthat/edition": "3",
+      "Encoding": "UTF-8",
+      "RoxygenNote": "7.2.3",
+      "SystemRequirements": "Subversion for install_svn, git for install_git",
+      "NeedsCompilation": "no",
+      "Author": "Gábor Csárdi [aut, cre], Jim Hester [aut], Hadley Wickham [aut], Winston Chang [aut], Martin Morgan [aut], Dan Tenenbaum [aut], Posit Software, PBC [cph, fnd], Ascent Digital Services [cph]",
+      "Maintainer": "Gábor Csárdi <csardi.gabor@gmail.com>",
+      "Repository": "CRAN"
+    },
     "renv": {
       "Package": "renv",
       "Version": "1.1.5",
@@ -9911,13 +10248,13 @@
     },
     "scCustomize": {
       "Package": "scCustomize",
-      "Version": "3.0.1",
-      "Source": "Repository",
+      "Version": "3.1.3",
+      "Source": "GitHub",
       "Type": "Package",
       "Title": "Custom Visualizations & Functions for Streamlined Analyses of Single Cell Sequencing",
       "Description": "Collection of functions created and/or curated to aid in the visualization and analysis of single-cell data using 'R'.  'scCustomize' aims to provide 1) Customized visualizations for aid in ease of use and to create more aesthetic and functional visuals. 2) Improve speed/reproducibility of common tasks/pieces of code in scRNA-seq analysis with a single or group of functions.  For citation please use: Marsh SE (2021) \"Custom Visualizations & Functions for Streamlined Analyses of Single Cell Sequencing\" <doi:10.5281/zenodo.5706430> RRID:SCR_024675.",
-      "Date": "2024-12-18",
-      "Authors@R": "c( person(given = \"Samuel\", family = \"Marsh\", email = \"samuel.marsh@childrens.harvard.edu\", role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0002-3012-6945\")), person(given = \"Ming\", family = \"Tang\", role = c(\"ctb\"), email = \"tangming2005@gmail.com\"), person(given = 'Velina', family = 'Kozareva', role = c('ctb')), person(\"Lucas\", \"Graybuck\", email = \"lucasg@alleninstitute.org\", role = c('ctb')) )",
+      "Date": "2025-08-25",
+      "Authors@R": "c( person(given = \"Samuel\", family = \"Marsh\", email = \"sccustomize@gmail.com\", role = c(\"aut\", \"cre\"), comment = c(ORCID = \"0000-0002-3012-6945\")), person(given = \"Ming\", family = \"Tang\", role = c(\"ctb\"), email = \"tangming2005@gmail.com\"), person(given = 'Velina', family = 'Kozareva', role = c('ctb')), person(\"Lucas\", \"Graybuck\", email = \"lucasg@alleninstitute.org\", role = c('ctb')), person(\"Zoe\", \"Clarke\", email = \"zoe.clarke@utoronto.ca\", role = c('ctb'), comment = c(ORCID = \"0000-0003-0336-8049\")) )",
       "URL": "https://github.com/samuel-marsh/scCustomize, https://samuel-marsh.github.io/scCustomize/, https://doi.org/10.5281/zenodo.5706431",
       "BugReports": "https://github.com/samuel-marsh/scCustomize/issues",
       "Depends": [
@@ -9979,11 +10316,17 @@
       "License": "GPL (>= 3)",
       "Encoding": "UTF-8",
       "LazyData": "true",
+      "Roxygen": "list(markdown = TRUE)",
       "RoxygenNote": "7.3.2",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "scCustomize",
+      "RemoteUsername": "samuel-marsh",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "5b04328b6740581385925498477e511fde5f1935",
       "NeedsCompilation": "no",
-      "Author": "Samuel Marsh [aut, cre] (<https://orcid.org/0000-0002-3012-6945>), Ming Tang [ctb], Velina Kozareva [ctb], Lucas Graybuck [ctb]",
-      "Maintainer": "Samuel Marsh <samuel.marsh@childrens.harvard.edu>",
-      "Repository": "CRAN"
+      "Author": "Samuel Marsh [aut, cre] (ORCID: <https://orcid.org/0000-0002-3012-6945>), Ming Tang [ctb], Velina Kozareva [ctb], Lucas Graybuck [ctb], Zoe Clarke [ctb] (ORCID: <https://orcid.org/0000-0003-0336-8049>)",
+      "Maintainer": "Samuel Marsh <sccustomize@gmail.com>"
     },
     "scDblFinder": {
       "Package": "scDblFinder",
@@ -12022,7 +12365,7 @@
     },
     "xml2": {
       "Package": "xml2",
-      "Version": "1.3.8",
+      "Version": "1.4.0",
       "Source": "Repository",
       "Title": "Parse XML",
       "Authors@R": "c( person(\"Hadley\", \"Wickham\", role = \"aut\"), person(\"Jim\", \"Hester\", role = \"aut\"), person(\"Jeroen\", \"Ooms\", email = \"jeroenooms@gmail.com\", role = c(\"aut\", \"cre\")), person(\"Posit Software, PBC\", role = c(\"cph\", \"fnd\")), person(\"R Foundation\", role = \"ctb\", comment = \"Copy of R-project homepage cached as example\") )",
@@ -12052,7 +12395,7 @@
       "VignetteBuilder": "knitr",
       "Config/Needs/website": "tidyverse/tidytemplate",
       "Encoding": "UTF-8",
-      "RoxygenNote": "7.2.3",
+      "RoxygenNote": "7.3.2",
       "SystemRequirements": "libxml2: libxml2-dev (deb), libxml2-devel (rpm)",
       "Collate": "'S4.R' 'as_list.R' 'xml_parse.R' 'as_xml_document.R' 'classes.R' 'format.R' 'import-standalone-obj-type.R' 'import-standalone-purrr.R' 'import-standalone-types-check.R' 'init.R' 'nodeset_apply.R' 'paths.R' 'utils.R' 'xml2-package.R' 'xml_attr.R' 'xml_children.R' 'xml_document.R' 'xml_find.R' 'xml_missing.R' 'xml_modify.R' 'xml_name.R' 'xml_namespaces.R' 'xml_node.R' 'xml_nodeset.R' 'xml_path.R' 'xml_schema.R' 'xml_serialize.R' 'xml_structure.R' 'xml_text.R' 'xml_type.R' 'xml_url.R' 'xml_write.R' 'zzz.R'",
       "Config/testthat/edition": "3",
@@ -12107,6 +12450,25 @@
       "URL": "https://github.com/vubiostat/r-yaml/",
       "BugReports": "https://github.com/vubiostat/r-yaml/issues",
       "NeedsCompilation": "yes",
+      "Repository": "CRAN"
+    },
+    "zigg": {
+      "Package": "zigg",
+      "Version": "0.0.2",
+      "Source": "Repository",
+      "Type": "Package",
+      "Title": "Lightweight Interfaces to the 'Ziggurat' Pseudo Random Number Generator",
+      "Date": "2025-02-07",
+      "Authors@R": "person(\"Dirk\", \"Eddelbuettel\", role = c(\"aut\", \"cre\"), email = \"edd@debian.org\", comment = c(ORCID = \"0000-0001-6419-907X\"))",
+      "Description": "The 'Ziggurat' pseudo-random number generator (or PRNG), introduced by Marsaglia and Tsang (2000, <doi:10.18637/jss.v005.i08>) and further improved by Leong et al (2005, <doi:10.18637/jss.v012.i07>), offers a lightweight and very fast PRNG for the normal, exponential, and uniform distributions. It is provided here in a small zero-dependency package. It can be used from R as well as from 'C/C++' code in other packages as is demonstrated by four included sample packages using four distinct methods to use the PRNG presented here in client package. The implementation is influenced by our package 'RcppZiggurat' which offers a comparison among multiple alternative implementations but presented here in a lighter-weight implementation that is easier to use by other packages. The PRNGs provided are generally faster than the ones in base R: on our machine, the relative gains for normal, exponential and uniform are on the order of 7.4, 5.2 and 4.7 times faster than base R. However, these generators are of potentially lesser quality and shorter period so if in doubt use of the base R functions remains the general recommendation.",
+      "URL": "https://github.com/eddelbuettel/zigg",
+      "BugReports": "https://github.com/eddelbuettel/zigg/issues",
+      "License": "GPL (>= 2)",
+      "Encoding": "UTF-8",
+      "RoxygenNote": "6.0.1",
+      "NeedsCompilation": "yes",
+      "Author": "Dirk Eddelbuettel [aut, cre] (<https://orcid.org/0000-0001-6419-907X>)",
+      "Maintainer": "Dirk Eddelbuettel <edd@debian.org>",
       "Repository": "CRAN"
     },
     "zoo": {
