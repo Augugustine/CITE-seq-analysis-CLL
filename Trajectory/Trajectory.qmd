@@ -30,6 +30,7 @@ library(monocle3)
 library(scCustomize)
 library(SeuratWrappers)
 library(BPCells)
+library(CytoTRACE2) 
 source("functions.R")
 ```
 
@@ -200,58 +201,97 @@ We used Monocle 3 to reconstruct cellular trajectories and infer the pseudotime 
 Trajectory on days separately macrophage & B cells
 
 ```{r}
-D4 <- subset(data, subset = timepoint == "D4" & 
-  (final_annot == "Macrophage" | final_annot == "B" | 
-   final_annot == "B intermediate" | final_annot == "B memory" | 
-   final_annot == "B naive"))
+timepoints <- c("D1", "D4", "D8", "D11", "D14")
+plot_list <- list()
 
-cds <- as.cell_data_set(D4)
-cds@clusters$UMAP$clusters <- D4@active.ident
-partition <- as.factor(rep(1, ncol(D4)))
-names(partition) <- colnames(D4)
-cds@clusters$UMAP$partitions <- partition
-cds@int_colData@listData$reducedDims$UMAP <- D4@reductions$umap@cell.embeddings
-colData(cds)$cell.type <- D4$final_annot
+# 1. Compute the maximum pseudotime scale
+max_pt <- 0
+for(tp in timepoints){
+  data_sub <- subset(data, subset = timepoint == tp & 
+                      (final_annot %in% c("Macrophage", "B", "B intermediate", 
+                                          "B memory", "B naive")))
+  cds <- as.cell_data_set(data_sub)
+  cds@clusters$UMAP$clusters <- data_sub@active.ident
+  partition <- as.factor(rep(1, ncol(data_sub)))
+  names(partition) <- colnames(data_sub)
+  cds@clusters$UMAP$partitions <- partition
+  cds@int_colData@listData$reducedDims$UMAP <- data_sub@reductions$umap@cell.embeddings
+  colData(cds)$cell.type <- data_sub$final_annot
+  cds <- learn_graph(cds, use_partition = FALSE)
+  cds <- order_cells(cds, root_cells = colnames(data_sub)[data_sub$final_annot == "B naive"])
+  
+  max_pt <- max(max_pt, max(pseudotime(cds), na.rm = TRUE))
+}
+
+# 2. Generate the plots without legends
+for(tp in timepoints){
+  data_sub <- subset(data, subset = timepoint == tp & 
+                      (final_annot %in% c("Macrophage", "B", "B intermediate", 
+                                          "B memory", "B naive")))
+  cds <- as.cell_data_set(data_sub)
+  cds@clusters$UMAP$clusters <- data_sub@active.ident
+  partition <- as.factor(rep(1, ncol(data_sub)))
+  names(partition) <- colnames(data_sub)
+  cds@clusters$UMAP$partitions <- partition
+  cds@int_colData@listData$reducedDims$UMAP <- data_sub@reductions$umap@cell.embeddings
+  colData(cds)$cell.type <- data_sub$final_annot
+  cds <- learn_graph(cds, use_partition = FALSE)
+  cds <- order_cells(cds, root_cells = colnames(data_sub)[data_sub$final_annot == "B naive"])
+  
+  p <- plot_cells(
+    cds,
+    color_cells_by = "pseudotime",
+    show_trajectory_graph = TRUE,
+    label_groups_by_cluster = FALSE,
+    label_leaves = FALSE,
+    label_branch_points = FALSE, 
+    graph_label_size = 0
+  ) + 
+    scale_color_viridis_c(limits = c(0, max_pt), guide = "none") + # remove legend
+    theme_void() + 
+    ggtitle(tp)
+  
+  plot_list[[tp]] <- p
+}
+
+# 3. Combine the plots and add a **common legend**
+# To get a single legend, create an empty plot with the legend
+legend_plot <- ggplot(data.frame(x = 1, y = 1, pseudotime = c(0, max_pt)), 
+                      aes(x, y, color = pseudotime)) +
+  geom_point() +
+  scale_color_viridis_c(limits = c(0, max_pt)) +
+  guides(color = guide_colorbar(title = "Pseudotime")) +
+  theme_void() + theme(legend.position = "right")
+
+# Extract the legend
+library(cowplot)
+legend <- get_legend(legend_plot)
+
+# Assemble the 5 plots side by side + single legend
+final_plot <- plot_grid(plotlist = plot_list, ncol = 5)
+final_plot_with_legend <- plot_grid(final_plot, legend, rel_widths = c(5, 1))
+
+# Add a general title
+title <- ggdraw() + draw_label(paste("Trajectory with Monocle3 pseudotime B cells and Macrophages, patient :",params$patient), fontface='bold')
+final_plot_with_title <- plot_grid(title, final_plot_with_legend, ncol = 1, rel_heights = c(0.05, 1))
+
+# Display
+final_plot_with_title
+
+ggsave(paste0(params$type,"_traj_", params$patient, ".jpeg"), final_plot_with_title, width = 4000,
+  height = 1500, units = "px")
 ```
 
-```{r}
-cds <- learn_graph(cds, use_partition=FALSE)
-cds <- order_cells(cds, root_cells = colnames(D4)[D4$final_annot == "B naive"])
-
-title=paste("Start : B naive cells")
-plot2<- plot_cells(
-  cds,
-  color_cells_by = "pseudotime",
-  label_groups_by_cluster = FALSE,
-  label_leaves = FALSE,
-  label_branch_points = FALSE, 
-  graph_label_size = 0
-) + ggtitle(title)
-```
+## Pluripotencie
 
 ```{r}
-cds <- learn_graph(cds, use_partition=FALSE)
-cds <- order_cells(cds, root_cells = colnames(D4)[D4$final_annot == "Macrophage"])
+data_bis<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="Macrophage"& timepoint=="D1")
+expression_data <-data_bis[[ "RNA" ]]$counts
+cytotrace2_result <- cytotrace2(expression_data)
+annotation <- data_bis$final_annot
+plots <- plotData(cytotrace2_result = cytotrace2_result, 
+                  annotation = annotation,
+                  expression_data = expression_data
+                  ) 
 
-title=paste("Start : macrophages")
-
-plot1<-plot_cells(
-  cds,
-  color_cells_by = "pseudotime",
-  label_groups_by_cluster = FALSE,
-  label_leaves = FALSE,
-  label_branch_points = FALSE, 
-  graph_label_size = 0
-) + ggtitle(title)
-```
-
-```{r}
-title=paste("Trajectory by Monocle3 only on Macrophages and B cells, day 4, patient", params$patient)
-combined_plot <- plot1 + plot2 + 
-  plot_layout(ncol = 2) + plot_annotation(
-    title = str_wrap(title, width = 60),
-    theme = theme(plot.title = element_text(size = 15, hjust = 0.5))
-  )
-ggsave(paste0(params$type,"_trajectory_", params$patient, ".jpeg"), combined_plot, width = 5000,
-  height = 2000, units = "px")
 ```
