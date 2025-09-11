@@ -282,7 +282,7 @@ ggsave(paste0(params$type,"_traj_", params$patient, ".jpeg"), final_plot_with_ti
   height = 1500, units = "px")
 ```
 
-## Pluripotencie
+## Pluripotency
 
 ```{r}
 data_bis<-subset(data, subset = final_annot=="B"|final_annot=="B intermediate"| final_annot=="B memory"|final_annot=="B naive"|final_annot=="Macrophage"& timepoint=="D1")
@@ -293,5 +293,11 @@ plots <- plotData(cytotrace2_result = cytotrace2_result,
                   annotation = annotation,
                   expression_data = expression_data
                   ) 
-
+plots$name_of_the_plot
+plot1<-plots$CytoTRACE2_UMAP
+ggsave(paste0("cytotraceumap_d4_", params$patient, ".jpeg"), plot1, width = 3000,
+  height = 1500, units = "px")
+plot1<-plots$CytoTRACE2_Boxplot_byPheno
+ggsave(paste0("cytotraceboxplot_d4_", params$patient, ".jpeg"), plot1, width = 3000,
+  height = 1500, units = "px")
 ```
