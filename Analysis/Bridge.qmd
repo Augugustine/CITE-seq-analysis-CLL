@@ -3,7 +3,7 @@ title: "Bridge B-macro"
 params: 
   patient: "P2"
   patientbis: "P3"
-  fileP2: "CLL_manual_annotated_valiDrops_P2.rds"
+  fileP2: "CLL_P1_seurat_reduit.rds"
   fileP3: "CLL_manual_annotated_valiDrops_P2.rds"
   type: "valiDrops"
 format: html
@@ -26,6 +26,8 @@ library(pheatmap)
 library(viridis)
 library(gridExtra)
 library(ggVennDiagram)
+library(SingleR)
+library(celldex)
 source("functions.R")
 ```
 
@@ -62,7 +64,7 @@ colnames(umap_df)
 x_min <- 2.5
 x_max <- 6
 y_min <- 4.5
-y_max <- 6
+y_max <- 7
 
 umap_df$selected <- ifelse(
   umap_df$umap_1 >= x_min & umap_df$umap_1 <= x_max &
@@ -118,8 +120,55 @@ nrow(bridge.adt_p2)
 
 antibodies_names_p2 <- rownames(bridge.adt_p2)
 
-write.table(antibodies_names_p2, file = "bridge_adt_p2", sep = "\t", quote = FALSE, row.names = FALSE,
-    col.names = FALSE)
+write.table(antibodies_names_p2, file = "bridge_adt_p2", sep = "\t", quote = FALSE, row.names = FALSE,col.names = FALSE)
+```
+
+Fine annotation
+
+```{r}
+ref <- celldex::HumanPrimaryCellAtlasData()
+norm_counts <- LayerData(data_p2, assay = "RNA", layer = 'data')
+annotation<-SingleR(test = norm_counts,
+                  ref = ref, 
+                  labels = ref$label.fine,
+                  de.method = 'wilcox')
+data_p2 <- AddMetaData(data_p2, annotation$pruned.labels, col.name = 'SingleR_fine')
+
+plotScoreHeatmap(annotation)
+
+title=paste("UMAP annotated by SingleR, patient", params$patient)
+plotumap<-DimPlot(data_p2, group.by="SingleR_fine", reduction = "umap", label = TRUE, repel = TRUE, label.size = 4) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
+plotumap
+ggsave(paste0(params$type,"_bridge_SingleR_", params$patient, ".jpeg"), plotumap, width = 3000,
+  height = 2000, units = "px")
+```
+
+Bubble plot on ADT
+
+```{r}
+data_p2<-subset(data_p2, subset= bridge_annot=="bridge")
+data_p2$timepoint <- factor(
+  data_p2$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+adt_markers <- c("Folate-receptor", "CD14.1", "CD11b", "CD16", "CD163.1", "CD15","CD3", "CD4.1", "CD8", "CD19.1", "CD20", "CD10", "CD5.1", "CD69.1", "CD279 (PD-1)", "CD56")
+
+# DotPlot Seurat
+dotplot<-DotPlot(data_p2, features = adt_markers, group.by = "timepoint", assay="ADT") +
+  ggtitle(paste(
+    "ADT expression in the bridge B-macrophages across timepoints, patient",
+    params$patient
+  )) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+  )
+
+dotplot
+
+ggsave(paste0("DotPlot_", params$patient, ".jpeg"), dotplot, width = 3000,
+  height = 1500, units = "px")
 ```
 
 ## Patient 3
@@ -200,6 +249,35 @@ antibodies_names_p3 <- rownames(bridge.adt_p3)
 write.table(antibodies_names_p3, file = "bridge_adt_p3", sep = "\t", quote = FALSE, row.names = FALSE,
     col.names = FALSE)
 ```
+
+Bubble plot on ADT
+
+```{r}
+data_p3<-subset(data_p3, subset= bridge_annot=="bridge")
+data_p3$timepoint <- factor(
+  data_p3$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+adt_markers <- c("CD11b", "CD14.1", "CD15", "CD16", "CD163.1", "Folate-receptor", "CD177.1", "CD47.1", "CD31","CD19.1", "CD20", "CD10", "CD5.1", "CD3", "CD4.1", "CD8", "CD69.1", "CD56")
+
+# DotPlot Seurat
+dotplot<-DotPlot(data_p3, features = adt_markers, group.by = "timepoint", assay="ADT") +
+  ggtitle(paste(
+    "ADT expression in the bridge B-macrophages across timepoints, patient",
+    params$patientbis
+  )) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+  )
+dotplot
+
+ggsave(paste0("DotPlot_", params$patientbis, ".jpeg"), dotplot, width = 3000,
+  height = 1500, units = "px")
+```
+
+## 
 
 ## Venn diagram
 
