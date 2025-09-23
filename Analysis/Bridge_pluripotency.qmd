@@ -1,0 +1,426 @@
+---
+title: "Bridge B-macro"
+params: 
+  patient: "P2"
+  patientbis: "P3"
+  fileP2: "/home/ablanc/work/NetBIO2/Seurat/P2/Annotation_LogNorm/CLL_annotated_Seurat_LogNorm_P2.rds"
+  fileP3: "/home/ablanc/work/NetBIO2/Seurat/P3/Annotation_LogNorm/CLL_annotated_Seurat_LogNorm_P3.rds"
+  type: "Seurat"
+format: html
+editor: visual
+---
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+.libPaths("/work/user/ablanc/NetBIO2/renv/library/linux-rhel-8.10/R-4.5/x86_64-pc-linux-gnu")
+library(SeuratObject)
+library(Seurat)
+library(CytoTRACE2) 
+library(ggplot2)
+library(patchwork)
+library(dplyr)
+source("functions.R")
+```
+
+Read the data pre-processed and keep B cells and macrophages and annotate the cells bridge
+
+```{r}
+UMAPdata_p2 <- readRDS(params$fileP2)
+data_p2 <- UMAPdata_p2
+```
+
+```{r}
+plotumap<-DimPlot(data_p2, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap("UMAP", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0("macro_B_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+umap_coords <- Embeddings(data_p2, "umap")
+umap_df <- as.data.frame(umap_coords)
+colnames(umap_df)
+umap_df$cell <- rownames(umap_df)
+colnames(umap_df)
+
+x_min <- 2.5
+x_max <- 6
+y_min <- 4.5
+y_max <- 7
+
+umap_df$selected <- ifelse(
+  umap_df$umap_1 >= x_min & umap_df$umap_1 <= x_max &
+  umap_df$umap_2 >= y_min & umap_df$umap_2 <= y_max,
+  "bridge",  
+  NA      
+)
+
+# Add "bridge" or final annotation
+umap_df <- umap_df %>%
+  mutate(
+    bridge_annot = ifelse(is.na(selected), data_p2$final_annot[cell], selected)
+  )
+
+data_p2$bridge_annot <- umap_df$bridge_annot[match(colnames(data_p2), umap_df$cell)]
+
+table(data_p2$bridge_annot)
+
+# Plot UMAP
+umap_df$bridge_annot <- data_p2$bridge_annot[match(umap_df$cell, colnames(data_p2))]
+
+plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = bridge_annot)) +
+  geom_point(size = 1) +
+  scale_color_manual(values = c("bridge" = "red", "B" = "grey", "Macrophages" = "grey", "B naive" = "grey", "B memory" = "grey", "B intermediate" = "grey")) +
+  theme_minimal() +
+  ggtitle("Bridge B cells and macrophages")
+plotumap
+ggsave(paste0("bridge_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+CytoTRACE2
+
+```{r}
+# List of timepoints to analyze
+timepoints <- c("D1", "D4", "D8", "D11", "D14")
+
+# List to store results
+cytotrace_results <- list()
+boxplot_list <- list()
+umap_list <- list()
+
+# Cell types of interest
+cell_types <- c("B", "B intermediate", "B memory", "B naive", "Macrophage", "bridge")
+
+# Loop for each timepoint
+for (tp in timepoints) {
+  cat(paste("Processing", tp, "\n"))
+  
+  # Subset the data for the current timepoint
+  data_subset <- subset(data_p2, subset = (bridge_annot %in% cell_types & timepoint == tp))
+  
+  # Check if there are cells for this timepoint
+  if (ncol(data_subset) > 0) {
+    
+    # Set identities
+    Idents(data_subset) <- data_subset$bridge_annot
+    
+    # Extract expression matrix
+    expr_matrix <- Seurat::GetAssayData(data_subset, assay = "RNA", slot = "counts")
+    
+    # Analyze with CytoTRACE2
+    cytotrace2_result <- cytotrace2(expr_matrix, species = "human", ncores = 1)
+    
+    # Store results
+    cytotrace_results[[tp]] <- cytotrace2_result
+    
+    # Create annotation
+    annotation <- data.frame(
+      Phenotype_CT2 = as.character(Idents(data_subset)),
+      row.names = colnames(data_subset)
+    )
+    
+    # Generate plots
+    plots <- plotData(cytotrace2_result = cytotrace2_result, 
+                      annotation = annotation,
+                      expression_data = expr_matrix)
+    
+    # Edit plot titles
+    umap_plot <- plots$CytoTRACE2_UMAP + 
+      ggtitle(paste("CytoTRACE2 UMAP -", tp)) +
+      theme(plot.title = element_text(hjust = 0.5))
+    
+    boxplot_plot <- plots$CytoTRACE2_Boxplot_byPheno + 
+      ggtitle(paste("CytoTRACE2 Scores -", tp)) +
+      theme(plot.title = element_text(hjust = 0.5),
+            axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    # Store plots
+    umap_list[[tp]] <- umap_plot
+    boxplot_list[[tp]] <- boxplot_plot
+    
+    # Save individual plots
+    ggsave(paste0("cytotrace_umap_", tp, "_", params$patientbisbis, ".jpeg"), 
+           umap_plot, width = 3000, height = 1500, units = "px")
+    
+    ggsave(paste0("cytotrace_boxplot_", tp, "_", params$patientbisbis, ".jpeg"), 
+           boxplot_plot, width = 3000, height = 1500, units = "px")
+    
+  } else {
+    cat(paste("No cells found for", tp, "\n"))
+  }
+}
+
+# Create combined plots
+if (length(umap_list) > 0) {
+  # Combined UMAP
+  combined_umap <- wrap_plots(umap_list, ncol = 3)
+  combined_umap <- combined_umap + 
+    plot_annotation(title = paste("CytoTRACE2 UMAP Analysis - Patient", params$patientbis),
+                    theme = theme(plot.title = element_text(size = 16, hjust = 0.5)))
+  
+  # Save combined UMAP
+  ggsave(paste0("cytotrace_umap_combined_", params$patientbis, ".jpeg"), 
+         combined_umap, width = 5000, height = 3000, units = "px")
+  
+  # Combined box plots
+  combined_boxplots <- wrap_plots(boxplot_list, ncol = 3)
+  combined_boxplots <- combined_boxplots + 
+    plot_annotation(title = paste("CytoTRACE2 Scores by Timepoint - Patient", params$patientbis),
+                    theme = theme(plot.title = element_text(size = 16, hjust = 0.5)))
+  
+  # Save combined box plots
+  ggsave(paste0("cytotrace_boxplots_combined_", params$patientbis, ".jpeg"), 
+         combined_boxplots, width = 5000, height = 3000, units = "px")
+}
+
+# Create a comparative plot of mean scores per timepoint
+if (length(cytotrace_results) > 0) {
+  # Extract scores for each timepoint
+  scores_summary <- data.frame()
+  
+  for (tp in names(cytotrace_results)) {
+    data_subset <- subset(data_p2, subset = (bridge_annot %in% cell_types & timepoint == tp))
+    
+    if (ncol(data_subset) > 0) {
+      scores <- cytotrace_results[[tp]]$CytoTRACE2_Score
+      cell_types_subset <- as.character(Idents(data_subset))
+      
+      temp_df <- data.frame(
+        Score = scores,
+        CellType = cell_types_subset,
+        Timepoint = tp,
+        stringsAsFactors = FALSE
+      )
+      
+      scores_summary <- rbind(scores_summary, temp_df)
+    }
+  }
+  
+  # Create a global comparative box plot
+  if (nrow(scores_summary) > 0) {
+    comparison_plot <- ggplot(scores_summary, aes(x = Timepoint, y = Score, fill = CellType)) +
+      geom_boxplot(alpha = 0.7) +
+      theme_minimal() +
+      labs(title = paste("CytoTRACE2 Scores Comparison Across Timepoints - Patient", params$patientbis),
+           x = "Timepoint", y = "CytoTRACE2 Score") +
+      theme(plot.title = element_text(hjust = 0.5),
+            axis.text.x = element_text(angle = 0, hjust = 0.5),
+            legend.position = "bottom") +
+      scale_fill_brewer(type = "qual", palette = "Set2")
+    
+    ggsave(paste0("cytotrace_comparison_", params$patientbis, ".jpeg"), 
+           comparison_plot, width = 4000, height = 2500, units = "px")
+    
+    # Also create a plot by cell type
+    facet_plot <- ggplot(scores_summary, aes(x = Timepoint, y = Score, fill = Timepoint)) +
+      geom_boxplot(alpha = 0.7) +
+      facet_wrap(~CellType, scales = "free_y", ncol = 3) +
+      theme_minimal() +
+      labs(title = paste("CytoTRACE2 Scores by Cell Type and Timepoint - Patient", params$patientbis),
+           x = "Timepoint", y = "CytoTRACE2 Score") +
+      theme(plot.title = element_text(hjust = 0.5),
+            axis.text.x = element_text(angle = 45, hjust = 1),
+            legend.position = "none") +
+      scale_fill_brewer(type = "qual", palette = "Set1")
+    
+    ggsave(paste0("cytotrace_by_celltype_", params$patientbis, ".jpeg"), 
+           facet_plot, width = 4500, height = 3000, units = "px")
+  }
+}
+```
+
+```{r}
+# List of timepoints to analyze
+timepoints <- c("D1", "D4", "D8", "D11", "D14")
+
+# List to store results
+cytotrace_results <- list()
+boxplot_list <- list()
+umap_list <- list()
+
+# Cell types of interest
+cell_types <- c("B", "B intermediate", "B memory", "B naive", "Macrophage", "bridge")
+
+# Loop for each timepoint
+for (tp in timepoints) {
+  cat(paste("Processing", tp, "\n"))
+  
+  # Subset the data for the current timepoint
+  data_subset <- subset(data_p2, subset = (bridge_annot %in% cell_types & timepoint == tp))
+  
+  # Check if there are cells for this timepoint
+  if (ncol(data_subset) > 0) {
+    
+    # Set identities
+    Idents(data_subset) <- data_subset$bridge_annot
+    
+    # Extract expression matrix
+    expr_matrix <- Seurat::GetAssayData(data_subset, assay = "RNA", slot = "counts")
+    
+    # Analyze with CytoTRACE2
+    cytotrace2_result <- cytotrace2(expr_matrix, species = "human", ncores = 1)
+    
+    # Store results
+    cytotrace_results[[tp]] <- cytotrace2_result
+    
+    # Create annotation
+    annotation <- data.frame(
+      Phenotype_CT2 = as.character(Idents(data_subset)),
+      row.names = colnames(data_subset)
+    )
+    
+    # Generate plots
+    plots <- plotData(cytotrace2_result = cytotrace2_result, 
+                      annotation = annotation,
+                      expression_data = expr_matrix)
+    
+    # Edit plot titles
+    umap_plot <- plots$CytoTRACE2_UMAP + 
+      ggtitle(paste("CytoTRACE2 UMAP -", tp)) +
+      theme(plot.title = element_text(hjust = 0.5))
+    
+    boxplot_plot <- plots$CytoTRACE2_Boxplot_byPheno + 
+      ggtitle(paste("CytoTRACE2 Scores -", tp)) +
+      theme(plot.title = element_text(hjust = 0.5),
+            axis.text.x = element_text(angle = 45, hjust = 1))
+    
+    # Store plots
+    umap_list[[tp]] <- umap_plot
+    boxplot_list[[tp]] <- boxplot_plot
+    
+    # Save individual plots
+    ggsave(paste0("cytotrace_umap_", tp, "_", params$patientbis, ".jpeg"), 
+           umap_plot, width = 3000, height = 1500, units = "px")
+    
+    ggsave(paste0("cytotrace_boxplot_", tp, "_", params$patientbis, ".jpeg"), 
+           boxplot_plot, width = 3000, height = 1500, units = "px")
+    
+  } else {
+    cat(paste("No cells found for", tp, "\n"))
+  }
+}
+```
+
+```{r}
+saveRDS(cytotrace_results, "cytotrace_results.rds")
+```
+
+```{r}
+# Create combined plots
+if (length(umap_list) > 0) {
+  # Combined UMAP
+  combined_umap <- wrap_plots(umap_list, ncol = 3)
+  combined_umap <- combined_umap + 
+    plot_annotation(title = paste("CytoTRACE2 UMAP Analysis - Patient", params$patientbis),
+                    theme = theme(plot.title = element_text(size = 16, hjust = 0.5)))
+  
+  # Save combined UMAP
+  ggsave(paste0("cytotrace_umap_combined_", params$patientbis, ".jpeg"), 
+         combined_umap, width = 5000, height = 3000, units = "px")
+  
+  # Combined box plots
+  combined_boxplots <- wrap_plots(boxplot_list, ncol = 3)
+  combined_boxplots <- combined_boxplots + 
+    plot_annotation(title = paste("CytoTRACE2 Scores by Timepoint - Patient", params$patientbis),
+                    theme = theme(plot.title = element_text(size = 16, hjust = 0.5)))
+  
+  # Save combined box plots
+  ggsave(paste0("cytotrace_boxplots_combined_", params$patientbis, ".jpeg"), 
+         combined_boxplots, width = 5000, height = 3000, units = "px")
+}
+```
+
+```{r}
+# Create a comparative plot of mean scores per timepoint
+if (length(cytotrace_results) > 0) {
+  # Extract scores for each timepoint
+  scores_summary <- data.frame()
+  
+  for (tp in names(cytotrace_results)) {
+    data_subset <- subset(data_p2, subset = (bridge_annot %in% cell_types & timepoint == tp))
+    
+    if (ncol(data_subset) > 0) {
+      scores <- cytotrace_results[[tp]]$CytoTRACE2_Score
+      cell_types_subset <- as.character(Idents(data_subset))
+      
+      temp_df <- data.frame(
+        Score = scores,
+        CellType = cell_types_subset,
+        Timepoint = tp,
+        stringsAsFactors = FALSE
+      )
+      
+      scores_summary <- rbind(scores_summary, temp_df)
+    }
+  }
+  
+  # Create a global comparative box plot
+  if (nrow(scores_summary) > 0) {
+    comparison_plot <- ggplot(scores_summary, aes(x = Timepoint, y = Score, fill = CellType)) +
+      geom_boxplot(alpha = 0.7) +
+      theme_minimal() +
+      labs(title = paste("CytoTRACE2 Scores Comparison Across Timepoints - Patient", params$patientbis),
+           x = "Timepoint", y = "CytoTRACE2 Score") +
+      theme(plot.title = element_text(hjust = 0.5),
+            axis.text.x = element_text(angle = 0, hjust = 0.5),
+            legend.position = "bottom") +
+      scale_fill_brewer(type = "qual", palette = "Set2")
+    
+    ggsave(paste0("cytotrace_comparison_", params$patientbis, ".jpeg"), 
+           comparison_plot, width = 4000, height = 2500, units = "px")
+    
+    # Also create a plot by cell type
+    facet_plot <- ggplot(scores_summary, aes(x = Timepoint, y = Score, fill = Timepoint)) +
+      geom_boxplot(alpha = 0.7) +
+      facet_wrap(~CellType, scales = "free_y", ncol = 3) +
+      theme_minimal() +
+      labs(title = paste("CytoTRACE2 Scores by Cell Type and Timepoint - Patient", params$patientbis),
+           x = "Timepoint", y = "CytoTRACE2 Score") +
+      theme(plot.title = element_text(hjust = 0.5),
+            axis.text.x = element_text(angle = 45, hjust = 1),
+            legend.position = "none") +
+      scale_fill_brewer(type = "qual", palette = "Set1")
+    
+    ggsave(paste0("cytotrace_by_celltype_", params$patientbis, ".jpeg"), 
+           facet_plot, width = 4500, height = 3000, units = "px")
+  }
+}
+```
+
+Analyze the results
+
+Cells bridge per timepoints
+
+```{r}
+bridge_cells <- subset(data_p2, subset = bridge_annot == "bridge")
+table_bridge_by_time <- table(bridge_cells$timepoint)
+table_bridge_by_time
+```
+
+Cells per types, per timepoints and per potency
+
+```{r}
+tables_by_timepoint <- list()
+for (tp in timepoints) {
+  table.tp<-table(cytotrace_results[[tp]]$CytoTRACE2_Potency)
+  tables_by_timepoint[[tp]] <- table.tp
+}
+
+df_all <- do.call(rbind, lapply(names(tables_by_timepoint), function(tp) {
+  df <- as.data.frame(tables_by_timepoint[[tp]])
+  df$Timepoint <- tp
+  colnames(df) <- c("Potency", "Freq", "Timepoint")
+  return(df)
+}))
+
+head(df_all)
+```
+
+Proliferation markers
+
+```{r}
+proli<-FeaturePlot(data_p2, features = c("MKI67","TOP2A"), reduction = "umap")
+proli
+ggsave(paste0("proli_", params$patient, ".jpeg"), proli, width = 6000, height = 5000, units = "px")
+```
