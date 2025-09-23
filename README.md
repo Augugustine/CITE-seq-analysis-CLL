@@ -5,9 +5,13 @@ The primary objective of this project was to establish a robust and reliable cel
 
 - Pre-processing of the scRNA-seq data, including: Quality control (QC), Filtering, Normalization and scaling, Removal of doublets, Exclusion of non-coding genes
 
-+ Cell type annotation, performed using: Manual annotation based on marker genes, Automated annotation tools (SingleR, scPred, Azimuth...)
++ Cell type annotation, performed using: manual annotation based on marker genes, automated annotation tools (SingleR and Azimuth...)
 
 * Cross-validation between methods to ensure consistency and accuracy
+
++ Trajectory: to reconstruct the dynamic progression of cells, to identify transitional states and understand how cell populations evolve over time. We used the 5 timepoints and computational trajectory tools Monocle3.
+
+- Exploring the intermediate cluster to characterize its cellular composition and underlying biological processes, including differential gene expression analysis, pluripotency profiling, pathway enrichment... 
 
 ## Dataset 
 The data used in this study comes from autologous cell cultures. These cultures were generated from blood samples of 3 patients with chronic lymphocytic leukemia (CLL). They contain peripheral blood mononuclear cells (PBMCs) with the addition of exogenous neutrophils. Samples were collected at five specific time points: Day 1, Day 4, Day 8, Day 11, and Day 14, to monitor this progression. Cells from each time point were analyzed using CITE-seq (RNA + ADT). 
@@ -17,7 +21,7 @@ Specifically, the input data consist of the filtered_feature_bc_matrix.h5 and ra
 ## Resources 
 R and RStudio (version ≥ 4.3.x)
 R packages, primarily:
-- Seurat v5.2.0
+- Seurat v5.3.1
 * Additional dependencies listed in the renv environment (see the env folder)
 
 The project uses renv to manage R dependencies, ensuring reproducibility. The environment is compatible with R version ≥ 4.3.x  
@@ -36,7 +40,13 @@ Python (used for complementary tools, details available in the relevant scripts)
 + pre-processing_doublet: Pre-processing pipeline without doublet removal.
 - pre-processing_days_sep: Standard Seurat pipeline including doublet removal, non-coding gene removal, QC and filtering, but applied separately to each day.
 
-### The annotation folder contains scripts for automatic and manual annotation 
+### The annotation folder contains scripts for automatic and manual annotation and then final annotation which combines manual and final annotation
+### The trajectory folder contains scripts for the trajectory
+### The analysis folder contains scripts for the analysis for the intermediate clusters (CLL-T cluster and CLL-macrophages cluster)
+
+
+
+
 
 
 ## Author 
