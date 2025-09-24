@@ -97,7 +97,7 @@ for (tp in timepoints) {
   cat(paste("Processing", tp, "\n"))
   
   # Subset the data for the current timepoint
-  data_subset <- subset(data_p2, subset = (bridge_annot %in% cell_types & timepoint == tp))
+  #data_subset <- subset(data_p2, subset = (bridge_annot %in% cell_types & timepoint == tp))
   
   # Check if there are cells for this timepoint
   if (ncol(data_subset) > 0) {

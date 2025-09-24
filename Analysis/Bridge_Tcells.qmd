@@ -1,0 +1,150 @@
+---
+title: "Bridge T-macro"
+params: 
+  patient: "P2"
+  file: "CLL_P1_seurat_reduit.rds"
+format: html
+editor: visual
+---
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+library(hdf5r)
+library(dplyr)
+library(patchwork)
+library(ggplot2)
+library(stringr)
+library(pheatmap)
+library(viridis)
+library(gridExtra)
+library(ggVennDiagram)
+library(SingleR)
+library(celldex)
+source("functions.R")
+```
+
+Read the data pre-processed and keep B cells and T cells
+
+```{r}
+data<-readRDS(params$file)
+data<-subset(data, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","CD4 T", "CD8 T", "T")))
+```
+
+# Explore the bridge
+
+Cells bridge
+
+Patient 3
+
+```{r}
+plotumap<-DimPlot(data, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap("UMAP", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plotumap
+ggsave(paste0("T_B_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+
+umap_coords <- Embeddings(data, "umap")
+umap_df <- as.data.frame(umap_coords)
+colnames(umap_df)
+umap_df$cell <- rownames(umap_df)
+colnames(umap_df)
+
+x_min <- -2.5
+x_max <- 2.5
+y_min <- 2.5
+y_max <- 7
+
+umap_df$selected <- ifelse(
+  umap_df$umap_1 >= x_min & umap_df$umap_1 <= x_max &
+  umap_df$umap_2 >= y_min & umap_df$umap_2 <= y_max,
+  "bridgeT",  
+  NA      
+)
+
+# Add "bridge" or final annotation
+umap_df <- umap_df %>%
+  mutate(
+    bridgeT_annot = ifelse(is.na(selected), data$final_annot[cell], selected)
+  )
+
+data$bridgeT_annot <- umap_df$bridgeT_annot[match(colnames(data), umap_df$cell)]
+
+table(data$bridgeT_annot)
+
+# Plot UMAP
+umap_df$bridgeT_annot <- data$bridgeT_annot[match(umap_df$cell, colnames(data))]
+
+plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = bridgeT_annot)) +
+  geom_point(size = 1) +
+  scale_color_manual(values = c("bridgeT" = "red", "B" = "grey", "CD4 T" = "grey", "CD8 T" = "grey", "T" = "grey", "B naive" = "grey", "B memory" = "grey", "B intermediate" = "grey")) +
+  theme_minimal() +
+  ggtitle("Bridge CLL cells and T cells")
+plotumap
+ggsave(paste0("bridge_T_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+Markers RNA and ADT
+
+```{r}
+Idents(data) <- data$bridgeT_annot
+bridge.markers <- FindMarkers(data, ident.1 = "bridgeT", ident.2 = c("CD4 T", "CD8 T", "T","B", "B naive","B intermediate","B memory"))
+head(bridge.markers)
+nrow(bridge.markers)
+
+top_genes <- bridge.markers %>%
+  dplyr::filter(avg_log2FC > 1, p_val_adj < 0.05)
+
+gene_names <- rownames(top_genes)
+
+write.table(gene_names, file = "T_bridge_genes", sep = "\t", quote = FALSE, row.names = FALSE,
+    col.names = FALSE)
+```
+
+```{r}
+Idents(data) <- data$bridgeT_annot
+bridge.adt <- FindMarkers(data, ident.1 = "bridgeT", ident.2 = c("CD4 T", "CD8 T", "T","B", "B naive","B intermediate","B memory"), assay="ADT", slot = "data")
+head(bridge.adt)
+nrow(bridge.adt)
+
+antibodies_names <- rownames(bridge.adt)
+
+write.table(antibodies_names, file = "T_bridge_adt_", sep = "\t", quote = FALSE, row.names = FALSE,col.names = FALSE)
+```
+
+Fine annotation
+
+Bubble plot on ADT
+
+```{r}
+data<-subset(data, subset= bridgeT_annot=="bridgeT")
+data$timepoint <- factor(
+  data$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+adt_markers <- c("CD193 (CCR3)", "CD11b", "CD15", "Folate-receptor", "CD177.1", "CD16", "CD31", "CD47.1","CD69.1", "CD19.1", "CD279 (PD-1)", "CD3", "CD5.1", "CD20", "CD4.1", "CD8", "CD56")
+
+# DotPlot Seurat
+dotplot<-DotPlot(data, features = adt_markers, group.by = "timepoint", assay="ADT") +
+  ggtitle(paste(
+    "ADT expression in the bridge CLL-T cells across timepoints, patient",
+    params$patient
+  )) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1)
+  )
+
+dotplot
+
+ggsave(paste0("DotPlot_T_", params$patient, ".jpeg"), dotplot, width = 3000,
+  height = 1500, units = "px")
+```
+
+## 
