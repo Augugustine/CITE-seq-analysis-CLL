@@ -3,9 +3,8 @@ title: "Bridge B-macro"
 params: 
   patient: "P2"
   patientbis: "P3"
-  fileP2: "CLL_P1_seurat_reduit.rds"
-  fileP3: "CLL_manual_annotated_valiDrops_P2.rds"
-  type: "valiDrops"
+  fileP2: "Matrix/CLL_annotated_Seurat_LogNorm_P2.rds"
+  fileP3: "Matrix/CLL_annotated_Seurat_LogNorm_P3.rds"
 format: html
 editor: visual
 ---
@@ -28,6 +27,8 @@ library(gridExtra)
 library(ggVennDiagram)
 library(SingleR)
 library(celldex)
+library(starTracer)
+library(ComplexHeatmap)
 source("functions.R")
 ```
 
@@ -94,7 +95,7 @@ plotumap
 ggsave(paste0("bridge_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
 ```
 
-Markers RNA and ADT
+Markers RNA and ADT ; differential gene expression with Seurat function FinderMarkers
 
 ```{r}
 Idents(data_p2) <- data_p2$bridge_annot
@@ -111,13 +112,6 @@ write.table(gene_names_p2, file = "bridge_genes_p2", sep = "\t", quote = FALSE, 
     col.names = FALSE)
 ```
 
-With DEseq2
-
-```{r}
-dds <- DESeq(dds)
-res <- results(dds, contrast=c("cluster", "cluster2", "cluster1"))
-```
-
 ```{r}
 Idents(data_p2) <- data_p2$bridge_annot
 bridge.adt_p2 <- FindMarkers(data_p2, ident.1 = "bridge", ident.2 = c("Macrophage","B", "B naive","B intermediate","B memory"), assay="ADT", slot = "data")
@@ -127,6 +121,31 @@ nrow(bridge.adt_p2)
 antibodies_names_p2 <- rownames(bridge.adt_p2)
 
 write.table(antibodies_names_p2, file = "bridge_adt_p2", sep = "\t", quote = FALSE, row.names = FALSE,col.names = FALSE)
+```
+
+Differential genes expression with StarTracer (Zhang et al., 2023)
+
+```{r}
+Idents(data_p2) <- data_p2$bridge_annot
+res <- searchMarker(
+  x = data_p2, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 100,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = NULL
+)
+bridge<-res[["exprs.markers"]]
+bridge<-as.data.frame(bridge)
+bridge <- bridge[, "bridge", drop = FALSE]
+bridge<-bridge[order(bridge$bridge, decreasing = TRUE), drop = FALSE,]
+genes_bridge<-rownames(head(bridge, 100))
+write.table(genes_bridge, file = "bridge_genes_startracer_p2", sep = "\t", quote = FALSE, row.names = FALSE,col.names = FALSE)
+pdf("heatmap.pdf", width = 8, height = 8)
+draw(res[["heatmap"]])
+dev.off()
 ```
 
 Fine annotation (M1 and M2)
@@ -185,8 +204,6 @@ dotplot
 ggsave(paste0("DotPlot_", params$patient, ".jpeg"), dotplot, width = 3000,
   height = 1500, units = "px")
 ```
-
-CytoTRACE2
 
 ## Patient 3
 
@@ -265,6 +282,31 @@ antibodies_names_p3 <- rownames(bridge.adt_p3)
 
 write.table(antibodies_names_p3, file = "bridge_adt_p3", sep = "\t", quote = FALSE, row.names = FALSE,
     col.names = FALSE)
+```
+
+Differential genes expression with StarTracer (Zhang et al., 2023)
+
+```{r}
+Idents(data_p3) <- data_p3$bridge_annot
+res <- searchMarker(
+  x = data_p3, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 100,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = NULL
+)
+bridge<-res[["exprs.markers"]]
+bridge<-as.data.frame(bridge)
+bridge <- bridge[, "bridge", drop = FALSE]
+bridge<-bridge[order(bridge$bridge, decreasing = TRUE), drop = FALSE,]
+genes_bridge<-rownames(head(bridge, 100))
+write.table(genes_bridge, file = "bridge_genes_startracer_p3", sep = "\t", quote = FALSE, row.names = FALSE,col.names = FALSE)
+pdf("heatmap_p3.pdf", width = 8, height = 8)
+draw(res[["heatmap"]])
+dev.off()
 ```
 
 Fine annotation (M1 and M2)
