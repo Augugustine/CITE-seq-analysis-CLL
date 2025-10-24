@@ -1,0 +1,37 @@
+---
+title: "Matrix SingleCellExplorer"
+params: 
+  patient: "P2"
+  patientbis: "P3"
+  fileP2: "Matrix/CLL_annotated_Seurat_LogNorm_P2.rds"
+  fileP3: "Matrix/CLL_annotated_Seurat_LogNorm_P3.rds"
+format: html
+editor: visual
+---
+
+## Data and libraries initialization
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(sp)
+library(Seurat)
+```
+
+Read the data pre-processed and keep B cells and macrophages
+
+```{r}
+data_p2<-readRDS(params$fileP2)
+data_p2<-subset(data_p2, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage")))
+
+data_p3<-readRDS(params$fileP3)
+data_p3<-subset(data_p3, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage")))
+```
+
+```{r}
+expr_matrix <- GetAssayData(data_p2, slot = "data")
+expr_df <- as.data.frame(as.matrix(expr_matrix))
+expr_df <- t(expr_df)
+expr_df$id <- rownames(expr_matrix)
+write.table(expr_df, "data_p2.tsv", sep="\t", row.names = FALSE, col.names=TRUE)
+```

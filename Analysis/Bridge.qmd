@@ -132,7 +132,7 @@ res <- searchMarker(
   thresh.1 = 0.5,
   thresh.2 = NULL,
   method = "pos", 
-  num = 100,
+  num = 2000,
   gene.use = NULL,
   meta.data = NULL,
   ident.use = NULL
@@ -141,7 +141,7 @@ bridge<-res[["exprs.markers"]]
 bridge<-as.data.frame(bridge)
 bridge <- bridge[, "bridge", drop = FALSE]
 bridge<-bridge[order(bridge$bridge, decreasing = TRUE), drop = FALSE,]
-genes_bridge<-rownames(head(bridge, 100))
+genes_bridge<-rownames(head(bridge, 2000))
 write.table(genes_bridge, file = "bridge_genes_startracer_p2", sep = "\t", quote = FALSE, row.names = FALSE,col.names = FALSE)
 pdf("heatmap.pdf", width = 8, height = 8)
 draw(res[["heatmap"]])
@@ -293,7 +293,7 @@ res <- searchMarker(
   thresh.1 = 0.5,
   thresh.2 = NULL,
   method = "pos", 
-  num = 100,
+  num = 1000,
   gene.use = NULL,
   meta.data = NULL,
   ident.use = NULL
@@ -302,7 +302,7 @@ bridge<-res[["exprs.markers"]]
 bridge<-as.data.frame(bridge)
 bridge <- bridge[, "bridge", drop = FALSE]
 bridge<-bridge[order(bridge$bridge, decreasing = TRUE), drop = FALSE,]
-genes_bridge<-rownames(head(bridge, 100))
+genes_bridge<-rownames(head(bridge, 1000))
 write.table(genes_bridge, file = "bridge_genes_startracer_p3", sep = "\t", quote = FALSE, row.names = FALSE,col.names = FALSE)
 pdf("heatmap_p3.pdf", width = 8, height = 8)
 draw(res[["heatmap"]])
