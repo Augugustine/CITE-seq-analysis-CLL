@@ -29,6 +29,7 @@ library(SingleR)
 library(celldex)
 library(starTracer)
 library(ComplexHeatmap)
+library(VISION)
 source("functions.R")
 ```
 
@@ -203,6 +204,31 @@ dotplot
 
 ggsave(paste0("DotPlot_", params$patient, ".jpeg"), dotplot, width = 3000,
   height = 1500, units = "px")
+```
+
+VISION for found the enriched pathways
+
+```{r}
+signatures <- "c7.all.v2025.1.Hs.symbols.gmt"
+
+scaled_counts <- GetAssayData(data_p2, assay = "RNA",slot = "data")
+saveRDS(scaled_counts,"scaled_count")
+
+meta <- as.data.frame(data_p2@meta.data[["bridge_annot"]])
+rownames(meta) <- rownames(data_p2@meta.data)
+colnames(meta)[1] <- "celltypes"
+saveRDS(meta,"meta")
+
+vis <- Vision(scaled_counts,
+              signatures = signatures,
+              meta = meta,
+              latentSpace = as.data.frame(data_p2@reductions[["pca"]]@cell.embeddings) )
+
+vis <- addProjection(vis, "umap", coordinates= as.matrix(data_p2@reductions[["umap"]]@cell.embeddings))
+vis <- analyze(vis)
+
+# View results
+viewResults(vis)
 ```
 
 ## Patient 3
