@@ -2,7 +2,7 @@
 title: "GRN"
 params: 
   patient: "P1"
-  file: "CLL_P1_seurat_reduit.rds"
+  file: "Matrix/CLL_annotated_Seurat_LogNorm_P1.rds"
 format: html
 editor: visual
 ---
@@ -23,6 +23,8 @@ library(stringr)
 library(pheatmap)
 library(viridis)
 library(gridExtra)
+library(SCopeLoomR)
+library(AUCell)
 source("functions.R")
 ```
 
@@ -30,8 +32,78 @@ Read the data pre-processed
 
 ```{r}
 data<-readRDS(params$file)
+Idents(data) <- data$final_annot
 ```
 
 ```{r}
-SaveLoom(data,filenmae=LoomData)
+SaveLoom(data, filename="TimeCourse.loom")
+```
+
+Apply pySCENIC in the Genotoul cluster with the script "pySCENIC.sh"
+
+```{r}
+auc_mtx <- read.csv("Matrix/step_3_aucell.csv")
+auc_mtx <- read.table("Matrix/step_3_aucell.csv", sep=",")
+auc_mtx <- t(auc_mtx)
+auc_mtx <- as.data.frame(auc_mtx)
+rownames(auc_mtx) <- gsub("[(+)]", "",auc_mtx$V1)
+auc_mtx <- auc_mtx[,-1]
+colnames(auc_mtx)<-auc_mtx[1, ]
+auc_mtx <- auc_mtx[-1, ]
+auc_mtx<-as.matrix(auc_mtx)
+auc_mtx <- apply(auc_mtx, 2, as.numeric)
+
+regulons <- read.csv("Matrix/step_2_reg.csv")
+```
+
+```{r}
+auc_mtx <- read.csv("Matrix/step_3_aucell.csv", row.names = 1, check.names=FALSE)
+auc_mtx <- t(auc_mtx)
+auc_mtx <- as.data.frame(auc_mtx)
+rownames(auc_mtx) <- gsub("[(+)]", "", rownames(auc_mtx))
+auc_mtx[] <- lapply(auc_mtx, as.numeric)
+auc_mtx <- as.matrix(auc_mtx)
+```
+
+```{r}
+barplot(as.numeric(auc_mtx), main="Distribution des scores AUC SCENIC")
+```
+
+Binaryzation
+
+```{r}
+
+```
+
+Differential regulons analysis
+
+```{r}
+data[['AUC']] <- CreateAssayObject(data = auc_mtx)
+DefaultAssay(data) <- 'AUC'
+
+celltypes <- unique(data$final_annot)
+
+deg.ls <- lapply(celltypes, function(ct) {
+  deg <- FindMarkers(
+    data,
+    ident.1 = ct,
+    ident.2 = NULL,           # contre toutes les autres cellules
+    logfc.threshold = 0.05,
+    min.pct = 0.1
+  )
+  deg$avg_logFC <- as.numeric(deg$avg_logFC)
+  deg.up <- deg[which(deg$avg_logFC > 0), ]
+  deg.dn <- deg[which(deg$avg_logFC < 0), ]
+  deg <- list(deg.up, deg.dn)
+  return(deg)
+})
+
+names(deg.ls) <- celltypes
+top_regulons <- unique(unlist(lapply(deg.ls, function(x) rownames(head(x, 10)))))
+length(top_regulons)
+```
+
+```{r}
+data <- ScaleData(data, assay = 'AUC', features = rownames(auc_mtx))
+DoHeatmap(data, features = top_regulons, slot = 'scale.data', raster = F, group.by = "final_annot" )
 ```
