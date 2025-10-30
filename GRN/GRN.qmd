@@ -33,6 +33,7 @@ Read the data pre-processed
 ```{r}
 data<-readRDS(params$file)
 Idents(data) <- data$final_annot
+#data<-subset(data, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage")))
 ```
 
 ```{r}
@@ -42,31 +43,40 @@ SaveLoom(data, filename="TimeCourse.loom")
 Apply pySCENIC in the Genotoul cluster with the script "pySCENIC.sh"
 
 ```{r}
-auc_mtx <- read.csv("Matrix/step_3_aucell.csv")
-auc_mtx <- read.table("Matrix/step_3_aucell.csv", sep=",")
-auc_mtx <- t(auc_mtx)
-auc_mtx <- as.data.frame(auc_mtx)
-rownames(auc_mtx) <- gsub("[(+)]", "",auc_mtx$V1)
-auc_mtx <- auc_mtx[,-1]
-colnames(auc_mtx)<-auc_mtx[1, ]
-auc_mtx <- auc_mtx[-1, ]
-auc_mtx<-as.matrix(auc_mtx)
-auc_mtx <- apply(auc_mtx, 2, as.numeric)
-
-regulons <- read.csv("Matrix/step_2_reg.csv")
-```
-
-```{r}
 auc_mtx <- read.csv("Matrix/step_3_aucell.csv", row.names = 1, check.names=FALSE)
 auc_mtx <- t(auc_mtx)
 auc_mtx <- as.data.frame(auc_mtx)
 rownames(auc_mtx) <- gsub("[(+)]", "", rownames(auc_mtx))
 auc_mtx[] <- lapply(auc_mtx, as.numeric)
 auc_mtx <- as.matrix(auc_mtx)
+
+regulons <- read.csv("Matrix/step_2_reg.csv")
 ```
 
 ```{r}
 barplot(as.numeric(auc_mtx), main="Distribution des scores AUC SCENIC")
+```
+
+```{r}
+groups <- data@meta.data[["final_annot"]]
+identical(colnames(auc_mtx), colnames(data))
+annotation_df <- data.frame(Cell_types = data@meta.data[["final_annot"]])
+rownames(annotation_df) <- colnames(auc_mtx)
+
+my_colors <- list(
+  Cell_types = c(B = "darkgreen","B intermediate" = "darkgreen","B memory" = "darkgreen","B naive" = "darkgreen", "CD4 T" = "lightblue", "CD8 T" = "lightblue", "T" = "lightblue", "Macrophage"= "red","Monocyte"="orange", "Neutrophil"="brown", "NK"="darkblue", "Erythroblast"="grey" )
+)
+
+pheatmap(
+  auc_mtx,
+  cluster_cols = TRUE,
+  cluster_rows = TRUE,
+  show_colnames = FALSE,
+  color = colorRampPalette(c("blue", "white", "red"))(100),
+  annotation_col = annotation_df, 
+  annotation_colors = my_colors
+)
+
 ```
 
 Binaryzation
@@ -75,12 +85,16 @@ Binaryzation
 
 ```
 
-Differential regulons analysis
+Add the AUC score in the Seurat object
 
 ```{r}
 data[['AUC']] <- CreateAssayObject(data = auc_mtx)
 DefaultAssay(data) <- 'AUC'
+```
 
+Differential regulons analysis
+
+```{r}
 celltypes <- unique(data$final_annot)
 
 deg.ls <- lapply(celltypes, function(ct) {
@@ -105,5 +119,9 @@ length(top_regulons)
 
 ```{r}
 data <- ScaleData(data, assay = 'AUC', features = rownames(auc_mtx))
-DoHeatmap(data, features = top_regulons, slot = 'scale.data', raster = F, group.by = "final_annot" )
+DoHeatmap(data, group.by = "final_annot" )
+```
+
+```{r}
+
 ```
