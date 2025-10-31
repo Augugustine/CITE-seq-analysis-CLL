@@ -23,7 +23,7 @@ library(stringr)
 library(pheatmap)
 library(viridis)
 library(gridExtra)
-library(SCopeLoomR)
+library(SeuratExtend)
 library(AUCell)
 source("functions.R")
 ```
@@ -40,9 +40,12 @@ Idents(data) <- data$final_annot
 SaveLoom(data, filename="TimeCourse.loom")
 ```
 
-Apply pySCENIC in the Genotoul cluster with the script "pySCENIC.sh"
+### Apply pySCENIC in the Genotoul cluster with the script "pySCENIC.sh"
+
+Import pySCENIC output
 
 ```{r}
+# AUC score dataframe
 auc_mtx <- read.csv("Matrix/step_3_aucell.csv", row.names = 1, check.names=FALSE)
 auc_mtx <- t(auc_mtx)
 auc_mtx <- as.data.frame(auc_mtx)
@@ -50,12 +53,15 @@ rownames(auc_mtx) <- gsub("[(+)]", "", rownames(auc_mtx))
 auc_mtx[] <- lapply(auc_mtx, as.numeric)
 auc_mtx <- as.matrix(auc_mtx)
 
+# TF and targets
 regulons <- read.csv("Matrix/step_2_reg.csv")
+
+# Loom output in seurat object
+scenic_output<-"/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/out_TimeCourse.loom"
+data <- ImportPyscenicLoom(scenic_output, seu = data)
 ```
 
-```{r}
-barplot(as.numeric(auc_mtx), main="Distribution des scores AUC SCENIC")
-```
+Heatmap
 
 ```{r}
 groups <- data@meta.data[["final_annot"]]
@@ -63,20 +69,55 @@ identical(colnames(auc_mtx), colnames(data))
 annotation_df <- data.frame(Cell_types = data@meta.data[["final_annot"]])
 rownames(annotation_df) <- colnames(auc_mtx)
 
+# Keep the most variable TFs
+var_auc <- apply(auc_mtx, 1, var)
+top_var_regulons <- names(sort(var_auc, decreasing = TRUE))[1:20]
+auc_mat_top <- auc_mtx[top_var_regulons, ]
+
 my_colors <- list(
   Cell_types = c(B = "darkgreen","B intermediate" = "darkgreen","B memory" = "darkgreen","B naive" = "darkgreen", "CD4 T" = "lightblue", "CD8 T" = "lightblue", "T" = "lightblue", "Macrophage"= "red","Monocyte"="orange", "Neutrophil"="brown", "NK"="darkblue", "Erythroblast"="grey" )
 )
 
+# Scaled matrix 
+auc_mat_scaled <- t(scale(t(auc_mat_top)))
+
+# Heatmap
 pheatmap(
-  auc_mtx,
+  auc_mat_top,
   cluster_cols = TRUE,
   cluster_rows = TRUE,
   show_colnames = FALSE,
   color = colorRampPalette(c("blue", "white", "red"))(100),
   annotation_col = annotation_df, 
-  annotation_colors = my_colors
-)
+  annotation_colors = my_colors)
 
+```
+
+```{r}
+tf_auc <- read.csv("Matrix/step_3_aucell.csv", row.names = 1, check.names=FALSE)
+colnames(tf_auc) <- gsub("[(+)]", "", colnames(tf_auc))
+celltypes<-data@meta.data[["final_annot"]]
+celltypes<-ifelse(celltypes=="B intermediate"|celltypes=="B naive"|celltypes=="B memory","B cells", celltypes)
+tf_zscore <- CalcStats(tf_auc, f = celltypes, order = "p", n = 4, t = TRUE) # change the n (n*cluster=TF number)
+plot<-Heatmap(tf_zscore, lab_fill = "zscore")
+plot
+ggsave(paste0("heatmap_tf", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+Waterfall plot (CLL-macro vs B, CLL-macro vs macro)
+
+```{r}
+plot<-WaterfallPlot(t(tf_auc), f = celltypes,
+  ident.1 = "B cells",      # First group of cells
+  ident.2 = "Macrophage",     # Second group of cells
+  exp.transform = FALSE,      # Disable transformation of expression data
+  top.n = 20,                  # Display the top 20 most differentially active TFs
+  length="logFC", 
+  log.base="2", 
+  color="p"
+)
+plot
+ggsave(paste0("waterfallplot_macroxbridge", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 Binaryzation
@@ -85,14 +126,12 @@ Binaryzation
 
 ```
 
-Add the AUC score in the Seurat object
+Differential regulons analysis
 
 ```{r}
 data[['AUC']] <- CreateAssayObject(data = auc_mtx)
 DefaultAssay(data) <- 'AUC'
 ```
-
-Differential regulons analysis
 
 ```{r}
 celltypes <- unique(data$final_annot)
@@ -115,13 +154,4 @@ deg.ls <- lapply(celltypes, function(ct) {
 names(deg.ls) <- celltypes
 top_regulons <- unique(unlist(lapply(deg.ls, function(x) rownames(head(x, 10)))))
 length(top_regulons)
-```
-
-```{r}
-data <- ScaleData(data, assay = 'AUC', features = rownames(auc_mtx))
-DoHeatmap(data, group.by = "final_annot" )
-```
-
-```{r}
-
 ```
