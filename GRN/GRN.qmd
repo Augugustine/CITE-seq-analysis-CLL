@@ -1,8 +1,12 @@
 ---
 title: "GRN"
 params: 
-  patient: "P1"
-  file: "Matrix/CLL_annotated_Seurat_LogNorm_P1.rds"
+  file_p2: "Matrix/CLL_annotated_Seurat_LogNorm_P2.rds"
+  file_p3: "Matrix/CLL_annotated_Seurat_LogNorm_P3.rds"
+  file_step2_p2: "Matrix/step_2_reg_p2.csv"
+  file_step3_p2: "Matrix/step_3_aucell_p2.csv"
+  file_step2_p3: "Matrix/step_2_reg_p3.csv"
+  file_step3_p3: "Matrix/step_3_aucell_p3.csv"
 format: html
 editor: visual
 ---
@@ -25,15 +29,21 @@ library(viridis)
 library(gridExtra)
 library(SeuratExtend)
 library(AUCell)
+library(clusterProfiler)
+library(org.Hs.eg.db)
 source("functions.R")
 ```
 
 Read the data pre-processed
 
 ```{r}
-data<-readRDS(params$file)
-Idents(data) <- data$final_annot
-#data<-subset(data, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage")))
+data_p2<-readRDS(params$file_p2)
+Idents(data_p2) <- data_p2$final_annot
+data_p2<-subset(data_p2, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage")))
+
+data_p3<-readRDS(params$file_p3)
+Idents(data_p3) <- data_p3$final_annot
+data_p3<-subset(data_p3, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage")))
 ```
 
 ```{r}
@@ -45,28 +55,182 @@ SaveLoom(data, filename="TimeCourse.loom")
 Import pySCENIC output
 
 ```{r}
+# TF and targets
+regulons_p2 <- read.csv(params$file_step2_p2)
+regulons_p3 <- read.csv(params$file_step2_p3)
+
+# Loom output in seurat object
+#scenic_output<-"/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/out_TimeCourse.loom"
+#data <- ImportPyscenicLoom(scenic_output, seu = data)
+```
+
+Bridge annotation P2
+
+```{r}
+umap_coords <- Embeddings(data_p2, "umap")
+umap_df <- as.data.frame(umap_coords)
+colnames(umap_df)
+umap_df$cell <- rownames(umap_df)
+colnames(umap_df)
+
+x_min <- 2.5
+x_max <- 6
+y_min <- 4.5
+y_max <- 7
+
+umap_df$selected <- ifelse(
+  umap_df$umap_1 >= x_min & umap_df$umap_1 <= x_max &
+  umap_df$umap_2 >= y_min & umap_df$umap_2 <= y_max,
+  "Intermediate population",  
+  NA      
+)
+
+# Add "bridge" on final annotation
+umap_df <- umap_df %>%
+  mutate(
+    bridge_annot = ifelse(is.na(selected), data_p2$final_annot[cell], selected)
+  )
+
+data_p2$bridge_annot <- umap_df$bridge_annot[match(colnames(data_p2), umap_df$cell)]
+
+table(data_p2$bridge_annot)
+
+# Plot UMAP
+umap_df$bridge_annot <- data_p2$bridge_annot[match(umap_df$cell, colnames(data_p2))]
+
+plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = bridge_annot)) +
+  geom_point(size = 1) +
+  scale_color_manual(values = c("Intermediate population" = "red", "B" = "grey", "Macrophages" = "grey", "B naive" = "grey", "B memory" = "grey", "B intermediate" = "grey")) +
+  theme_minimal() +
+  ggtitle("Bridge B cells and macrophages")
+plotumap
+```
+
+P3
+
+```{r}
+umap_coords <- Embeddings(data_p3, "umap")
+umap_df <- as.data.frame(umap_coords)
+colnames(umap_df)
+umap_df$cell <- rownames(umap_df)
+colnames(umap_df)
+
+x_min <- 3.5
+x_max <- 7.5
+y_min <- -2.5
+y_max <- 0
+
+umap_df$selected <- ifelse(
+  umap_df$umap_1 >= x_min & umap_df$umap_1 <= x_max &
+  umap_df$umap_2 >= y_min & umap_df$umap_2 <= y_max,
+  "Intermediate population",  
+  NA      
+)
+
+# Add "bridge" or final annotation
+umap_df <- umap_df %>%
+  mutate(
+    bridge_annot = ifelse(is.na(selected), data_p3$final_annot[cell], selected)
+  )
+
+data_p3$bridge_annot <- umap_df$bridge_annot[match(colnames(data_p3), umap_df$cell)]
+
+table(data_p3$bridge_annot)
+
+# Plot UMAP
+umap_df$bridge_annot <- data_p3$bridge_annot[match(umap_df$cell, colnames(data_p3))]
+
+plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = bridge_annot)) +
+  geom_point(size = 1) +
+  scale_color_manual(values = c("Intermediate population" = "red", "B" = "grey", "Macrophages" = "grey", "B naive" = "grey", "B memory" = "grey", "B intermediate" = "grey")) +
+  theme_minimal() +
+  ggtitle("Bridge B cells and macrophages")
+plotumap
+```
+
+## Patient 2 analysis 
+
+```{r}
+tf_auc <- read.csv(params$file_step3_p2, row.names = 1, check.names=FALSE)
+colnames(tf_auc) <- gsub("[(+)]", "", colnames(tf_auc))
+celltypes<-data_p3@meta.data[["bridge_annot"]]
+celltypes<-ifelse(celltypes=="B intermediate"|celltypes=="B naive"|celltypes=="B memory"|celltypes=="B","B cells", celltypes)
+tf_zscore <- CalcStats(tf_auc, f = celltypes, order = "p", n = 15, t = TRUE) # change the n (n*cluster=TF number)
+plot<-Heatmap(tf_zscore, lab_fill = "zscore")+ ggtitle("Transcription factor activity (z-score) across B cells,\n intermediate population, and macrophages, P2")
+plot
+ggsave("Plots/heatmap_tf_P2.jpeg", plot, width = 1500, height = 2000, units = "px")
+```
+
+```{r}
+celltypes<-data_p2@meta.data[["bridge_annot"]]
+tf_zscore <- CalcStats(tf_auc, f = celltypes, order = "p", n = 6, t = TRUE) # change the n (n*cluster=TF number)
+plot<-Heatmap(tf_zscore, lab_fill = "zscore")
+plot
+```
+
+Waterfall plot (CLL-macro vs B, CLL-macro vs macro)
+
+```{r}
+plot<-WaterfallPlot(t(tf_auc), f = celltypes,
+  ident.1 = "Intermediate population",      # First group of cells
+  ident.2 = "Macrophage",     # Second group of cells
+  exp.transform = FALSE,      # Disable transformation of expression data
+  top.n = 20,                  # Display the top 20 most differentially active TFs
+  length="logFC", 
+  log.base="2", 
+  color="p"
+) + ggtitle("Differential transcription factor activity: \nintermediate population vs macrophages, P2")
+plot
+ggsave("Plots/waterfallplot_macroxbridge_p2.jpeg", plot, width = 2000, height = 2000, units = "px")
+```
+
+```{r}
+plot<-WaterfallPlot(t(tf_auc), f = celltypes,
+  ident.1 = "Intermediate population",      # First group of cells
+  ident.2 = "B cells",     # Second group of cells
+  exp.transform = FALSE,      # Disable transformation of expression data
+  top.n = 20,                  # Display the top 20 most differentially active TFs
+  length="logFC", 
+  log.base="2", 
+  color="p"
+) + ggtitle("Differential transcription factor activity: \nintermediate population vs B cells, P2")
+plot
+ggsave("Plots/waterfallplot_Bxbridge_p2.jpeg", plot, width = 2000, height = 2000, units = "px")
+```
+
+TF Regulon Activity (AUCell)
+
+```{r}
 # AUC score dataframe
-auc_mtx <- read.csv("Matrix/step_3_aucell.csv", row.names = 1, check.names=FALSE)
+auc_mtx <- read.csv(params$file_step3_p2, row.names = 1, check.names=FALSE)
 auc_mtx <- t(auc_mtx)
 auc_mtx <- as.data.frame(auc_mtx)
 rownames(auc_mtx) <- gsub("[(+)]", "", rownames(auc_mtx))
 auc_mtx[] <- lapply(auc_mtx, as.numeric)
 auc_mtx <- as.matrix(auc_mtx)
 
-# TF and targets
-regulons <- read.csv("Matrix/step_2_reg.csv")
+data_p2[['TF']] <- CreateAssayObject(data = auc_mtx)
+DefaultAssay(data_p2) <- 'RNA'
 
-# Loom output in seurat object
-scenic_output<-"/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/out_TimeCourse.loom"
-data <- ImportPyscenicLoom(scenic_output, seu = data)
+plot<-DimPlot2(
+  data_p2,
+  features = c("tf_CEBPD", "tf_NFIX"),
+  ncol = 2,
+  cols=list("tf_CEBPD" = "D", "tf_NFIX" = "D"),
+  theme = NoAxes(), 
+  reduction = "umap",
+  label.size=2
+)
+plot
+ggsave("Plots/tf_activity_P2.jpeg", plot, width = 2000, height = 1000, units = "px")
 ```
 
 Heatmap
 
 ```{r}
-groups <- data@meta.data[["final_annot"]]
-identical(colnames(auc_mtx), colnames(data))
-annotation_df <- data.frame(Cell_types = data@meta.data[["final_annot"]])
+groups <- data_p2@meta.data[["bridge_annot"]]
+identical(colnames(auc_mtx), colnames(data_p2))
+annotation_df <- data.frame(Cell_types = data_p2@meta.data[["bridge_annot"]])
 rownames(annotation_df) <- colnames(auc_mtx)
 
 # Keep the most variable TFs
@@ -90,68 +254,133 @@ pheatmap(
   color = colorRampPalette(c("blue", "white", "red"))(100),
   annotation_col = annotation_df, 
   annotation_colors = my_colors)
+```
 
+## Patient 3 analysis 
+
+```{r}
+tf_auc <- read.csv(params$file_step3_p3, row.names = 1, check.names=FALSE)
+colnames(tf_auc) <- gsub("[(+)]", "", colnames(tf_auc))
+celltypes<-data_p3@meta.data[["bridge_annot"]]
+celltypes<-ifelse(celltypes=="B intermediate"|celltypes=="B naive"|celltypes=="B memory"|celltypes=="B","B cells", celltypes)
+tf_zscore <- CalcStats(tf_auc, f = celltypes, order = "p", n = 15, t = TRUE) # change the n (n*cluster=TF number)
+plot<-Heatmap(tf_zscore, lab_fill = "zscore")+ ggtitle("Transcription factor activity (z-score) across B cells,\n intermediate population, and macrophages, P3")
+plot
+ggsave("Plots/heatmap_tf_P3.jpeg", plot, width = 1500, height = 2000, units = "px")
 ```
 
 ```{r}
-tf_auc <- read.csv("Matrix/step_3_aucell.csv", row.names = 1, check.names=FALSE)
-colnames(tf_auc) <- gsub("[(+)]", "", colnames(tf_auc))
-celltypes<-data@meta.data[["final_annot"]]
-celltypes<-ifelse(celltypes=="B intermediate"|celltypes=="B naive"|celltypes=="B memory","B cells", celltypes)
-tf_zscore <- CalcStats(tf_auc, f = celltypes, order = "p", n = 4, t = TRUE) # change the n (n*cluster=TF number)
+celltypes<-data_p3@meta.data[["bridge_annot"]]
+tf_zscore <- CalcStats(tf_auc, f = celltypes, order = "p", n = 6, t = TRUE) # change the n (n*cluster=TF number)
 plot<-Heatmap(tf_zscore, lab_fill = "zscore")
 plot
-ggsave(paste0("heatmap_tf", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 Waterfall plot (CLL-macro vs B, CLL-macro vs macro)
 
 ```{r}
 plot<-WaterfallPlot(t(tf_auc), f = celltypes,
-  ident.1 = "B cells",      # First group of cells
+  ident.1 = "Intermediate population",      # First group of cells
   ident.2 = "Macrophage",     # Second group of cells
   exp.transform = FALSE,      # Disable transformation of expression data
   top.n = 20,                  # Display the top 20 most differentially active TFs
   length="logFC", 
   log.base="2", 
   color="p"
+) + ggtitle("Differential transcription factor activity: \nintermediate population vs macrophages, P3")
+plot
+ggsave("Plots/waterfallplot_macroxbridge_p3.jpeg", plot, width = 2000, height = 2000, units = "px")
+```
+
+```{r}
+plot<-WaterfallPlot(t(tf_auc), f = celltypes,
+  ident.1 = "Intermediate population",      # First group of cells
+  ident.2 = "B cells",     # Second group of cells
+  exp.transform = FALSE,      # Disable transformation of expression data
+  top.n = 20,                  # Display the top 20 most differentially active TFs
+  length="logFC", 
+  log.base="2", 
+  color="p"
+) + ggtitle("Differential transcription factor activity: \nintermediate population vs B cells, P3")
+plot
+ggsave("Plots/waterfallplot_Bxbridge_p3.jpeg", plot, width = 2000, height = 2000, units = "px")
+```
+
+TF Regulon Activity (AUCell)
+
+```{r}
+# AUC score dataframe
+auc_mtx <- read.csv(params$file_step3_p3, row.names = 1, check.names=FALSE)
+auc_mtx <- t(auc_mtx)
+auc_mtx <- as.data.frame(auc_mtx)
+rownames(auc_mtx) <- gsub("[(+)]", "", rownames(auc_mtx))
+auc_mtx[] <- lapply(auc_mtx, as.numeric)
+auc_mtx <- as.matrix(auc_mtx)
+
+data_p3[['TF']] <- CreateAssayObject(data = auc_mtx)
+DefaultAssay(data_p3) <- 'RNA'
+
+plot<-DimPlot2(
+  data_p3,
+  features = c("tf_CEBPD", "tf_NFIX"),
+  ncol = 2,
+  cols=list("tf_CEBPD" = "D", "tf_NFIX" = "D"),
+  theme = NoAxes(), 
+  reduction = "umap",
+  label.size=2
 )
 plot
-ggsave(paste0("waterfallplot_macroxbridge", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave("Plots/tf_activity_P3.jpeg", plot, width = 2000, height = 1000, units = "px")
+```
+
+Heatmap
+
+```{r}
+groups <- data_p3@meta.data[["bridge_annot"]]
+identical(colnames(auc_mtx), colnames(data_p3))
+annotation_df <- data.frame(Cell_types = data_p3@meta.data[["bridge_annot"]])
+rownames(annotation_df) <- colnames(auc_mtx)
+
+# Keep the most variable TFs
+var_auc <- apply(auc_mtx, 1, var)
+top_var_regulons <- names(sort(var_auc, decreasing = TRUE))[1:20]
+auc_mat_top <- auc_mtx[top_var_regulons, ]
+
+my_colors <- list(
+  Cell_types = c(B = "darkgreen","B intermediate" = "darkgreen","B memory" = "darkgreen","B naive" = "darkgreen", "CD4 T" = "lightblue", "CD8 T" = "lightblue", "T" = "lightblue", "Macrophage"= "red","Monocyte"="orange", "Neutrophil"="brown", "NK"="darkblue", "Erythroblast"="grey" )
+)
+
+# Scaled matrix 
+auc_mat_scaled <- t(scale(t(auc_mat_top)))
+
+# Heatmap
+pheatmap(
+  auc_mat_top,
+  cluster_cols = TRUE,
+  cluster_rows = TRUE,
+  show_colnames = FALSE,
+  color = colorRampPalette(c("blue", "white", "red"))(100),
+  annotation_col = annotation_df, 
+  annotation_colors = my_colors)
+```
+
+```{r}
+TF_list<-tf_zscore[order(tf_zscore$`Intermediate population`, decreasing = T),]
+TF_list<-head(TF_list, 15)
+TF_list<-rownames(TF_list)
+
+enrich_tf <- enrichGO(
+  gene          = TF_list,     # noms des TFs les plus actifs
+  OrgDb         = org.Hs.eg.db,
+  keyType       = "SYMBOL",
+  ont           = "BP",        # Biological Process
+  pAdjustMethod = "BH",
+  qvalueCutoff  = 0.05
+)
 ```
 
 Binaryzation
 
 ```{r}
 
-```
-
-Differential regulons analysis
-
-```{r}
-data[['AUC']] <- CreateAssayObject(data = auc_mtx)
-DefaultAssay(data) <- 'AUC'
-```
-
-```{r}
-celltypes <- unique(data$final_annot)
-
-deg.ls <- lapply(celltypes, function(ct) {
-  deg <- FindMarkers(
-    data,
-    ident.1 = ct,
-    ident.2 = NULL,           # contre toutes les autres cellules
-    logfc.threshold = 0.05,
-    min.pct = 0.1
-  )
-  deg$avg_logFC <- as.numeric(deg$avg_logFC)
-  deg.up <- deg[which(deg$avg_logFC > 0), ]
-  deg.dn <- deg[which(deg$avg_logFC < 0), ]
-  deg <- list(deg.up, deg.dn)
-  return(deg)
-})
-
-names(deg.ls) <- celltypes
-top_regulons <- unique(unlist(lapply(deg.ls, function(x) rownames(head(x, 10)))))
-length(top_regulons)
 ```
