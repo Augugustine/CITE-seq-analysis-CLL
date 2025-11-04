@@ -148,12 +148,12 @@ plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = bridge_annot)) +
 plotumap
 ```
 
-## Patient 2 analysis 
+## Patient 2 analysis
 
 ```{r}
 tf_auc <- read.csv(params$file_step3_p2, row.names = 1, check.names=FALSE)
 colnames(tf_auc) <- gsub("[(+)]", "", colnames(tf_auc))
-celltypes<-data_p3@meta.data[["bridge_annot"]]
+celltypes<-data_p2@meta.data[["bridge_annot"]]
 celltypes<-ifelse(celltypes=="B intermediate"|celltypes=="B naive"|celltypes=="B memory"|celltypes=="B","B cells", celltypes)
 tf_zscore <- CalcStats(tf_auc, f = celltypes, order = "p", n = 15, t = TRUE) # change the n (n*cluster=TF number)
 plot<-Heatmap(tf_zscore, lab_fill = "zscore")+ ggtitle("Transcription factor activity (z-score) across B cells,\n intermediate population, and macrophages, P2")
@@ -193,7 +193,7 @@ plot<-WaterfallPlot(t(tf_auc), f = celltypes,
   length="logFC", 
   log.base="2", 
   color="p"
-) + ggtitle("Differential transcription factor activity: \nintermediate population vs B cells, P2")
+) 
 plot
 ggsave("Plots/waterfallplot_Bxbridge_p2.jpeg", plot, width = 2000, height = 2000, units = "px")
 ```
@@ -239,7 +239,7 @@ top_var_regulons <- names(sort(var_auc, decreasing = TRUE))[1:20]
 auc_mat_top <- auc_mtx[top_var_regulons, ]
 
 my_colors <- list(
-  Cell_types = c(B = "darkgreen","B intermediate" = "darkgreen","B memory" = "darkgreen","B naive" = "darkgreen", "CD4 T" = "lightblue", "CD8 T" = "lightblue", "T" = "lightblue", "Macrophage"= "red","Monocyte"="orange", "Neutrophil"="brown", "NK"="darkblue", "Erythroblast"="grey" )
+  Cell_types = c(B = "darkgreen","B intermediate" = "darkgreen","B memory" = "darkgreen","B naive" = "darkgreen", "Macrophage"= "red", "Intermediate population"="darkblue")
 )
 
 # Scaled matrix 
@@ -256,7 +256,85 @@ pheatmap(
   annotation_colors = my_colors)
 ```
 
-## Patient 3 analysis 
+Heatmap : TF most variable
+
+```{r}
+cell_types <- data_p2@meta.data[["bridge_annot"]]
+
+# Mean per cell type
+auc_mtx_by_type <- sapply(unique(cell_types), function(ct) {
+  cells_in_type <- which(cell_types == ct)
+  rowMeans(auc_mtx[, cells_in_type, drop = FALSE])
+})
+auc_mtx_by_type <- t(auc_mtx_by_type)
+
+# TF most variable
+var_auc <- apply(auc_mtx_by_type, 2, var)
+top_var_regulons <- names(sort(var_auc, decreasing = TRUE))[1:30]
+
+auc_mat_top <- auc_mtx_by_type[, top_var_regulons, drop = FALSE]
+
+plot<-pheatmap(
+  auc_mat_top,
+  cluster_cols = TRUE,
+  cluster_rows = TRUE,
+  show_colnames = TRUE,
+  show_rownames = TRUE,
+  color = colorRampPalette(c("white", "blue", "darkblue"))(100), 
+  angle_col = 45, 
+  fontsize_row = 6,
+  fontsize_col = 6, 
+  fontsize = 7,
+  main="TF most variable depending on cell type")
+plot
+ggsave("Plots/heatmap_tf_P2.jpeg", plot, width = 2000, height = 800, units = "px")
+```
+
+UMAP based on TF activity
+
+```{r}
+DefaultAssay(data_p2) <- 'TF'
+all.genes <- rownames(data_p2)
+data_p2 <- ScaleData(data_p2, features = all.genes)
+data_p2<-RunPCA(data_p2, assay="TF", reduction.name = "pca_tf", features = all.genes)
+data_p2 <- RunUMAP(data_p2, dims = 1:10,  reduction.name = "umap_tf")
+data_p2 <- RunTSNE(data_p2, dims = 1:10,  reduction.name = "tsne_tf")
+
+cell_palette <- c(
+  "Intermediate population" = "#1f77b4",
+  "B intermediate" = "#ff7f0e",
+  "B naive" = "#ffd92f",
+  "B memory" = "#582d15ff",
+  "Macrophage" = "#984ea3",
+  "B" = "#f2a890ff")
+plot<-DimPlot(data_p2, reduction = "umap_tf", group.by = "bridge_annot", cols = cell_palette) + ggtitle("UMAP based on TF activity, P2")+ theme(plot.title = element_text(size = 10, hjust = 0.5), legend.text = element_text(size =8 ))
+plot
+ggsave("Plots/umap_tf_P2.jpeg", plot, width = 2000, height = 1000, units = "px")
+DimPlot(data_p2, reduction = "tsne_tf", group.by = "bridge_annot", cols = cell_palette) + ggtitle("t-SNE based on TF activity, P2")
+```
+
+```{r}
+TF_list<-tf_zscore[order(tf_zscore$`Intermediate population`, decreasing = T),]
+TF_list<-head(TF_list, 15)
+TF_list<-rownames(TF_list)
+
+enrich_tf <- enrichGO(
+  gene          = TF_list,
+  OrgDb         = org.Hs.eg.db,
+  keyType       = "SYMBOL",
+  ont           = "BP",
+  pAdjustMethod = "BH",
+  pvalueCutoff  = 0.05,
+  qvalueCutoff  = 0.05
+)
+plot<-barplot(enrich_tf, showCategory = 20, title = "Top 20 enriched GO terms")
+ggsave("Plots/enrich_P2.jpeg", plot, width = 2000, height = 3000, units = "px")
+cnetplot(enrich_tf, categorySize="pvalue", foldChange=NULL)  # si foldChange disponible
+plot<-goplot(enrich_tf)
+ggsave("Plots/enrich_goplot_P2.jpeg", plot, width = 4000, height = 3000, units = "px")
+```
+
+## Patient 3 analysis
 
 ```{r}
 tf_auc <- read.csv(params$file_step3_p3, row.names = 1, check.names=FALSE)
@@ -365,18 +443,81 @@ pheatmap(
 ```
 
 ```{r}
+cell_types <- data_p3@meta.data[["bridge_annot"]]
+
+# Mean per cell type
+auc_mtx_by_type <- sapply(unique(cell_types), function(ct) {
+  cells_in_type <- which(cell_types == ct)
+  rowMeans(auc_mtx[, cells_in_type, drop = FALSE])
+})
+auc_mtx_by_type <- t(auc_mtx_by_type)
+
+# TF most variable
+var_auc <- apply(auc_mtx_by_type, 2, var)
+top_var_regulons <- names(sort(var_auc, decreasing = TRUE))[1:30]
+
+auc_mat_top <- auc_mtx_by_type[, top_var_regulons, drop = FALSE]
+
+plot<-pheatmap(
+  auc_mat_top,
+  cluster_cols = TRUE,
+  cluster_rows = TRUE,
+  show_colnames = TRUE,
+  show_rownames = TRUE,
+  color = colorRampPalette(c("white", "blue", "darkblue"))(100), 
+  angle_col = 45, 
+  fontsize_row = 6,
+  fontsize_col = 6, 
+  fontsize = 7,
+  main="TF most variable depending on cell type")
+plot
+ggsave("Plots/heatmap_tf_P3.jpeg", plot, width = 2000, height = 800, units = "px")
+```
+
+```{r}
 TF_list<-tf_zscore[order(tf_zscore$`Intermediate population`, decreasing = T),]
 TF_list<-head(TF_list, 15)
 TF_list<-rownames(TF_list)
 
 enrich_tf <- enrichGO(
-  gene          = TF_list,     # noms des TFs les plus actifs
+  gene          = TF_list,
   OrgDb         = org.Hs.eg.db,
   keyType       = "SYMBOL",
-  ont           = "BP",        # Biological Process
+  ont           = "BP",
   pAdjustMethod = "BH",
+  pvalueCutoff  = 0.05,
   qvalueCutoff  = 0.05
 )
+barplot(enrich_tf, showCategory = 20, title = "Top 20 enriched GO terms")
+dotplot(enrich_tf, showCategory = 20, title = "Top 20 enriched GO terms")
+emapplot(enrich_tf)
+cnetplot(enrich_tf, categorySize="pvalue", foldChange=NULL)  # si foldChange disponible
+goplot(enrich_tf)
+```
+
+```{r}
+
+```
+
+UMAP based on TF activity
+
+```{r}
+DefaultAssay(data_p3) <- 'TF'
+all.genes <- rownames(data_p3)
+data_p3 <- ScaleData(data_p3, features = all.genes)
+data_p3<-RunPCA(data_p3, assay="TF", reduction.name = "pca_tf", features = all.genes)
+data_p3 <- RunUMAP(data_p3, dims = 1:10,  reduction.name = "umap_tf")
+
+cell_palette <- c(
+  "Intermediate population" = "#1f77b4",
+  "B intermediate" = "#ff7f0e",
+  "B naive" = "#ffd92f",
+  "B memory" = "#582d15ff",
+  "Macrophage" = "#984ea3",
+  "B" = "#f2a890ff")
+plot<-DimPlot(data_p3, reduction = "umap_tf", group.by = "bridge_annot", cols = cell_palette) + ggtitle("UMAP based on TF activity, P3")+ theme(plot.title = element_text(size = 10, hjust = 0.5), legend.text = element_text(size =8 ))
+plot
+ggsave("Plots/umap_tf_P3.jpeg", plot, width = 2000, height = 1000, units = "px")
 ```
 
 Binaryzation
