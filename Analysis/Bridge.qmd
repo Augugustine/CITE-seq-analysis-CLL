@@ -74,7 +74,7 @@ umap_df$selected <- ifelse(
   NA      
 )
 
-# Add "bridge" or final annotation
+# Add "bridge" on final annotation
 umap_df <- umap_df %>%
   mutate(
     bridge_annot = ifelse(is.na(selected), data_p2$final_annot[cell], selected)
@@ -229,6 +229,15 @@ vis <- analyze(vis)
 
 # View results
 viewResults(vis)
+```
+
+```{r}
+data_p2$timepoint <- factor(
+  data_p2$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+plot<-FeaturePlot(data_p2, features = c("SPI1","PAX5","CSF1","CEBPB"), reduction="umap", cols = c("grey","red"))
+ggsave("PAX5.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
 
 ## Patient 3
