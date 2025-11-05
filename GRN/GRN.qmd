@@ -214,9 +214,8 @@ DefaultAssay(data_p2) <- 'RNA'
 
 plot<-DimPlot2(
   data_p2,
-  features = c("tf_CEBPD", "tf_NFIX"),
+  features = c("tf_ERG", "tf_RUNX1"),
   ncol = 2,
-  cols=list("tf_CEBPD" = "D", "tf_NFIX" = "D"),
   theme = NoAxes(), 
   reduction = "umap",
   label.size=2
@@ -332,6 +331,35 @@ ggsave("Plots/enrich_P2.jpeg", plot, width = 2000, height = 3000, units = "px")
 cnetplot(enrich_tf, categorySize="pvalue", foldChange=NULL)  # si foldChange disponible
 plot<-goplot(enrich_tf)
 ggsave("Plots/enrich_goplot_P2.jpeg", plot, width = 4000, height = 3000, units = "px")
+```
+
+TF differencial active
+
+```{r}
+Idents(data_p2) <- data_p2$bridge_annot
+
+markers_TF <- FindMarkers(
+  data_p2,
+  assay = "TF",
+  ident.1 = "Intermediate population", ident.2 = c("Macrophage","B", "B naive","B intermediate","B memory"),
+  test.use = "wilcox",
+  logfc.threshold = 0
+)
+markers_TF <- subset(markers_TF, p_val_adj < 0.05)
+head(markers_TF[order(markers_TF$avg_log2FC, decreasing = TRUE), ])   # TF activés
+head(markers_TF[order(markers_TF$avg_log2FC, decreasing = FALSE), ])  # TF réprimés
+
+top_TF <- rownames(markers_TF[order(abs(markers_TF$avg_log2FC), decreasing = TRUE), ])[1:20]
+DoHeatmap(data_p2, features = top_TF, assay = "TF")
+
+markers_TF$TF <- rownames(markers_TF)
+ggplot(markers_TF, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
+  geom_point() +
+  geom_vline(xintercept = c(-0.25, 0.25), linetype = "dashed") +
+  theme_minimal() +
+  labs(x = "Variation d’activité (log2FC)", y = "-log10(p_adj)", title = "TF activés ou réprimés")
+
+regulons_p2<-regulons_p2$Enrichment.6
 ```
 
 ## Patient 3 analysis
