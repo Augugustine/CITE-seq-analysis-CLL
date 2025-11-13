@@ -1,8 +1,8 @@
 ---
 title: "Timepoint analysis and trajectory"
 params: 
-  patient: "P1"
-  file: "CLL_P1_seurat_reduit.rds"
+  patient: "P2"
+  file: "Matrix/CLL_annotated_Seurat_LogNorm_P2.rds"
   type: "DDQC"
 format: html
 editor: visual
@@ -14,7 +14,6 @@ The analyzed dataset consists of five timepoints. The goal of timepoint analysis
 
 ```{r}
 #| message: false
-.libPaths("/work/user/ablanc/NetBIO2/renv/library/linux-rhel-8.10/R-4.5/x86_64-pc-linux-gnu")
 library(SeuratObject)
 library(sp)
 library(Seurat)
@@ -28,6 +27,7 @@ library(viridis)
 library(stringr)
 library(monocle3)
 library(scCustomize)
+library(slingshot)
 library(SeuratWrappers)
 library(BPCells)
 library(CytoTRACE2) 
@@ -198,7 +198,7 @@ ggsave(paste0(params$type,"_macro_days_umap_", params$patient, ".jpeg"), plotuma
 
 We used Monocle 3 to reconstruct cellular trajectories and infer the pseudotime ordering of cells based on their gene expression profiles. This approach allows us to model dynamic biological processes, such as differentiation or activation, by arranging cells along a trajectory that reflects their transcriptional progression.
 
-Trajectory on days separately macrophage & B cells
+Trajectory on days separately macrophages & B cells
 
 ```{r}
 timepoints <- c("D1", "D4", "D8", "D11", "D14")
@@ -254,7 +254,7 @@ for(tp in timepoints){
   plot_list[[tp]] <- p
 }
 
-# 3. Combine the plots and add a **common legend**
+# 3. Combine the plots and add a common legend
 # To get a single legend, create an empty plot with the legend
 legend_plot <- ggplot(data.frame(x = 1, y = 1, pseudotime = c(0, max_pt)), 
                       aes(x, y, color = pseudotime)) +
@@ -279,6 +279,201 @@ final_plot_with_title <- plot_grid(title, final_plot_with_legend, ncol = 1, rel_
 final_plot_with_title
 
 ggsave(paste0(params$type,"_traj_", params$patient, ".jpeg"), final_plot_with_title, width = 4000,
+  height = 1500, units = "px")
+```
+
+```{r}
+timepoints <- c("D1", "D4", "D8", "D11", "D14")
+plot_list <- list()
+
+# 1. Compute the maximum pseudotime scale
+max_pt <- 0
+for(tp in timepoints){
+  data_sub <- subset(data, subset = timepoint == tp & 
+                      (final_annot %in% c("Macrophage", "B", "B intermediate", 
+                                          "B memory", "B naive", "T", "CD4 T", "CD8 T", "Monocyte", "NK")))
+  cds <- as.cell_data_set(data_sub)
+  cds@clusters$UMAP$clusters <- data_sub@active.ident
+  partition <- as.factor(rep(1, ncol(data_sub)))
+  names(partition) <- colnames(data_sub)
+  cds@clusters$UMAP$partitions <- partition
+  cds@int_colData@listData$reducedDims$UMAP <- data_sub@reductions$umap@cell.embeddings
+  colData(cds)$cell.type <- data_sub$final_annot
+  cds <- learn_graph(cds, use_partition = FALSE)
+  cds <- order_cells(cds, root_cells = colnames(data_sub)[data_sub$final_annot == "B naive"])
+  
+  max_pt <- max(max_pt, max(pseudotime(cds), na.rm = TRUE))
+}
+
+# 2. Generate the plots without legends
+for(tp in timepoints){
+  data_sub <- subset(data, subset = timepoint == tp & 
+                      (final_annot %in% c("Macrophage", "B", "B intermediate", 
+                                          "B memory", "B naive", "T", "CD4 T", "CD8 T", "Monocyte", "NK")))
+  cds <- as.cell_data_set(data_sub)
+  cds@clusters$UMAP$clusters <- data_sub@active.ident
+  partition <- as.factor(rep(1, ncol(data_sub)))
+  names(partition) <- colnames(data_sub)
+  cds@clusters$UMAP$partitions <- partition
+  cds@int_colData@listData$reducedDims$UMAP <- data_sub@reductions$umap@cell.embeddings
+  colData(cds)$cell.type <- data_sub$final_annot
+  cds <- learn_graph(cds, use_partition = FALSE)
+  cds <- order_cells(cds, root_cells = colnames(data_sub)[data_sub$final_annot == "B naive"])
+  
+  p <- plot_cells(
+    cds,
+    color_cells_by = "pseudotime",
+    show_trajectory_graph = TRUE,
+    label_groups_by_cluster = FALSE,
+    label_leaves = FALSE,
+    label_branch_points = FALSE, 
+    graph_label_size = 0
+  ) + 
+    scale_color_viridis_c(limits = c(0, max_pt), guide = "none") + # remove legend
+    theme_void() + 
+    ggtitle(tp)
+  
+  plot_list[[tp]] <- p
+}
+
+# 3. Combine the plots and add a common legend
+# To get a single legend, create an empty plot with the legend
+legend_plot <- ggplot(data.frame(x = 1, y = 1, pseudotime = c(0, max_pt)), 
+                      aes(x, y, color = pseudotime)) +
+  geom_point() +
+  scale_color_viridis_c(limits = c(0, max_pt)) +
+  guides(color = guide_colorbar(title = "Pseudotime")) +
+  theme_void() + theme(legend.position = "right")
+
+# Extract the legend
+library(cowplot)
+legend <- get_legend(legend_plot)
+
+# Assemble the 5 plots side by side + single legend
+final_plot <- plot_grid(plotlist = plot_list, ncol = 5)
+final_plot_with_legend <- plot_grid(final_plot, legend, rel_widths = c(5, 1))
+
+# Add a general title
+title <- ggdraw() + draw_label(paste("Trajectory with Monocle3 pseudotime B, T cells, NK, Monocytes and Macrophages, patient :",params$patient), fontface='bold')
+final_plot_with_title <- plot_grid(title, final_plot_with_legend, ncol = 1, rel_heights = c(0.05, 1))
+
+# Display
+final_plot_with_title
+
+ggsave(paste0(params$type,"_traj_", params$patient, ".jpeg"), final_plot_with_title, width = 4000,
+  height = 1500, units = "px")
+```
+
+D8
+
+```{r}
+data_sub <- subset(data, subset = timepoint == "D8" & (final_annot %in% c("Macrophage", "B", "B intermediate", 
+                                          "B memory", "B naive", "T", "CD4 T", "CD8 T", "Monocyte", "NK")))
+cds <- as.cell_data_set(data_sub)
+cds@clusters$UMAP$clusters <- data_sub@active.ident
+partition <- as.factor(rep(1, ncol(data_sub)))
+names(partition) <- colnames(data_sub)
+cds@clusters$UMAP$partitions <- partition
+cds@int_colData@listData$reducedDims$UMAP <- data_sub@reductions$umap@cell.embeddings
+colData(cds)$cell.type <- data_sub$final_annot
+cds <- learn_graph(cds, use_partition = FALSE)
+cds <- order_cells(cds, root_cells = colnames(data_sub)[data_sub$final_annot == "B naive"])
+
+p1<-plot_cells(
+    cds,
+    color_cells_by = "pseudotime",
+    show_trajectory_graph = TRUE,
+    label_groups_by_cluster = FALSE,
+    label_leaves = FALSE,
+    label_branch_points = FALSE, 
+    graph_label_size = 0
+  ) + 
+    ggtitle("D8")
+```
+
+D11
+
+```{r}
+data_sub <- subset(data, subset = timepoint == "D11" & (final_annot %in% c("Macrophage", "B", "B intermediate", 
+                                          "B memory", "B naive", "T", "CD4 T", "CD8 T", "Monocyte", "NK")))
+cds <- as.cell_data_set(data_sub)
+cds@clusters$UMAP$clusters <- data_sub@active.ident
+partition <- as.factor(rep(1, ncol(data_sub)))
+names(partition) <- colnames(data_sub)
+cds@clusters$UMAP$partitions <- partition
+cds@int_colData@listData$reducedDims$UMAP <- data_sub@reductions$umap@cell.embeddings
+colData(cds)$cell.type <- data_sub$final_annot
+cds <- learn_graph(cds, use_partition = FALSE)
+cds <- order_cells(cds, root_cells = colnames(data_sub)[data_sub$final_annot == "B naive"])
+  
+p2<-plot_cells(
+    cds,
+    color_cells_by = "pseudotime",
+    show_trajectory_graph = TRUE,
+    label_groups_by_cluster = FALSE,
+    label_leaves = FALSE,
+    label_branch_points = FALSE, 
+    graph_label_size = 0
+  ) + 
+    ggtitle("D11")
+```
+
+D8+D11
+
+```{r}
+data_sub <- subset(data, subset = timepoint %in% c("D8", "D11") & (final_annot %in% c("Macrophage", "B", "B intermediate", "B memory", "B naive", "T", "CD4 T", "CD8 T", "Monocyte", "NK")))
+
+cds <- as.cell_data_set(data_sub)
+cds@clusters$UMAP$clusters <- data_sub@active.ident
+partition <- as.factor(rep(1, ncol(data_sub)))
+names(partition) <- colnames(data_sub)
+cds@clusters$UMAP$partitions <- partition
+cds@int_colData@listData$reducedDims$UMAP <- data_sub@reductions$umap@cell.embeddings
+colData(cds)$cell.type <- data_sub$final_annot
+cds <- learn_graph(cds, use_partition = FALSE)
+cds <- order_cells(cds, root_cells = colnames(data_sub)[data_sub$final_annot == "B naive"])
+  
+p3<-plot_cells(
+    cds,
+    color_cells_by = "pseudotime",
+    show_trajectory_graph = TRUE,
+    label_groups_by_cluster = FALSE,
+    label_leaves = FALSE,
+    label_branch_points = FALSE, 
+    graph_label_size = 0
+  ) + 
+    ggtitle("D8+D11")
+
+plot<-p1+p2+p3
+ggsave(paste0("Plots/traj_d8_d11_", params$patient, ".jpeg"), plot, width = 4000,
+  height = 1500, units = "px")
+```
+
+Trajectory with Slingshot
+
+```{r}
+data_sub <- subset(data, subset = timepoint == "D8" & 
+                      (final_annot %in% c("Macrophage", "B", "B intermediate", 
+                                          "B memory", "B naive", "T", "CD4 T", "CD8 T", "Monocyte", "NK")))
+
+dimred <- data_sub@reductions$umap@cell.embeddings
+clustering <- factor(data_sub$final_annot)
+counts <- as.matrix(GetAssayData(data_sub, assay = "RNA", slot = "counts")[VariableFeatures(data_sub), ])
+
+lineages <- getLineages(data = dimred, clusterLabels = clustering, start.clus = c("B","T", "Monocyte"), end.clus = c("Macrophage","NK"))
+
+# Curves
+curves <- getCurves(lineages, approx_points = 300, thresh = 0.01, stretch = 0.8, allow.breaks = FALSE, shrink = 0.99)
+
+pt <- slingPseudotime(curves)[,1]
+col_pt <- viridis::viridis(100)[cut(pt, breaks = 100)]
+
+pdf("slingshot_pseudotime.pdf", width = 7, height = 6)
+plot<-plot(dimred, col = col_pt, asp = 1, pch = 16)
+lines(SlingshotDataSet(curves), lwd = 3, col = "black")
+dev.off()
+
+ggsave(paste0("Plots/slingshot_d8_d11_", params$patient, ".jpeg"), plot, width = 4000,
   height = 1500, units = "px")
 ```
 
