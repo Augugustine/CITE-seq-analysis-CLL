@@ -31,6 +31,7 @@ library(slingshot)
 library(SeuratWrappers)
 library(BPCells)
 library(CytoTRACE2) 
+library(SeuratDisk)
 source("functions.R")
 ```
 
@@ -475,6 +476,15 @@ dev.off()
 
 ggsave(paste0("Plots/slingshot_d8_d11_", params$patient, ".jpeg"), plot, width = 4000,
   height = 1500, units = "px")
+```
+
+Trajectory with STREAM2 in Python
+
+```{r}
+obj <- Convert_Assay(seurat_object = data_sub, assay='RNA', convert_to = "V3")
+obj@assays <- obj@assays["RNA"]
+SaveH5Seurat(obj, filename = "Matrix/data_v4.h5Seurat", overwrite = TRUE)
+Convert("Matrix/data_v4.h5Seurat", dest = "h5ad")
 ```
 
 ## Pluripotency
