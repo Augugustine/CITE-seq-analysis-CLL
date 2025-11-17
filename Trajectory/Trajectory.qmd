@@ -478,7 +478,7 @@ ggsave(paste0("Plots/slingshot_d8_d11_", params$patient, ".jpeg"), plot, width =
   height = 1500, units = "px")
 ```
 
-Trajectory with STREAM2 in Python
+Trajectory with STREAM2 in Python : Scripts STREAM2_trajectory.ipybn
 
 ```{r}
 obj <- Convert_Assay(seurat_object = data_sub, assay='RNA', convert_to = "V3")
