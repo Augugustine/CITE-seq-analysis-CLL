@@ -47,7 +47,7 @@ data_p3<-subset(data_p3, subset = (final_annot %in% c("B","B intermediate","B me
 ```
 
 ```{r}
-SaveLoom(data, filename="TimeCourse.loom")
+#SaveLoom(data, filename="TimeCourse.loom")
 ```
 
 ### Apply pySCENIC in the Genotoul cluster with the script "pySCENIC.sh"
@@ -179,12 +179,13 @@ plot<-WaterfallPlot(t(tf_auc), f = celltypes,
   length="logFC", 
   log.base="2", 
   color="p"
-) + ggtitle("Differential transcription factor activity: \nintermediate population vs macrophages, P2")
+) + ggtitle("Differential transcription factor activity: \nintermediate population vs macrophages, P2")+theme(axis.text.y = element_text(size = 12))
 plot
 ggsave("Plots/waterfallplot_macroxbridge_p2.jpeg", plot, width = 2000, height = 2000, units = "px")
 ```
 
 ```{r}
+celltypes<-ifelse(celltypes=="B intermediate"|celltypes=="B naive"|celltypes=="B memory"|celltypes=="B","B cells", celltypes)
 plot<-WaterfallPlot(t(tf_auc), f = celltypes,
   ident.1 = "Intermediate population",      # First group of cells
   ident.2 = "B cells",     # Second group of cells
@@ -193,7 +194,7 @@ plot<-WaterfallPlot(t(tf_auc), f = celltypes,
   length="logFC", 
   log.base="2", 
   color="p"
-) 
+) + ggtitle("Differential transcription factor activity: \nintermediate population vs B cells, P2")+theme(axis.text.y = element_text(size = 12))
 plot
 ggsave("Plots/waterfallplot_Bxbridge_p2.jpeg", plot, width = 2000, height = 2000, units = "px")
 ```
@@ -214,7 +215,7 @@ DefaultAssay(data_p2) <- 'RNA'
 
 plot<-DimPlot2(
   data_p2,
-  features = c("tf_ERG", "tf_RUNX1"),
+  features = c("tf_CEBPA", "tf_NFIX"),
   ncol = 2,
   theme = NoAxes(), 
   reduction = "umap",
@@ -281,9 +282,9 @@ plot<-pheatmap(
   show_rownames = TRUE,
   color = colorRampPalette(c("white", "blue", "darkblue"))(100), 
   angle_col = 45, 
-  fontsize_row = 6,
-  fontsize_col = 6, 
-  fontsize = 7,
+  fontsize_row = 7,
+  fontsize_col = 7, 
+  fontsize = 5,
   main="TF most variable depending on cell type")
 plot
 ggsave("Plots/heatmap_tf_P2.jpeg", plot, width = 2000, height = 800, units = "px")
@@ -333,7 +334,7 @@ plot<-goplot(enrich_tf)
 ggsave("Plots/enrich_goplot_P2.jpeg", plot, width = 4000, height = 3000, units = "px")
 ```
 
-TF differencial active
+TF differential active
 
 ```{r}
 Idents(data_p2) <- data_p2$bridge_annot
@@ -360,6 +361,13 @@ ggplot(markers_TF, aes(x = avg_log2FC, y = -log10(p_val_adj))) +
   labs(x = "Variation d’activité (log2FC)", y = "-log10(p_adj)", title = "TF activés ou réprimés")
 
 regulons_p2<-regulons_p2$Enrichment.6
+```
+
+```{r}
+DefaultAssay(data_p2) <- 'TF'
+plot<-VlnPlot(data_p2, features = c("CEBPA"),split.by = "timepoint")
+plot<-VlnPlot(data_p2, features = c("CEBPB"))
+ggsave("PAX5.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
 
 ## Patient 3 analysis
@@ -393,12 +401,13 @@ plot<-WaterfallPlot(t(tf_auc), f = celltypes,
   length="logFC", 
   log.base="2", 
   color="p"
-) + ggtitle("Differential transcription factor activity: \nintermediate population vs macrophages, P3")
+) + ggtitle("Differential transcription factor activity: \nintermediate population vs macrophages, P3") +theme(axis.text.y = element_text(size = 12))
 plot
 ggsave("Plots/waterfallplot_macroxbridge_p3.jpeg", plot, width = 2000, height = 2000, units = "px")
 ```
 
 ```{r}
+celltypes<-ifelse(celltypes=="B intermediate"|celltypes=="B naive"|celltypes=="B memory"|celltypes=="B","B cells", celltypes)
 plot<-WaterfallPlot(t(tf_auc), f = celltypes,
   ident.1 = "Intermediate population",      # First group of cells
   ident.2 = "B cells",     # Second group of cells
@@ -407,7 +416,7 @@ plot<-WaterfallPlot(t(tf_auc), f = celltypes,
   length="logFC", 
   log.base="2", 
   color="p"
-) + ggtitle("Differential transcription factor activity: \nintermediate population vs B cells, P3")
+) + ggtitle("Differential transcription factor activity: \nintermediate population vs B cells, P3")+theme(axis.text.y = element_text(size = 12))
 plot
 ggsave("Plots/waterfallplot_Bxbridge_p3.jpeg", plot, width = 2000, height = 2000, units = "px")
 ```
@@ -486,17 +495,17 @@ top_var_regulons <- names(sort(var_auc, decreasing = TRUE))[1:30]
 
 auc_mat_top <- auc_mtx_by_type[, top_var_regulons, drop = FALSE]
 
-plot<-pheatmap(
+plot<-pheatmap::pheatmap(
   auc_mat_top,
   cluster_cols = TRUE,
   cluster_rows = TRUE,
   show_colnames = TRUE,
   show_rownames = TRUE,
   color = colorRampPalette(c("white", "blue", "darkblue"))(100), 
-  angle_col = 45, 
-  fontsize_row = 6,
-  fontsize_col = 6, 
-  fontsize = 7,
+  angle_col = "45", 
+  fontsize_row = 7,
+  fontsize_col = 7, 
+  fontsize = 5,
   main="TF most variable depending on cell type")
 plot
 ggsave("Plots/heatmap_tf_P3.jpeg", plot, width = 2000, height = 800, units = "px")
@@ -548,8 +557,16 @@ plot
 ggsave("Plots/umap_tf_P3.jpeg", plot, width = 2000, height = 1000, units = "px")
 ```
 
-Binaryzation
-
 ```{r}
-
+plot<-DimPlot2(
+  data_p3,
+  features = c("tf_CEBPA", "tf_NFIX"),
+  ncol = 2,
+  cols=list("tf_CEBPA"="D","tf_NFIX"="D" ),
+  theme = NoAxes(), 
+  reduction = "umap",
+  label.size=2
+)
+plot
+ggsave("Plots/tf_activity_P3.jpeg", plot, width = 2000, height = 1000, units = "px")
 ```
