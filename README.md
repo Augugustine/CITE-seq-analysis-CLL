@@ -31,22 +31,21 @@ Python (used for complementary tools, details available in the relevant scripts)
 
 ## Scripts 
 
-### The pre-processing folder contains scripts implementing different pre-processing strategies using various tools and methods:
-- pre-processing_cellbender: Pre-processing with CellBender to remove empty droplets prior to Seurat steps.
-* pre-processing_seurat: Standard Seurat pipeline including QC and filtering using fixed thresholds.
-+ pre-processing_DDQC: QC and filtering using the DDQC tool, which adapts QC thresholds based on clustering.
-- pre-processing_valiDrops: Initial steps including empty droplet removal, QC, and filtering.
-* pre-processing_withoutQC: Pre-processing pipeline without QC or filtering steps.
-+ pre-processing_doublet: Pre-processing pipeline without doublet removal.
-- pre-processing_days_sep: Standard Seurat pipeline including doublet removal, non-coding gene removal, QC and filtering, but applied separately to each day.
+### The pre-processing and annotation folder contains scripts implementing different pre-processing and annotation strategies using various tools and methods:
+- Pre-processing with CellBender to remove empty droplets prior to Seurat steps.
+* Standard Seurat pipeline including QC and filtering using fixed thresholds.
++ QC and filtering using the DDQC tool, which adapts QC thresholds based on clustering.
+- valiDrops: Initial steps including empty droplet removal, QC, and filtering.
+* Pre-processing pipeline without QC or filtering steps.
++ Pre-processing pipeline without doublet removal.
+- Standard Seurat pipeline including doublet removal, non-coding gene removal, QC and filtering, but applied separately to each day.
 
-### The annotation folder contains scripts for automatic and manual annotation and then final annotation which combines manual and final annotation
-### The trajectory folder contains scripts for the trajectory
-### The analysis folder contains scripts for the analysis for the intermediate clusters (CLL-T cluster and CLL-macrophages cluster)
+- (1) Automatic annotation (SingleR and Azimuth) + (2) Manual annotation 
 
-
-
-
+### The analysis folder contains scripts for the intermediate clusters (CLL-macrophages cluster)
+- Trajectory
+* TF activity
++ Specific gene expression
 
 
 ## Author 
