@@ -3,8 +3,8 @@ title: "Bridge B-macro"
 params: 
   patient: "P2"
   patientbis: "P3"
-  fileP2: "Matrix/CLL_annotated_Seurat_LogNorm_P2.rds"
-  fileP3: "Matrix/CLL_annotated_Seurat_LogNorm_P3.rds"
+  fileP2: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_annotated_Seurat_LogNorm_P2.rds"
+  fileP3: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_annotated_Seurat_LogNorm_P3.rds"
 format: html
 editor: visual
 ---
@@ -94,6 +94,44 @@ plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = bridge_annot)) +
   ggtitle("Bridge B cells and macrophages")
 plotumap
 ggsave(paste0("bridge_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+Complete Seurat object with all the cells and bridge annotation
+
+```{r}
+full_obj<-readRDS(params$fileP2)
+all(data_p2@meta.data$cell == colnames(data_p2)) # TRUE
+full_obj$Annotation <- full_obj$final_annot
+bridge_cells <- rownames(data_p2@meta.data)[data_p2@meta.data$bridge_annot == "bridge"]
+full_obj$Annotation[bridge_cells] <- "Bridge"
+table(full_obj$Annotation)
+DimPlot(full_obj, group.by = "Annotation", reduction = "umap")
+#saveRDS(full_obj, file = "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2")
+```
+
+Genes numbers by celltypes
+
+```{r}
+meta <- full_obj@meta.data
+
+meta$Annotation_plot <- meta$Annotation
+meta$Annotation_plot[meta$Annotation_plot %in% c("B", "B intermediate", "B naive", "B memory")] <- "B cells"
+meta$Annotation_plot[meta$Annotation_plot %in% c("T", "CD4 T", "CD8 T")] <- "T cells"
+keep_pop <- c("Macrophage", "Monocyte", "B cells", "T cells","Bridge","NK")
+meta <- meta[meta$Annotation_plot %in% keep_pop, ]
+
+plot<-ggplot(meta, aes(x = Annotation_plot, y = nFeature_RNA)) +
+  geom_violin(fill = "lightblue", color = "black", scale = "width") +
+  geom_boxplot(width=0.1) +
+  theme_minimal() +
+  labs(
+    title = "Plot of features by cell type, P2",
+    x = "Cell type",
+    y = "Features number"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+plot
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/Features_", params$patient, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 Markers RNA and ADT ; differential gene expression with Seurat function FinderMarkers
@@ -271,6 +309,44 @@ plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = bridge_annot)) +
   ggtitle("Bridge B cells and macrophages")
 plotumap
 ggsave(paste0("bridge_umap_", params$patientbis, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+```
+
+Complete Seurat object with all the cells and bridge annotation
+
+```{r}
+full_obj<-readRDS(params$fileP3)
+all(data_p3@meta.data$cell == colnames(data_p3)) # TRUE
+full_obj$Annotation <- full_obj$final_annot
+bridge_cells <- rownames(data_p3@meta.data)[data_p3@meta.data$bridge_annot == "bridge"]
+full_obj$Annotation[bridge_cells] <- "Bridge"
+table(full_obj$Annotation)
+DimPlot(full_obj, group.by = "Annotation", reduction = "umap")
+#saveRDS(full_obj, file = "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3")
+```
+
+Genes numbers by celltypes
+
+```{r}
+meta <- full_obj@meta.data
+
+meta$Annotation_plot <- meta$Annotation
+meta$Annotation_plot[meta$Annotation_plot %in% c("B", "B intermediate", "B naive", "B memory")] <- "B cells"
+meta$Annotation_plot[meta$Annotation_plot %in% c("T", "CD4 T", "CD8 T")] <- "T cells"
+keep_pop <- c("Macrophage", "Monocyte", "B cells", "T cells","Bridge","NK")
+meta <- meta[meta$Annotation_plot %in% keep_pop, ]
+
+plot<-ggplot(meta, aes(x = Annotation_plot, y = nFeature_RNA)) +
+  geom_violin(fill = "lightblue", color = "black", scale = "width") +
+  geom_boxplot(width=0.1) +
+  theme_minimal() +
+  labs(
+    title = "Plot of features by cell type, P3",
+    x = "Cell type",
+    y = "Features number"
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+plot
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/Features_", params$patientbis, ".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 Markers RNA and ADT

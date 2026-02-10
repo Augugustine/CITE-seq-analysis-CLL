@@ -1,0 +1,175 @@
+---
+title: "Copy number alteration"
+params: 
+  patient: "P2"
+  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2"
+format: html
+editor: visual
+---
+
+## Copy Number Alteration calculation
+
+Goal : track the cancer cell thank to the CNA
+
+```{r}
+library(Seurat)
+library(muscadet)
+library(EnsDb.Hsapiens.v86)
+library(AnnotationDbi)
+library(ggplot2)
+```
+
+```{r}
+data<-readRDS(params$file)
+```
+
+## 1- Prepare the input
+
+-   Count matrix (raw data, features in row, cells in column)
+
+    1 matrix with tumor sample (all cells) 1 matrix with normal cells for the ref (T cells + NK + monocytes)
+
+```{r}
+counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
+data.ref<-subset(data, subset = (Annotation %in% c("T","CD4 T","CD8T","NK","Monocyte")))
+counts_matrix_ref <- GetAssayData(data.ref, assay = "RNA", layer = "counts")
+```
+
+-   allele count (SNP from database 1000G + Bam from the data)
+
+    in Bash
+
+```{bash}
+wget -m -np ftp://ftp.1000genomes.ebi.ac.uk/vol1/ftp/data_collections/1000G_2504_high_coverage/working/20220422_3202_phased_SNV_INDEL_SV/
+
+# Combine the 22 vcf files into one
+bcftools concat chr1.vcf chr2.vcf ... chr22.vcf -O z -o all_chromosomes.vcf.gz
+bcftools index all_chromosomes.vcf.gz
+```
+
+Barcodes file (cell barcode to analyse) input of SCReadCounts
+
+```{r}
+# For one timepoint (here D1)
+barcodes <- colnames(counts_matrix)
+barcodes <- barcodes[grepl("^D1_", barcodes)]
+barcodes <- sub("^D1_", "", barcodes)
+write.table(barcodes, "~/Documents/Singlecell-R/Scripts/Data/barcodes.tsv", sep="\t",row.names = FALSE, col.names = FALSE)
+```
+
+SCReadCounts : for each patient in each day
+
+```{bash}
+# complete data
+readCounts \
+  --bam possorted_genome_bam.bam \
+  --sites <vcf_file.vcf> \
+  --barcodes barcodes.tsv \
+  --groupby STARsolo_CB \
+  --alignmentFilter MPileup \
+  --out allele_counts.tsv
+  
+# ref data (only the barcodes change)
+readCounts \
+  --bam possorted_genome_bam.bam \
+  --sites <vcf_file.vcf> \
+  --barcodes barcodes.tsv \
+  --groupby STARsolo_CB \
+  --alignmentFilter MPileup \
+  --out allele_counts.tsv
+```
+
+```{r}
+readcounts<-process_allele(readcounts)
+```
+
+Combine the SCReadCounts day results to have one table with the 5 timepoints
+
+```{r}
+
+```
+
+-   features coordinates
+
+```{r}
+genes <- rownames(counts_matrix)
+genes_coord <- genes(EnsDb.Hsapiens.v86, filter = GeneNameFilter(genes))
+genes_coord <- as.data.frame(genes_coord)
+genes_coord <- genes_coord[genes_coord$seqnames %in% c(1:22, "X", "Y"), ]
+genes_coord <- genes_coord[, c("seqnames", "start", "end", "gene_name")]
+colnames(genes_coord) <- c("CHROM", "start", "end", "id")
+rownames(genes_coord) <- NULL
+```
+
+```{r}
+# Checking matching 
+table(colnames(counts_matrix) %in% genes_coord[, "id"])
+```
+
+## 2- Run MUSCADET
+
+Create a muscomic object before the muscadet object
+
+1 muscadet object for the tumor sample and 1 muscadet object with normal cells (reference)
+
+```{r}
+musc.tumor <- CreateMuscomicObject(
+    type = "RNA",
+    mat_counts = counts_matrix,
+    allele_counts = allele_counts,
+    features = genes_coord)
+
+musc.ref <- CreateMuscomicObject(
+    type = "RNA",
+    mat_counts = counts_matrix_ref,
+    allele_counts = allele_counts,
+    features = genes_coord)
+
+muscadet <- CreateMuscadetObject(
+    omics = list(RNA = musc.tumor),
+    genome = "hg38")
+
+muscadet_ref <- CreateMuscadetObject(
+    omics = list(RNA = musc.ref),
+    genome = "hg38")
+```
+
+LogRatio
+
+```{r}
+# Compute log R ratios from scRNA-seq read counts
+muscadet <- computeLogRatio(
+    x = muscadet,
+    reference = muscadet_ref,
+    omic = "RNA",
+    method = "RNA") 
+```
+
+```{r}
+RNA_features <- coordFeatures(exdata_muscadet)$RNA
+
+ggplot(RNA_features, aes(x = sumReads.ref, y = meanReads.ref, color = keep)) +
+    geom_point() +
+    geom_vline(xintercept = 2, linetype = "dashed", color = "red") + # refReads threshold
+    geom_hline(yintercept = 0.01, linetype = "dashed", color = "red") + # refMeanReads threshold
+    scale_x_log10() + scale_y_log10() +
+    labs(x = "Sum of reads in reference cells (refReads)", y = "Mean of reads in reference cells (refMeanReads)",
+         title = "RNA features (genes) filtered by thresholds") +
+    theme_minimal()
+```
+
+Clustering
+
+```{r}
+set.seed(123) 
+
+# Perform clustering with "seurat" method
+muscadet <- clusterMuscadet(
+    x = muscadet,
+    method = "seurat",
+    res_range = c(0.1, 0.3, 0.5),
+    dims_list = list(1:10, 1:10),
+    knn_seurat = 10, # adapted to low number of cells in example data, default is 20
+    knn_range_seurat = 30 # adapted to low number of cells in example data, default is 200
+)
+```
