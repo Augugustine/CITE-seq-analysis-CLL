@@ -1,0 +1,174 @@
+---
+title: "infer_CNA"
+params: 
+  patient: "P2"
+  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2"
+  filebis: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3"
+format: html
+editor: visual
+---
+
+## Copy Number Alteration calculation
+
+Goal : track the cancer cell thank to the CNA
+
+```{r}
+library(Seurat)
+library(copykat)
+library(ggplot2)
+library(stringr)
+```
+
+```{r}
+data<-readRDS(params$file)
+```
+
+## Run copykat (timepoint separately)
+
+```{r}
+data<-subset(data, subset = timepoint=="D1")
+counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
+norm.cells <- colnames(data)[data$Annotation %in% c("Monocyte", "CD4 T", "CD8 T", "NK")]
+copykat_D1 <- copykat(rawmat=counts_matrix, id.type="S", ngene.chr=5, win.size=25, KS.cut=0.1, sam.name="D1", distance="euclidean", norm.cell.names=norm.cells ,output.seg="FALSE", plot.genes="TRUE", genome="hg20",n.cores=4)
+#saveRDS(copykat.result, file = "CNA/copykat_D1_P2.rds")
+pred.res_D1 <- data.frame(copykat_D1$prediction)
+CNA.D1 <- data.frame(copykat_D1$CNAmat)
+```
+
+P3
+
+```{r}
+data<-subset(data, subset = timepoint=="D1")
+counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
+norm.cells <- colnames(data)[data$Annotation %in% c("Monocyte", "NK")]
+copykat_D1 <- copykat(rawmat=counts_matrix, id.type="S", ngene.chr=5, win.size=25, KS.cut=0.1, sam.name="D1", distance="euclidean", norm.cell.names=norm.cells ,output.seg="FALSE", plot.genes="TRUE", genome="hg20",n.cores=4)
+#saveRDS(copykat.result, file = "CNA/copykat_D1_P2.rds")
+pred.res_D1 <- data.frame(copykat_D1$prediction)
+CNA.D1 <- data.frame(copykat_D1$CNAmat)
+```
+
+## Explore the results
+
+Add the results in the Seurat Object, day sep
+
+```{r}
+pred_D1 <- data.frame(copykat_D1$prediction)
+data$copykat_pred <- NA
+rownames(pred.res_D1) <- pred_D1$cell.names
+data$copykat_pred <- pred_D1[colnames(data), "copykat.pred"]
+```
+
+```{r}
+DimPlot(data, group.by = "copykat_pred", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap("UMAP", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+
+```
+
+```{r}
+# 1. Harmoniser les noms dans pred.res_D1 (tiret → point)
+pred.res_D1$cell.names <- gsub("-1$", ".1", pred.res_D1$cell.names)
+
+# Vérification
+head(pred.res_D1$cell.names)
+# → doit maintenant afficher "D1_AAACCCAAGTCCCGAC.1"
+
+# 2. Trouver les cellules communes
+cells_in_CNA  <- colnames(CNA.D1)[4:ncol(CNA.D1)]
+cells_in_pred <- pred.res_D1$cell.names
+common_cells  <- intersect(cells_in_CNA, cells_in_pred)
+
+cat("Cellules dans CNA  :", length(cells_in_CNA), "\n")
+cat("Cellules dans pred :", length(cells_in_pred), "\n")
+cat("Cellules communes  :", length(common_cells), "\n")
+
+# 3. Filtrer ET réordonner
+CNA_filtered <- CNA.D1[, c(1:3, which(colnames(CNA.D1) %in% common_cells))]
+
+pred_filtered <- pred.res_D1[match(colnames(CNA_filtered)[4:ncol(CNA_filtered)],
+                                    pred.res_D1$cell.names), ]
+
+# 4. Reconstruire les couleurs
+rbPal5   <- colorRampPalette(RColorBrewer::brewer.pal(n = 8, name = "Dark2")[2:1])
+com.preN <- pred_filtered$copykat.pred
+pred     <- rbPal5(2)[as.numeric(factor(com.preN))]
+cells    <- matrix(pred, nrow = 1)
+
+# 5. Vérification finale — les deux nombres doivent être identiques
+cat("Lignes matrice :", nrow(t(CNA_filtered[, 4:ncol(CNA_filtered)])), "\n")
+cat("Colonnes cells  :", ncol(cells), "\n")
+
+# Recalculer chr1 avec CNA_filtered (les positions chromosomiques ont peut-être changé)
+chr    <- as.numeric(CNA_filtered$chrom) %% 2 + 1
+rbPal1 <- colorRampPalette(c('black','grey'))
+CHR    <- rbPal1(2)[as.numeric(chr)]
+chr1   <- cbind(CHR, CHR)
+
+# Heatmap avec CNA_filtered
+png("heatmap_CNA_D1.png", width=2000, height=1500, res=150)
+heatmap.3(t(CNA_filtered[, 4:ncol(CNA_filtered)]),
+          dendrogram = "r",
+          distfun    = function(x) parallelDist::parDist(x, threads=4, method="euclidean"),
+          hclustfun  = function(x) hclust(x, method="ward.D2"),
+          ColSideColors = chr1,
+          RowSideColors = cells,
+          Colv = NA, Rowv = TRUE,
+          notecol = "black", col = my_palette, breaks = col_breaks,
+          key = TRUE, keysize = 1,
+          density.info = "none", trace = "none",
+          cexRow = 0.1, cexCol = 0.1, cex.main = 1, cex.lab = 0.1,
+          symm = F, symkey = F, symbreaks = T,
+          cex = 1, cex.main = 4, margins = c(10,10))
+
+legend("topright",
+       paste("pred.", names(table(com.preN)), sep=""),
+       pch = 15,
+       col = RColorBrewer::brewer.pal(n=8, name="Dark2")[2:1],
+       cex = 0.6,
+       bty = "n")
+dev.off()
+```
+
+```{r}
+
+
+  my_palette <- colorRampPalette(rev(RColorBrewer::brewer.pal(n = 3, name = "RdBu")))(n = 999)
+
+  chr <- as.numeric(CNA.D1$chrom) %% 2+1
+  rbPal1 <- colorRampPalette(c('black','grey'))
+  CHR <- rbPal1(2)[as.numeric(chr)]
+  chr1 <- cbind(CHR,CHR)
+
+  rbPal5 <- colorRampPalette(RColorBrewer::brewer.pal(n = 8, name = "Dark2")[2:1])
+  com.preN <- pred.res_D1$copykat.pred
+  pred <- rbPal5(2)[as.numeric(factor(com.preN))]
+
+  cells <- matrix(pred, nrow = 1)
+  col_breaks = c(seq(-1,-0.4,length=50),seq(-0.4,-0.2,length=150),seq(-0.2,0.2,length=600),seq(0.2,0.4,length=150),seq(0.4, 1,length=50))
+  
+nrow(t(CNA.D1[,4:ncol(CNA.D1)]))
+ncol(cells)
+
+heatmap.3(t(CNA.D1[,4:ncol(CNA.D1)]),dendrogram="r", distfun = function(x) parallelDist::parDist(x,threads =4, method = "euclidean"), hclustfun = function(x) hclust(x, method="ward.D2"),
+            ColSideColors=chr1,RowSideColors=cells,Colv=NA, Rowv=TRUE,
+            notecol="black",col=my_palette,breaks=col_breaks, key=TRUE,
+            keysize=1, density.info="none", trace="none",
+            cexRow=0.1,cexCol=0.1,cex.main=1,cex.lab=0.1,
+            symm=F,symkey=F,symbreaks=T,cex=1, cex.main=4, margins=c(10,10))
+
+  legend("topright", paste("pred.",names(table(com.preN)),sep=""), pch=15,col=RColorBrewer::brewer.pal(n = 8, name = "Dark2")[2:1], cex=0.6, bty="n")
+
+```
+
+Timepoints combine
+
+```{r}
+data<-readRDS(params$filebis)
+copykat.res <- rbind(pred.res_D1, pred.res_D4, pred.res_D8, pred.res_D11, pred.res_D14)
+data$copykat_pred <- NA
+rownames(copykat.res) <- copykat.res$cell.names
+data$copykat_pred <- copykat.res[colnames(data), "copykat.pred"]
+```
+
+```{r}
+plot<-DimPlot(data, group.by = "copykat_pred", reduction = "umap", pt.size=0.05, label.size = 2.5) + ggtitle(str_wrap("UMAP CNA, patient 3", width = 60)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/cna_p3.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
