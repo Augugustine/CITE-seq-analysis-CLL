@@ -172,3 +172,40 @@ data$copykat_pred <- copykat.res[colnames(data), "copykat.pred"]
 plot<-DimPlot(data, group.by = "copykat_pred", reduction = "umap", pt.size=0.05, label.size = 2.5) + ggtitle(str_wrap("UMAP CNA, patient 3", width = 60)) + theme(plot.title = element_text(size = 10, hjust = 0.5))
 ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/cna_p3.jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
+
+## Numbat
+
+barcodes files + count matrix
+
+```{r}
+# For one timepoint (here D1)
+data_bis<-subset(data, subset = timepoint == "D4")
+counts_matrix <- GetAssayData(data_bis, assay = "RNA", layer = "counts")
+
+barcodes <- colnames(counts_matrix)
+#barcodes <- barcodes[grepl("^D14_", barcodes)]
+barcodes <- sub("^D4_", "", barcodes)
+write.table(barcodes, "~/Documents/Singlecell-R/Scripts/Data/barcodes_D4.tsv", sep="\t",row.names = FALSE, col.names = FALSE)
+```
+
+Count matrix
+
+```{r}
+counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
+colnames(counts_matrix) <- sub("^D[0-9]+_", "", colnames(counts_matrix))
+```
+
+Reference created (or choose the given one)
+
+```{r}
+data_ref<-subset(data, subset = (Annotation %in% c("CD4 T", "CD8 T", "NK", "Monocyte")))
+cell_annot <- data.frame(
+  cell = sub("^D[0-9]+_", "", colnames(data_ref)),
+  group = data_ref$Annotation,
+  stringsAsFactors = FALSE
+)
+counts_ref <- GetAssayData(data_ref, assay = "RNA", layer = "counts")
+colnames(counts_ref) <- sub("^D[0-9]+_", "", colnames(counts_ref))
+
+ref_internal <- aggregate_counts(counts_ref, cell_annot)
+```
