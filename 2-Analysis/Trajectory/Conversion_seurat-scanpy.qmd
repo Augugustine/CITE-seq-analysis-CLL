@@ -1,0 +1,23 @@
+---
+title: "Conversion Seurat-Scanpy"
+format: html
+editor: visual
+---
+
+## Conversion Seurat object in Scanpy object (h5ad files)
+
+SeuratObject version 5.2.0
+
+```{r}
+library(Seurat)
+library(SeuratObject)
+library(SeuratDisk)
+```
+
+```{r}
+data<-readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2")
+seurat_object_new[["RNA"]] <- as(object = seurat_object_new[["RNA"]], Class = "Assay")
+seurat_object_new[["RNA"]]@scale.data <- matrix() # supression of scale data because put in the main layer (adata.X) in scanpy files
+SeuratDisk::SaveH5Seurat(seurat_object_new, "~/Documents/Singlecell-R/Scripts/Matrix/seurat_object_new.h5Seurat") 
+Convert("~/Documents/Singlecell-R/Scripts/Matrix/seurat_object_new.h5Seurat", dest = "h5ad")
+```
