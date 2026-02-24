@@ -19,6 +19,8 @@ library(copykat)
 library(ggplot2)
 library(stringr)
 library(numbat)
+library(data.table)
+library(dplyr)
 ```
 
 ```{r}
@@ -26,7 +28,7 @@ data_p2<-readRDS(params$file)
 data_p3<-readRDS(params$filebis)
 ```
 
-## CopyKat 
+## CopyKat
 
 Run copyKat (timepoint separately)
 
@@ -153,6 +155,15 @@ for (tp in timepoints) {
 
 Run the pile up and phasing on Numbat Docker in the HPC : run the script Numbat.sh
 
+Combining the pileup & phasing out (because one per timepoint)
+
+```{r}
+files <- c("/home/ablanc/work/NetBIO2/CNA/Numbat/P2_Numbat/D1_allele_counts.tsv.gz", "/home/ablanc/work/NetBIO2/CNA/Numbat/P2_Numbat/D4_allele_counts.tsv.gz", "/home/ablanc/work/NetBIO2/CNA/Numbat/P2_Numbat/D8_allele_counts.tsv.gz", "/home/ablanc/work/NetBIO2/CNA/Numbat/P2_Numbat/D11_allele_counts.tsv.gz", "/home/ablanc/work/NetBIO2/CNA/Numbat/P2_Numbat/D14_allele_counts.tsv.gz")
+
+df_allele_list <- lapply(files, fread)
+df_allele <- bind_rows(df_allele_list, .id = "sample")
+```
+
 Count matrix
 
 ```{r}
@@ -179,6 +190,7 @@ Running Numbat
 
 ```{r}
 df_allele<-read.table("~/Documents/Singlecell-R/Scripts/Matrix/D1_allele_counts.tsv", sep="\t", header=T)
+df_allele <- fread("~/Documents/Singlecell-R/Scripts/Matrix/all_allele_counts.tsv.gz")
 ```
 
 ```{r}
@@ -190,6 +202,6 @@ out = run_numbat(
     t = 1e-5,
     ncores = 4,
     plot = TRUE,
-    out_dir = './test'
+    out_dir = '~/Documents/Singlecell-R/Scripts/Plots/Numbat_p2'
 )
 ```
