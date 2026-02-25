@@ -155,20 +155,37 @@ for (tp in timepoints) {
 
 Run the pile up and phasing on Numbat Docker in the HPC : run the script Numbat.sh
 
-Combining the pileup & phasing out (because one per timepoint)
+Combining the pileup & phasing out (because one per timepoint) + add the timepoint prefix on the ID cell
 
 ```{r}
-files <- c("/home/ablanc/work/NetBIO2/CNA/Numbat/P2_Numbat/D1_allele_counts.tsv.gz", "/home/ablanc/work/NetBIO2/CNA/Numbat/P2_Numbat/D4_allele_counts.tsv.gz", "/home/ablanc/work/NetBIO2/CNA/Numbat/P2_Numbat/D8_allele_counts.tsv.gz", "/home/ablanc/work/NetBIO2/CNA/Numbat/P2_Numbat/D11_allele_counts.tsv.gz", "/home/ablanc/work/NetBIO2/CNA/Numbat/P2_Numbat/D14_allele_counts.tsv.gz")
+files <- c(
+  "/home/ablanc/work/NetBIO2/CNA/Numbat_p2/Results_pileup_phasing/D1_allele_counts.tsv.gz",
+  "/home/ablanc/work/NetBIO2/CNA/Numbat_p2/Results_pileup_phasing/D4_allele_counts.tsv.gz",
+  "/home/ablanc/work/NetBIO2/CNA/Numbat_p2/Results_pileup_phasing/D8_allele_counts.tsv.gz",
+  "/home/ablanc/work/NetBIO2/CNA/Numbat_p2/Results_pileup_phasing/D11_allele_counts.tsv.gz",
+  "/home/ablanc/work/NetBIO2/CNA/Numbat_p2/Results_pileup_phasing/D14_allele_counts.tsv.gz"
+)
 
-df_allele_list <- lapply(files, fread)
-df_allele <- bind_rows(df_allele_list, .id = "sample")
+timepoints <- sub(".*/(D\\d+)_allele_counts.*", "\\1", files)
+
+df_allele_list <- lapply(seq_along(files), function(i) {
+  fread(files[i]) %>%
+    mutate(
+      timepoint = as.integer(sub("D", "", timepoints[i])),
+      cell = paste0(timepoints[i], "_", cell)
+    )
+})
+
+df_allele <- bind_rows(df_allele_list)
+
+head(df_allele)
 ```
 
 Count matrix
 
 ```{r}
 counts_matrix <- GetAssayData(data_p2, assay = "RNA", layer = "counts")
-colnames(counts_matrix) <- sub("^D[0-9]+_", "", colnames(counts_matrix))
+#colnames(counts_matrix) <- sub("^D[0-9]+_", "", colnames(counts_matrix))
 ```
 
 Reference created (or choose the given one)
@@ -189,7 +206,7 @@ ref_internal <- aggregate_counts(counts_ref, cell_annot)
 Running Numbat
 
 ```{r}
-df_allele<-read.table("~/Documents/Singlecell-R/Scripts/Matrix/D1_allele_counts.tsv", sep="\t", header=T)
+df_allele<-read.table("~/Documents/Singlecell-R/Scripts/Matrix/all_allele_counts.tsv", sep=",", header=T)
 df_allele <- fread("~/Documents/Singlecell-R/Scripts/Matrix/all_allele_counts.tsv.gz")
 ```
 
