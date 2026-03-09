@@ -3,7 +3,7 @@ title: "infer_CNA"
 params: 
   patient: "P2"
   patientbis: "P3"
-  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2"
+  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
   filebis: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3"
 format: html
 editor: visual
@@ -14,6 +14,7 @@ editor: visual
 Goal : track the cancer cell thank to the CNA
 
 ```{r}
+#| message: false
 library(Seurat)
 library(copykat)
 library(ggplot2)
@@ -308,6 +309,43 @@ plot<-ggplot(clone_prop, aes(x = Annotation, y = prop, fill = clone_opt)) +
   ylab("Cell proportion") + xlab("Cell Type") + labs(fill = "Cell clone")
 plot
 ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_clone_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+GT_prop <- df %>%
+     group_by(Annotation, GT_opt) %>%
+     summarise(n = n(), .groups = "drop") %>%
+     group_by(Annotation) %>%
+     mutate(prop = n / sum(n))
+plot<-ggplot(GT_prop, aes(x = Annotation, y = prop, fill = GT_opt)) +
+     geom_bar(stat = "identity", position = "fill") +
+     scale_y_continuous(labels = scales::percent) +
+     theme_classic() +
+     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+     ylab("Cell proportion") + xlab("Cell Type") + labs(fill = "Alteration type\n(chromosomes)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_mut_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+df$timepoint <- factor(
+  df$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+time_GT_prop <- df %>%
+     group_by(timepoint, GT_opt) %>%
+     summarise(n = n(), .groups = "drop") %>%
+     group_by(timepoint) %>%
+     mutate(prop = n / sum(n))
+
+ggplot(time_GT_prop, aes(x = timepoint, y = prop, fill = GT_opt)) +
+     geom_bar(stat = "identity", position = "fill") +
+     scale_y_continuous(labels = scales::percent) +
+     theme_classic() +
+     theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+     ylab("Cell proportion") + xlab("Cell Type") + labs(fill = "Alteration type\n(chromosomes)")
+
+data_p2$GT_11c <- ifelse(data_p2$GT_opt %in% c("7b,11c","12c_bdel", "7b,11c,12c_del"), "11c", "other")
+DimPlot(data_p2, group.by = "GT_11c", reduction = "umap", pt.size=0.1, label.size = 2.5, cols =c("#ea4258","lightblue") ) + ggtitle(str_wrap("Tumor and normal cells annotation", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
 ```
 
 Tumor phylogeny
