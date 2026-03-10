@@ -3,6 +3,7 @@ title: "infer_CNA"
 params: 
   patient: "P2"
   patientbis: "P3"
+  patient_numbat: "p2"
   file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
   filebis: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3"
 format: html
@@ -209,6 +210,8 @@ ref_internal <- aggregate_counts(counts_ref, cell_annot)
 
 ### Running Numbat
 
+In run it on the HPC, I used 8 CPU and 200 G, time : \~15h.
+
 ```{r}
 df_allele<-read.table("~/Documents/Singlecell-R/Scripts/Matrix/all_allele_counts.tsv", sep=",", header=T)
 df_allele <- fread("~/Documents/Singlecell-R/Scripts/Matrix/all_allele_counts.tsv.gz")
@@ -226,14 +229,22 @@ out = run_numbat(
     skip_nj = TRUE,
     plot = TRUE,
     max_entropy = 0.7,
-    out_dir = '/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Resultats_numbat/Results_numbat_ref_internal_test'
+    out_dir = '/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Resultats_numbat/Results_numbat_ref_internal_p2'
 )
 ```
 
-### Interpreting Numbat results
+### Interpreting Numbat results 
+
+Put the Numbat folder result and then use the parameter \$patient_numbat in the script header.
 
 ```{r}
-nb = Numbat$new(out_dir = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Resultats_numbat/Results_numbat_ref_internal")
+nb = Numbat$new(out_dir = paste0("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Resultats_numbat/Results_numbat_ref_internal_",params$patient_numbat))
+
+if (params$patient_numbat =="p2") {
+  data<-data_p2
+} else {
+  data<-data_p3
+}
 ```
 
 ```{r}
@@ -247,6 +258,15 @@ nb$plot_phylo_heatmap(
 ```
 
 ```{r}
+nb$bulk_clones %>% 
+  filter(n_cells > 50) %>%
+  plot_bulks(
+    min_LLR = 5, # filtering CNVs by evidence
+    legend = TRUE
+  )
+```
+
+```{r}
 head(nb$joint_post) %>% select(cell, CHROM, seg, cnv_state, p_cnv, p_cnv_x, p_cnv_y)
 ```
 
@@ -255,28 +275,28 @@ head(nb$joint_post) %>% select(cell, CHROM, seg, cnv_state, p_cnv, p_cnv_x, p_cn
 meta_subset <- nb$clone_post[, c("cell", "clone_opt", "GT_opt", "p_opt", "p_cnv", "compartment_opt")]
 rownames(meta_subset) <- meta_subset$cell
 meta_subset$cell <- NULL
-head(colnames(data_p2))
+head(colnames(data))
 head(rownames(meta_subset))
-data_p2 <- AddMetaData(data_p2, metadata = meta_subset)
-length(intersect(colnames(data_p2), rownames(meta_subset)))
+data <- AddMetaData(data, metadata = meta_subset)
+length(intersect(colnames(data), rownames(meta_subset)))
 ```
 
 ```{r}
-plot<-DimPlot(data_p2, group.by = "clone_opt", reduction = "umap", pt.size=0.1, label.size = 2.5, cols =c("gray","#377EB8","#4DAF4A", "#984EA3", "#ea4258","orange") ) + ggtitle(str_wrap("Clonal assignments", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plot<-DimPlot(data, group.by = "clone_opt", reduction = "umap", pt.size=0.1, label.size = 2.5, cols =c("gray","#377EB8","#4DAF4A", "#984EA3", "#ea4258","orange") ) + ggtitle(str_wrap("Clonal assignments", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
 plot
-ggsave("~/Documents/Singlecell-R/Scripts/Plots/umap_clone_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/umap_clone_",params$patient_numbat,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 
-plot<-DimPlot(data_p2, group.by = "compartment_opt", reduction = "umap", pt.size=0.1, label.size = 2.5, cols =c("lightblue","#ea4258") ) + ggtitle(str_wrap("Tumor and normal cells annotation", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plot<-DimPlot(data, group.by = "compartment_opt", reduction = "umap", pt.size=0.1, label.size = 2.5, cols =c("lightblue","#ea4258") ) + ggtitle(str_wrap("Tumor and normal cells annotation", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
 plot
-ggsave("~/Documents/Singlecell-R/Scripts/Plots/umap_tumor_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/umap_tumor_",params$patient_numbat,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 
-plot<-FeaturePlot(data_p2, features="p_cnv", reduction="umap")+ ggtitle(str_wrap("Tumor versus normal probability", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plot<-FeaturePlot(data, features="p_cnv", reduction="umap")+ ggtitle(str_wrap("Tumor versus normal probability", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
 plot
-ggsave("~/Documents/Singlecell-R/Scripts/Plots/umap_proba_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/umap_proba_",params$patient_numbat,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 ```{r}
-df <- data_p2@meta.data
+df <- data@meta.data
 tumor_prop <- df %>%
   group_by(Annotation, compartment_opt) %>%
   summarise(n = n(), .groups = "drop") %>%
@@ -290,7 +310,7 @@ plot<-ggplot(tumor_prop, aes(x = Annotation, y = prop, fill = compartment_opt)) 
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ylab("Cell proportion") + xlab("Cell Type") + labs(fill = "Cell annotation\n(tumor/normal)")
 plot
-ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_tumor_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/propor_tumor_",params$patient_numbat,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 ```{r}
@@ -308,7 +328,7 @@ plot<-ggplot(clone_prop, aes(x = Annotation, y = prop, fill = clone_opt)) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ylab("Cell proportion") + xlab("Cell Type") + labs(fill = "Cell clone")
 plot
-ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_clone_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/propor_clone_",params$patient_numbat,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 ```{r}
@@ -324,7 +344,7 @@ plot<-ggplot(GT_prop, aes(x = Annotation, y = prop, fill = GT_opt)) +
      theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
      ylab("Cell proportion") + xlab("Cell Type") + labs(fill = "Alteration type\n(chromosomes)")
 plot
-ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_mut_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/propor_mut_",params$patient_numbat,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 
 df$timepoint <- factor(
   df$timepoint,
@@ -345,7 +365,27 @@ ggplot(time_GT_prop, aes(x = timepoint, y = prop, fill = GT_opt)) +
      ylab("Cell proportion") + xlab("Cell Type") + labs(fill = "Alteration type\n(chromosomes)")
 
 data_p2$GT_11c <- ifelse(data_p2$GT_opt %in% c("7b,11c","12c_bdel", "7b,11c,12c_del"), "11c", "other")
-DimPlot(data_p2, group.by = "GT_11c", reduction = "umap", pt.size=0.1, label.size = 2.5, cols =c("#ea4258","lightblue") ) + ggtitle(str_wrap("Tumor and normal cells annotation", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+DimPlot(data, group.by = "GT_11c", reduction = "umap", pt.size=0.1, label.size = 2.5, cols =c("#ea4258","lightblue") ) + ggtitle(str_wrap("Tumor and normal cells annotation", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+Timepoint by clones
+
+```{r}
+clone_prop <- df %>%
+     group_by(timepoint, clone_opt) %>%
+     summarise(n = n(), .groups = "drop") %>%
+     group_by(timepoint) %>%
+     mutate(prop = n / sum(n))
+clone_prop$timepoint <- factor(clone_prop$timepoint,levels = c("D1","D4","D8","D11","D14"))
+
+plot<-ggplot(clone_prop, aes(x = timepoint, y = prop, color = factor(clone_opt), group = clone_opt)) +
+     geom_line(size = 1.2) +
+     geom_point(size = 3) +
+     scale_y_continuous(labels = scales::percent) +
+     theme_classic() +
+     labs(x = "Timepoint",y = "Cell proportion",color = "Clone")
+plot
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/propor_time_clone_",params$patient_numbat,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 Tumor phylogeny
@@ -360,29 +400,4 @@ nb$plot_sc_tree(
 )
 
 nb$plot_mut_history(pal = mypal)
-```
-
-```{r}
-clone_prob_summary <- df %>%
-  group_by(Annotation, compartment_opt, clone_opt) %>%
-  summarise(
-    mean_p = mean(p_cnv, na.rm = TRUE),
-    median_p = median(p_cnv, na.rm = TRUE),
-    n_cells = n(),
-    .groups = "drop"
-  )
-
-clone_prob_summary
-
-ggplot(clone_prob_summary, aes(x = clone_opt, y = mean_p, size = n_cells, color = compartment_opt)) +
-  geom_point() +
-  facet_wrap(~ Annotation, scales = "free_x") +
-  labs(
-    x = "Clone",
-    y = "Mean tumoral probability",
-    size = "Cell number",
-    color = "Cell status"
-  ) +
-  theme_classic() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 ```
