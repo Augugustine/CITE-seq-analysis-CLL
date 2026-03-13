@@ -3,7 +3,7 @@ title: "infer_CNA"
 params: 
   patient: "P2"
   patientbis: "P3"
-  patient_numbat: "p2"
+  patient_numbat: "p3"
   file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
   filebis: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3"
 format: html
@@ -233,7 +233,7 @@ out = run_numbat(
 )
 ```
 
-### Interpreting Numbat results 
+### Interpreting Numbat results
 
 Put the Numbat folder result and then use the parameter \$patient_numbat in the script header.
 
