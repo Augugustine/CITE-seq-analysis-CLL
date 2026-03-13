@@ -1,0 +1,634 @@
+---
+title: "Copy number alteration"
+params: 
+  patient: "P2"
+  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+  filebis: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3"
+format: html
+editor: visual
+---
+
+## Clustering and GeneOntology on the sub population
+
+## CLL and myeloid sub population
+
+```{r}
+#| message: false
+library(Seurat)
+library(clusterProfiler)
+library(org.Hs.eg.db)
+library(ggplot2)
+```
+
+```{r}
+data_p2<-readRDS(params$file)
+```
+
+Define sub population in CLL population
+
+```{r}
+data_cll<-subset(data_p2, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge")))
+```
+
+```{r}
+data_cll<-NormalizeData(data_cll)
+data_cll <- FindVariableFeatures(data_cll, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(data_cll)
+data_cll <- ScaleData(data_cll, features = all.genes)
+data_cll <- RunPCA(data_cll, features = VariableFeatures(object = data_cll))
+data_cll <- FindNeighbors(data_cll, dims = 1:10)
+data_cll <- FindClusters(data_cll, resolution = 0.1)
+data_cll <- RunUMAP(data_cll, dims = 1:10)
+data_cll <- RunTSNE(data_cll, dims = 1:10)
+```
+
+```{r}
+data_cll$timepoint <- factor(
+  data_cll$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_umap_cluster.jpeg")
+DimPlot(data_cll, reduction = "umap")
+dev.off()
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_tsne.jpeg")
+DimPlot(data_cll, reduction = "tsne")
+dev.off()
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_umap_celltype.jpeg")
+DimPlot(data_cll, reduction = "umap",group.by = "Annotation")
+dev.off()
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_tsne_celltype.jpeg")
+DimPlot(data_cll, reduction = "tsne",group.by = "Annotation")
+dev.off()
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_umap_clone.jpeg")
+DimPlot(data_cll, reduction = "umap",group.by = "clone_opt")
+dev.off()
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_umap_time.jpeg")
+DimPlot(data_cll, reduction = "umap",group.by = "timepoint")
+dev.off()
+```
+
+Quantification : proportion
+
+```{r}
+df <- data_cll@meta.data
+
+df$timepoint <- factor(
+  df$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+df$clone_opt <- as.factor(df$clone_opt)
+
+tumor_prop <- df %>%
+  group_by(seurat_clusters, compartment_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(tumor_prop, aes(x = seurat_clusters, y = prop, fill = compartment_opt)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Cluster") + labs(fill = "Cell annotation\n(tumor/normal)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_tumor_cll_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+df %>%
+  group_by(compartment_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(prop = n / sum(n))
+
+
+clone_prop <- df %>%
+  group_by(seurat_clusters, clone_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(clone_prop, aes(x = seurat_clusters, y = prop, fill = clone_opt)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Cluster") + labs(fill = "Clones")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_clones_cll_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+time_prop <- df %>%
+  group_by(seurat_clusters, timepoint) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(time_prop, aes(x = seurat_clusters, y = prop, fill = timepoint)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Clusters") + labs(fill = "Timepoint")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_time_cll_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+Differential gene analysis and Gene Ontology
+
+```{r}
+res <- FindAllMarkers(data_cll, only.pos = TRUE)
+```
+
+```{r}
+for (clus in 0:5) {
+
+  res_clus <- subset(res, res$cluster == as.character(clus))
+  genes <- rownames(res_clus)
+
+  Go_results <- enrichGO(
+    gene = genes, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "BP")
+  
+  plot_go <- barplot(Go_results, showCategory = 20) +
+    ggtitle(paste("GO Enrichment Analysis CLL cells - Cluster", clus)) +
+    theme_bw() + theme(plot.title = element_text(hjust = 0.5, face = "bold"), axis.text.y = element_text(size = 14))
+  
+  print(plot_go)
+
+  ggsave(
+    filename = paste0("~/Documents/Singlecell-R/Scripts/Plots/GO_cluster_cll", clus, ".jpeg"), plot = plot_go,
+    width = 4000, height = 3000, units = "px"
+  )
+}
+```
+
+Define sub population in myeloid population (mono+macro+bridge)
+
+```{r}
+data_myel<-subset(data_p2, subset = (Annotation %in% c("Monocyte", "Macrophage", "Bridge")))
+data_myel<-NormalizeData(data_myel)
+data_myel <- FindVariableFeatures(data_myel, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(data_myel)
+data_myel <- ScaleData(data_myel, features = all.genes)
+data_myel <- RunPCA(data_myel, features = VariableFeatures(object = data_myel))
+data_myel <- FindNeighbors(data_myel, dims = 1:10)
+data_myel <- FindClusters(data_myel, resolution = 0.2)
+data_myel <- RunUMAP(data_myel, dims = 1:10)
+data_myel <- RunTSNE(data_myel, dims = 1:10)
+```
+
+```{r}
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_umap.jpeg")
+DimPlot(data_myel, reduction = "umap")
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_tsne.jpeg")
+DimPlot(data_myel, reduction = "tsne")
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_umap_celltype.jpeg")
+DimPlot(data_myel, reduction = "umap",group.by = "Annotation")
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_tsne_celltype.jpeg")
+DimPlot(data_myel, reduction = "tsne",group.by = "Annotation")
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_umap_clone.jpeg")
+DimPlot(data_myel, reduction = "umap",group.by = "clone_opt")
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_umap_time.jpeg")
+DimPlot(data_myel, reduction = "umap",group.by = "timepoint")
+dev.off()
+```
+
+```{r}
+res <- FindAllMarkers(data_myel, only.pos = TRUE)
+```
+
+```{r}
+for (clus in 0:5) {
+
+  res_clus <- subset(res, res$cluster == as.character(clus))
+  genes <- rownames(res_clus)
+
+  Go_results <- enrichGO(
+    gene = genes, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "BP")
+  
+  plot_go <- barplot(Go_results, showCategory = 20) +
+    ggtitle(paste("GO Enrichment Analysis Myeloid cells - Cluster", clus)) +
+    theme_bw() + theme(plot.title = element_text(hjust = 0.5, face = "bold"), axis.text.y = element_text(size = 14))
+  
+  print(plot_go)
+
+  ggsave(
+    filename = paste0("~/Documents/Singlecell-R/Scripts/Plots/GO_cluster_myel", clus, ".jpeg"), plot = plot_go,
+    width = 4000, height = 3000, units = "px"
+  )
+}
+```
+
+Quantification : proportion
+
+```{r}
+df <- data_myel@meta.data
+
+df$timepoint <- factor(
+  df$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+df$clone_opt <- as.factor(df$clone_opt)
+
+tumor_prop <- df %>%
+  group_by(seurat_clusters, compartment_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(tumor_prop, aes(x = seurat_clusters, y = prop, fill = compartment_opt)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Cluster myeloid + intermediate population") + labs(fill = "Cell annotation\n(tumor/normal)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_tumor_myel_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+df %>%
+  group_by(compartment_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(prop = n / sum(n))
+
+
+clone_prop <- df %>%
+  group_by(seurat_clusters, clone_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(clone_prop, aes(x = seurat_clusters, y = prop, fill = clone_opt)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Cluster myeloid + intermediate population") + labs(fill = "Clones")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_clones_myel_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+time_prop <- df %>%
+  group_by(seurat_clusters, timepoint) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(time_prop, aes(x = seurat_clusters, y = prop, fill = timepoint)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Clusters myeloid + intermediate population") + labs(fill = "Timepoint")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_time_myel_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+Compare cluster 0 and 1 (macrophages), in order to define M1 and M2
+
+```{r}
+res_cluster0 <- FindMarkers(data_myel, only.pos = TRUE, ident.1 = 0, ident.2=1)
+res_cluster1 <- FindMarkers(data_myel, only.pos = TRUE, ident.1 = 1, ident.2=0)
+
+res_cluster0 <- res_cluster0 %>%
+  arrange(desc(avg_log2FC))
+genelist<-head(rownames(res_cluster0),n=2000)
+genelist<- data.frame(gene = genelist)
+write.table(genelist, file = "~/Documents/Singlecell-R/Scripts/Matrix/res_clu0.tsv", sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+res_cluster1 <- res_cluster1 %>%
+  arrange(desc(avg_log2FC))
+genelist<-head(rownames(res_cluster1),n=2000)
+genelist<- data.frame(gene = genelist)
+write.table(genelist, file = "~/Documents/Singlecell-R/Scripts/Matrix/res_clu1.tsv", sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+```
+
+Surface proteins
+
+```{r}
+adt=unique(data_p2@assays[["ADT"]]@var.features)
+plot <- DoHeatmap(data_myel, features = features, size = 4, assay = "ADT") +
+  theme(
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 16)
+  )
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/heatmap_adt_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+### Patient 3
+
+```{r}
+data_p3<-readRDS(params$filebis)
+```
+
+Define sub population in CLL population
+
+```{r}
+data_cll<-subset(data_p3, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge")))
+```
+
+```{r}
+data_cll<-NormalizeData(data_cll)
+data_cll <- FindVariableFeatures(data_cll, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(data_cll)
+data_cll <- ScaleData(data_cll, features = all.genes)
+data_cll <- RunPCA(data_cll, features = VariableFeatures(object = data_cll))
+data_cll <- FindNeighbors(data_cll, dims = 1:10)
+data_cll <- FindClusters(data_cll, resolution = 0.1)
+data_cll <- RunUMAP(data_cll, dims = 1:10)
+data_cll <- RunTSNE(data_cll, dims = 1:10)
+```
+
+```{r}
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_umap_cluster_p3.jpeg")
+DimPlot(data_cll, reduction = "umap")
+dev.off()
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_tsne_p3.jpeg")
+DimPlot(data_cll, reduction = "tsne")
+dev.off()
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_umap_celltype_p3.jpeg")
+DimPlot(data_cll, reduction = "umap",group.by = "Annotation")
+dev.off()
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_tsne_celltype_p3.jpeg")
+DimPlot(data_cll, reduction = "tsne",group.by = "Annotation")
+dev.off()
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_umap_clone_p3.jpeg")
+DimPlot(data_cll, reduction = "umap",group.by = "clone_opt")
+dev.off()
+png("~/Documents/Singlecell-R/Scripts/Plots/CLL_umap_time_p3.jpeg")
+DimPlot(data_cll, reduction = "umap",group.by = "timepoint")
+dev.off()
+```
+
+Quantification : proportion
+
+```{r}
+df <- data_cll@meta.data
+
+df$timepoint <- factor(
+  df$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+df$clone_opt <- as.factor(df$clone_opt)
+
+tumor_prop <- df %>%
+  group_by(seurat_clusters, compartment_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(tumor_prop, aes(x = seurat_clusters, y = prop, fill = compartment_opt)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Cluster") + labs(fill = "Cell annotation\n(tumor/normal)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_tumor_cll_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+df %>%
+  group_by(compartment_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(prop = n / sum(n))
+
+clone_prop <- df %>%
+  group_by(seurat_clusters, clone_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(clone_prop, aes(x = seurat_clusters, y = prop, fill = clone_opt)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Cluster") + labs(fill = "Clones")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_clones_cll_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+time_prop <- df %>%
+  group_by(seurat_clusters, timepoint) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(time_prop, aes(x = seurat_clusters, y = prop, fill = timepoint)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Clusters") + labs(fill = "Timepoint")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_time_cll_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+Differential gene analysis and Gene Ontology
+
+```{r}
+res <- FindAllMarkers(data_cll, only.pos = TRUE)
+```
+
+```{r}
+for (clus in 0:5) {
+
+  res_clus <- subset(res, res$cluster == as.character(clus))
+  genes <- rownames(res_clus)
+
+  Go_results <- enrichGO(
+    gene = genes, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "BP")
+  
+  plot_go <- barplot(Go_results, showCategory = 20) +
+    ggtitle(paste("GO Enrichment Analysis CLL cells - Cluster", clus)) +
+    theme_bw() + theme(plot.title = element_text(hjust = 0.5, face = "bold"), axis.text.y = element_text(size = 14))
+  
+  print(plot_go)
+
+  ggsave(
+    filename = paste0("~/Documents/Singlecell-R/Scripts/Plots/GO_cluster_cll_p3", clus, ".jpeg"), plot = plot_go,
+    width = 4000, height = 3000, units = "px"
+  )
+}
+```
+
+Define sub population in myeloid population (mono+macro+bridge)
+
+```{r}
+data_myel<-subset(data_p3, subset = (Annotation %in% c("Monocyte", "Macrophage", "Bridge")))
+data_myel<-NormalizeData(data_myel)
+data_myel <- FindVariableFeatures(data_myel, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(data_myel)
+data_myel <- ScaleData(data_myel, features = all.genes)
+data_myel <- RunPCA(data_myel, features = VariableFeatures(object = data_myel))
+data_myel <- FindNeighbors(data_myel, dims = 1:10)
+data_myel <- FindClusters(data_myel, resolution = 0.08)
+data_myel <- RunUMAP(data_myel, dims = 1:10)
+data_myel <- RunTSNE(data_myel, dims = 1:10)
+```
+
+```{r}
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_umap_p3.jpeg")
+DimPlot(data_myel, reduction = "umap")
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_tsne_p3.jpeg")
+DimPlot(data_myel, reduction = "tsne")
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_umap_celltype_p3.jpeg")
+DimPlot(data_myel, reduction = "umap",group.by = "Annotation")
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_tsne_celltype_p3.jpeg")
+DimPlot(data_myel, reduction = "tsne",group.by = "Annotation")
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_umap_clone_p3.jpeg")
+DimPlot(data_myel, reduction = "umap",group.by = "clone_opt")
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/myel_umap_time_p3.jpeg")
+DimPlot(data_myel, reduction = "umap",group.by = "timepoint")
+dev.off()
+```
+
+```{r}
+res <- FindAllMarkers(data_myel, only.pos = TRUE)
+```
+
+```{r}
+for (clus in 0:5) {
+
+  res_clus <- subset(res, res$cluster == as.character(clus))
+  genes <- rownames(res_clus)
+
+  Go_results <- enrichGO(
+    gene = genes, OrgDb = org.Hs.eg.db, keyType = "SYMBOL", ont = "BP")
+  
+  plot_go <- barplot(Go_results, showCategory = 20) +
+    ggtitle(paste("GO Enrichment Analysis Myeloid cells - Cluster", clus)) +
+    theme_bw() + theme(plot.title = element_text(hjust = 0.5, face = "bold"), axis.text.y = element_text(size = 14))
+  
+  print(plot_go)
+
+  ggsave(
+    filename = paste0("~/Documents/Singlecell-R/Scripts/Plots/GO_cluster_myel_p3", clus, ".jpeg"), plot = plot_go,
+    width = 4000, height = 3000, units = "px"
+  )
+}
+```
+
+Quantification : proportion
+
+```{r}
+df <- data_myel@meta.data
+
+df$timepoint <- factor(
+  df$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+
+df$clone_opt <- as.factor(df$clone_opt)
+
+tumor_prop <- df %>%
+  group_by(seurat_clusters, compartment_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(tumor_prop, aes(x = seurat_clusters, y = prop, fill = compartment_opt)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Cluster myeloid + intermediate population") + labs(fill = "Cell annotation\n(tumor/normal)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_tumor_myel_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+df %>%
+  group_by(compartment_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  mutate(prop = n / sum(n))
+
+
+clone_prop <- df %>%
+  group_by(seurat_clusters, clone_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(clone_prop, aes(x = seurat_clusters, y = prop, fill = clone_opt)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Cluster myeloid + intermediate population") + labs(fill = "Clones")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_clones_myel_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+time_prop <- df %>%
+  group_by(seurat_clusters, timepoint) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(seurat_clusters) %>%
+  mutate(prop = n / sum(n))
+
+plot<-ggplot(time_prop, aes(x = seurat_clusters, y = prop, fill = timepoint)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Cell proportion") + xlab("Clusters myeloid + intermediate population") + labs(fill = "Timepoint")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/propor_time_myel_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+Surface proteins
+
+```{r}
+adt=unique(data_p3@assays[["ADT"]]@var.features)
+plot <- DoHeatmap(data_myel, features = features, size = 4, assay = "ADT") +
+  theme(
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 16)
+  )
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/heatmap_adt_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+## Annotated B cells in T cells population
+
+```{r}
+plot<-DimPlot(data_p3, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5, group.by = "final_annot")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/BinT_wnn_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+data_sub<-subset(data_p3, subset=final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage", "Monocyte"))
+plot<-DimPlot(data_sub, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5, group.by = "final_annot")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/BinT_wnn_sub_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+Calculate new subset wnn umap coordinates
+
+```{r}
+data_sub<- FindMultiModalNeighbors(
+  data_sub, reduction.list = list("pca", "apca"), 
+  dims.list = list(1:30, 1:18), modality.weight.name = "RNA.weight"
+)
+data_sub<-RunUMAP(data_sub, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
+DimPlot(data_sub, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5, group.by = "final_annot")
+```
