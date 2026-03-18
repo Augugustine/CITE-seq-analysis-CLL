@@ -19,6 +19,7 @@ library(Seurat)
 library(hdf5r)
 library(dplyr)
 library(patchwork)
+library(AUCell)
 library(ggplot2)
 library(stringr)
 library(pheatmap)
@@ -26,10 +27,12 @@ library(viridis)
 library(gridExtra)
 library(ggVennDiagram)
 library(SingleR)
+library(org.Hs.eg.db)
 library(celldex)
 library(starTracer)
 library(ComplexHeatmap)
 library(VISION)
+library(scrapper)
 source("functions.R")
 ```
 
@@ -261,6 +264,118 @@ ggsave("PAX5.jpeg", plot, width = 3000, height = 2000, units = "px")
 
 ```
 
+Phagocytosis and extracellular vessicules Signature
+
+```{r}
+phago <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys   = "GO:0006909",
+  columns = c("ENTREZID", "SYMBOL"),
+  keytype = "GO"
+)
+ev<- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys   = "GO:1903561",
+  columns = c("ENTREZID", "SYMBOL"),
+  keytype = "GO"
+)
+phago <- unique(na.omit(phago))
+phago <- unique(phago$SYMBOL)
+ev <- unique(na.omit(ev))
+ev <- unique(ev$SYMBOL)
+```
+
+```{r}
+genes<-phago
+geneSets <- list(geneSet1=genes)
+geneSets
+
+counts <- GetAssayData(data_p2, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet1"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+data_p2 <- AddMetaData(data_p2, metadata = AUC)
+# Group the B cells in one annotation
+data_p2@meta.data$B_cells <- ifelse(
+  data_p2@meta.data[["Annotation"]] %in% c("B memory", "B intermediate", "B naive", "B"), 
+  "B cells", 
+  data_p2@meta.data[["Annotation"]]
+)
+data<-subset(data_p2, subset=B_cells %in% c("B cells", "Bridge", "Macrophage"))
+
+#Violin plot
+comparisons <- list(
+  c("B cells", "Bridge"),
+  c("Bridge", "Macrophage"),
+  c("B cells", "Macrophage"))
+plot<-ggplot(data@meta.data, aes(x = B_cells, y = geneSet1, fill = B_cells)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test") + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.076, color = "red", linetype = "dashed", size = 0.5) +
+  xlab("Cell type") + ylab("AUC (signature phagocytosis)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/phago_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+# statistical test if the intermediate population is less than the active AUC thresold 
+data_B<-subset(data, subset=B_cells=="Bridge")
+auc_bridge<-data_B$geneSet1
+auc_bridge<-t(auc_bridge)
+wilcox.test(auc_bridge, mu = 0.076, alternative = "less")
+```
+
+```{r}
+genes<-ev
+geneSets <- list(geneSet1=genes)
+geneSets
+
+counts <- GetAssayData(data_p2, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_ev.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet1"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+data_p2 <- AddMetaData(data_p2, metadata = AUC)
+# Group the B cells in one annotation
+data_p2@meta.data$B_cells <- ifelse(
+  data_p2@meta.data[["Annotation"]] %in% c("B memory", "B intermediate", "B naive", "B"), 
+  "B cells", 
+  data_p2@meta.data[["Annotation"]]
+)
+
+#Violin plot
+plot<-ggplot(data_p2@meta.data, aes(x = B_cells, y = geneSet1, fill = B_cells)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.074, color = "red", linetype = "dashed", size = 0.5) +
+  xlab("Cell type") + ylab("AUC (signature extracellulare vesicles)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/ev_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+# statistical test if the intermediate population is less than the active AUC thresold 
+data_B<-subset(data_p2, subset=B_cells=="Macrophage")
+auc_bridge<-data_B$geneSet1
+auc_bridge<-t(auc_bridge)
+wilcox.test(auc_bridge, mu = 0.074, alternative = "greater")
+```
+
 ## Patient 3
 
 ```{r}
@@ -448,6 +563,99 @@ dotplot
 
 ggsave(paste0("DotPlot_", params$patientbis, ".jpeg"), dotplot, width = 3000,
   height = 1500, units = "px")
+```
+
+Phagocytosis and extracellular vessicules Signature
+
+```{r}
+genes<-phago
+geneSets <- list(geneSet1=genes)
+geneSets
+
+counts <- GetAssayData(data_p3, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_phago_p3.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet1"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+data_p3 <- AddMetaData(data_p3, metadata = AUC)
+# Group the B cells in one annotation
+data_p3@meta.data$B_cells <- ifelse(
+  data_p3@meta.data[["Annotation"]] %in% c("B memory", "B intermediate", "B naive", "B"), 
+  "B cells", 
+  data_p3@meta.data[["Annotation"]]
+)
+data<-subset(data_p3, subset=B_cells %in% c("B cells", "Bridge", "Macrophage"))
+
+#Violin plot
+comparisons <- list(
+  c("B cells", "Bridge"),
+  c("Bridge", "Macrophage"),
+  c("B cells", "Macrophage"))
+plot<-ggplot(data@meta.data, aes(x = B_cells, y = geneSet1, fill = B_cells)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test") + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.075, color = "red", linetype = "dashed", size = 0.5) +
+  xlab("Cell type") + ylab("AUC (signature phagocytosis)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/phago_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+# statistical test if the intermediate population is less than the active AUC thresold 
+data_B<-subset(data, subset=B_cells=="Bridge")
+auc_bridge<-data_B$geneSet1
+auc_bridge<-t(auc_bridge)
+wilcox.test(auc_bridge, mu = 0.075, alternative = "less")
+```
+
+```{r}
+genes<-ev
+geneSets <- list(geneSet1=genes)
+geneSets
+
+counts <- GetAssayData(data_p3, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_ev_p3.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet1"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+data_p3 <- AddMetaData(data_p3, metadata = AUC)
+# Group the B cells in one annotation
+data_p3@meta.data$B_cells <- ifelse(
+  data_p3@meta.data[["Annotation"]] %in% c("B memory", "B intermediate", "B naive", "B"), 
+  "B cells", 
+  data_p3@meta.data[["Annotation"]]
+)
+
+#Violin plot
+plot<-ggplot(data_p3@meta.data, aes(x = B_cells, y = geneSet1, fill = B_cells)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.068, color = "red", linetype = "dashed", size = 0.5) +
+  xlab("Cell type") + ylab("AUC (signature extracellulare vesicles)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/ev_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+# statistical test if the intermediate population is less than the active AUC thresold 
+data_B<-subset(data_p3, subset=B_cells=="Macrophage")
+auc_bridge<-data_B$geneSet1
+auc_bridge<-t(auc_bridge)
+wilcox.test(auc_bridge, mu = 0.068, alternative = "greater")
 ```
 
 ## Venn diagram
