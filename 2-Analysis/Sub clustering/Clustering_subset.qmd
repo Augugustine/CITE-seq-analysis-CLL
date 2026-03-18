@@ -610,7 +610,7 @@ ggsave("~/Documents/Singlecell-R/Scripts/Plots/heatmap_adt_p3.jpeg", plot, width
 ## Annotated B cells in T cells population
 
 ```{r}
-plot<-DimPlot(data_p3, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5, group.by = "final_annot")
+plot<-DimPlot(data_p3, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5, group.by = "Annotation")
 plot
 ggsave("~/Documents/Singlecell-R/Scripts/Plots/BinT_wnn_p3.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
@@ -631,4 +631,31 @@ data_sub<- FindMultiModalNeighbors(
 )
 data_sub<-RunUMAP(data_sub, nn.name = "weighted.nn", reduction.name = "wnn.umap", reduction.key = "wnnUMAP_")
 DimPlot(data_sub, reduction = 'wnn.umap', label = TRUE, repel = TRUE, label.size = 2.5, group.by = "final_annot")
+```
+
+M1 and M2 annotation
+
+```{r}
+cell_palette <- c(
+  "Macrophages M1" = "#1f77b4",
+  "Macrophages M2" = "#93f290ff",
+  "Monocytes" = "#e41a1c",
+  "Macrophages" = "#984ea3")
+ref <- fetchReference("blueprint_encode", "2024-02-26")
+ref <- ref[, grepl("Monocytes|Macrophages|Myelocytes", ref$label.fine, ignore.case = TRUE)]
+norm_counts <- LayerData(data_myel, assay = "RNA", layer = 'data')
+annotation<-SingleR(test = norm_counts,
+                  ref = ref, 
+                  labels = ref$label.fine,
+                  de.method = 'wilcox')
+data_myel <- AddMetaData(data_myel, annotation$pruned.labels, col.name = 'Macrophages')
+
+title="UMAP annotated by SingleR, patient 2"
+plotumap<-DimPlot(data_myel, group.by="Macrophages", reduction = "umap", label = FALSE, repel = TRUE, label.size = 4, cols = cell_palette) + ggtitle(str_wrap(title, width = 100)) + theme(plot.title = element_text(size = 15, hjust = 0.5), legend.text = element_text(size = 12))
+print(plotumap)
+ggsave(paste0("bridge_SingleR_", params$patient, ".jpeg"), plotumap, width = 3000,
+  height = 2000, units = "px")
+
+table(data_p2$SingleR_fine)
+ 
 ```
