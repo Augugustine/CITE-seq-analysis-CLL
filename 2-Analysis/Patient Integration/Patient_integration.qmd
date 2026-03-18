@@ -1,0 +1,27 @@
+---
+title: "Patient Integration"
+params: 
+  patient: "P2"
+  patientbis: "P3"
+  fileP2: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2"
+  fileP3: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3"
+format: html
+editor: visual
+---
+
+## Sample Integration
+
+Integrate the 2 and 3 patients
+
+```{r}
+#| message: false
+library(SeuratObject)
+library(Seurat)
+```
+
+You can add options to executable code like this
+
+```{r}
+data_p2<-readRDS(params$fileP2)
+data_p3<-readRDS(params$fileP3)
+```
