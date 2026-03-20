@@ -364,8 +364,7 @@ data_p2@meta.data$B_cells <- ifelse(
 
 #Violin plot
 plot<-ggplot(data_p2@meta.data, aes(x = B_cells, y = geneSet1, fill = B_cells)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
-axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.074, color = "red", linetype = "dashed", size = 0.5) +
-  xlab("Cell type") + ylab("AUC (signature extracellulare vesicles)")
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.074, color = "red", linetype = "dashed", size = 0.5) + xlab("Cell type") + ylab("AUC (signature extracellulare vesicles)")
 plot
 ggsave("~/Documents/Singlecell-R/Scripts/Plots/ev_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
 
