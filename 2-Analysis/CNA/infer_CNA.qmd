@@ -5,7 +5,7 @@ params:
   patientbis: "P3"
   patient_numbat: "p3"
   file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
-  filebis: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3"
+  filebis: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3.rds"
 format: html
 editor: visual
 ---
@@ -27,6 +27,7 @@ library(glue)
 library(ggtree)
 library(tidygraph)
 library(patchwork)
+library(ggpubr)
 ```
 
 ```{r}
@@ -190,17 +191,25 @@ head(df_allele)
 Count matrix
 
 ```{r}
-counts_matrix <- GetAssayData(data_p2, assay = "RNA", layer = "counts")
+if (params$patient_numbat =="p2") {
+  data<-data_p2
+} else {
+  data<-data_p3
+}
+
+counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
 #colnames(counts_matrix) <- sub("^D[0-9]+_", "", colnames(counts_matrix))
 ```
 
-Reference created (or choose the given one)
+Reference created (or choose the given one). The reference is important because it's the comparison for calculate the CNV based on the gene expression. It's better to use cells in our sample as reference as normal cells. Here we used reference cell all the cellltype (except B cells) at D1.
 
 ```{r}
-data_ref<-subset(data_p2, subset = (Annotation %in% c("CD4 T", "CD8 T", "NK", "Monocyte")))
+celltype<-unique(data$final_annot)
+celltype <- celltype[!grepl("^B", celltype)]
+data_ref<-subset(data, subset = timepoint=="D1"&(final_annot %in% celltype))
 cell_annot <- data.frame(
   cell = colnames(data_ref),
-  group = data_ref$Annotation,
+  group = data_ref$final_annot,
   stringsAsFactors = FALSE
 )
 counts_ref <- GetAssayData(data_ref, assay = "RNA", layer = "counts")
@@ -239,12 +248,6 @@ Put the Numbat folder result and then use the parameter \$patient_numbat in the 
 
 ```{r}
 nb = Numbat$new(out_dir = paste0("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Resultats_numbat/Results_numbat_ref_internal_",params$patient_numbat))
-
-if (params$patient_numbat =="p2") {
-  data<-data_p2
-} else {
-  data<-data_p3
-}
 ```
 
 ```{r}
@@ -272,7 +275,7 @@ head(nb$joint_post) %>% select(cell, CHROM, seg, cnv_state, p_cnv, p_cnv_x, p_cn
 
 ```{r}
 # Add metadata to the seurat object 
-meta_subset <- nb$clone_post[, c("cell", "clone_opt", "GT_opt", "p_opt", "p_cnv", "compartment_opt")]
+meta_subset <- nb$clone_post[, c("cell", "clone_opt", "GT_opt", "p_opt", "p_cnv", "compartment_opt","p_cnv_x","p_cnv_y")]
 rownames(meta_subset) <- meta_subset$cell
 meta_subset$cell <- NULL
 head(colnames(data))
@@ -302,14 +305,29 @@ tumor_prop <- df %>%
   summarise(n = n(), .groups = "drop") %>%
   group_by(Annotation) %>%
   mutate(prop = n / sum(n))
+totals <- df %>%
+  count(Annotation)
 
-plot<-ggplot(tumor_prop, aes(x = Annotation, y = prop, fill = compartment_opt)) +
+p1<-ggplot(tumor_prop, aes(x = Annotation, y = prop, fill = compartment_opt)) +
   geom_bar(stat = "identity", position = "fill") +
-  scale_y_continuous(labels = scales::percent) +
+  geom_text(data = totals,
+            aes(x = Annotation, y = 1.05, label = paste0("n=", n)),
+            inherit.aes = FALSE,
+            size = 3) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1.1)) +
   theme_classic() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  ylab("Cell proportion") + xlab("Cell Type") + labs(fill = "Cell annotation\n(tumor/normal)")
-plot
+  ylab("Cell proportion") +
+  xlab("Cell Type") +
+  labs(fill = "Cell annotation\n(tumor/normal)")
+
+p2 <- ggplot(counts, aes(x = Annotation, y = n)) +
+  geom_bar(stat = "identity", fill = "grey50") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ylab("Number of cells") +
+  xlab("")
+plot<-p1 / p2
 ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/propor_tumor_",params$patient_numbat,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
@@ -400,4 +418,62 @@ nb$plot_sc_tree(
 )
 
 nb$plot_mut_history(pal = mypal)
+```
+
+Look at the T cells annotated as tumor cells
+
+```{r}
+data_T<-subset(data, Annotation %in% c("CD8 T","CD4 T"))
+```
+
+```{r}
+VlnPlot(data_T, features = "CD19.1", assay="ADT")
+VlnPlot(subset(data_p2, Annotation %in% c("CD8 T","CD4 T", "T") & compartment_opt=="normal"), features = "CD19.1", assay="ADT")
+```
+
+```{r}
+data_T$Tcells_tumor <- paste(data_T$Annotation, data_T$compartment_opt, sep = "_")
+adt=c("CD19.1", "CD5.1","CD20","CD47.1","CD4.1","CD8","CD56","CD279 (PD-1)")
+plot <- DoHeatmap(data_T, features = adt, size = 4, assay = "ADT", group.by = "Tcells_tumor") +
+  theme(
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 16)
+  )
+plot
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/heatmap_Tadt_",params$patient_numbat,".jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+Explore the tumor T cells (B cell genes CD79A, CD79B and protein makers CD19 and CD20)
+
+```{r}
+comparisons <- list(c("CD4 T normal","CD4 T tumor"),c("CD8 T normal","CD8 T tumor"))
+df <- FetchData(data, vars = c("CD79A", "Annotation", "compartment_opt"))
+df <- df %>% filter(Annotation %in% c("CD4 T", "CD8 T"))
+df$group <- paste(df$Annotation, df$compartment_opt, sep = " ")
+plot <- ggplot(df, aes(x = group, y = CD79A, fill = compartment_opt)) +geom_violin(trim = FALSE, alpha = 0.6) +stat_compare_means(comparisons = comparisons, method = "wilcox.test") +theme_classic() +theme(legend.position = "none",axis.text.x = element_text(angle = 45, hjust = 1, size=12),axis.text.y = element_text(size = 12),axis.title.x = element_text(size = 12),axis.title.y = element_text(size = 12)) +xlab("Cell type") +ylab("CD79A expression")
+plot
+
+df <- FetchData(data, vars = c("CD79B", "Annotation", "compartment_opt"))
+df <- df %>% filter(Annotation %in% c("CD4 T", "CD8 T"))
+df$group <- paste(df$Annotation, df$compartment_opt, sep = " ")
+plot1 <- ggplot(df, aes(x = group, y = CD79B, fill = compartment_opt)) +geom_violin(trim = FALSE, alpha = 0.6) +stat_compare_means(comparisons = comparisons, method = "wilcox.test") +theme_classic() +theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),axis.text.y = element_text(size = 12),axis.title.x = element_text(size = 12),axis.title.y = element_text(size = 12)) +xlab("Cell type") +ylab("CD79B expression")
+plot1
+p<-plot+plot1
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/vlnplot_cd79_",params$patient_numbat,".jpeg"), p, width = 3000, height = 1500, units = "px")
+
+df <- FetchData(data, vars = c("adt_CD19.1", "Annotation", "compartment_opt"), assay="ADT")
+df <- df %>% filter(Annotation %in% c("CD4 T", "CD8 T"))
+df$group <- paste(df$Annotation, df$compartment_opt, sep = " ")
+plot <- ggplot(df, aes(x = group, y = adt_CD19.1, fill = compartment_opt)) +geom_violin(trim = FALSE, alpha = 0.6) +stat_compare_means(comparisons = comparisons, method = "wilcox.test") +theme_classic() +theme(legend.position = "none",axis.text.x = element_text(angle = 45, hjust = 1, size=12),axis.text.y = element_text(size = 12),axis.title.x = element_text(size = 12),axis.title.y = element_text(size = 12)) +xlab("Cell type") +ylab("CD19 protein expression")
+plot
+
+df <- FetchData(data, vars = c("adt_CD20", "Annotation", "compartment_opt"), assay="ADT")
+df <- df %>% filter(Annotation %in% c("CD4 T", "CD8 T"))
+df$group <- paste(df$Annotation, df$compartment_opt, sep = " ")
+plot1 <- ggplot(df, aes(x = group, y = adt_CD20, fill = compartment_opt)) +geom_violin(trim = FALSE, alpha = 0.6) +stat_compare_means(comparisons = comparisons, method = "wilcox.test") +theme_classic() +theme(axis.text.x = element_text(angle = 45, hjust = 1, size=12),axis.text.y = element_text(size = 12),axis.title.x = element_text(size = 12),axis.title.y = element_text(size = 12)) +xlab("Cell type") +ylab("CD20 protein expression")
+plot1
+p<-plot+plot1
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/vlnplot_pro_",params$patient_numbat,".jpeg"), p, width = 3000, height = 1500, units = "px")
 ```
