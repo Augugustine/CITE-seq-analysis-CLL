@@ -325,6 +325,18 @@ plot
 ggsave("~/Documents/Singlecell-R/Scripts/Plots/heatmap_adt_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
 
+Sub population macro-mono
+
+```{r}
+data_mono<-subset(data_p2, Annotation %in% c("Monocyte", "Macrophage"))
+data_mono<-run_dim_red(data_mono)
+data_mono <- FindClusters(data_mono, resolution=0.4)
+DimPlot(data_mono, reduction = "umap")
+# Explore the 2 monocytes types
+res_cluster6 <- FindMarkers(data_mono, only.pos = TRUE, ident.1 = 6, ident.2=7)
+res_cluster7 <- FindMarkers(data_mono, only.pos = TRUE, ident.1 = 7, ident.2=6)
+```
+
 ### Patient 3
 
 ```{r}
