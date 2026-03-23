@@ -477,3 +477,13 @@ plot1
 p<-plot+plot1
 ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/vlnplot_pro_",params$patient_numbat,".jpeg"), p, width = 3000, height = 1500, units = "px")
 ```
+
+```{r}
+common_cells <- intersect(colnames(data), colnames(data_p2))
+annot_small <- data@meta.data[common_cells, "compartment_opt"]
+annot_full  <- data_p2@meta.data[common_cells, "compartment_opt"]
+data$annot_full <- NA
+data$annot_full[common_cells] <- 
++     data@meta.data[common_cells, "compartment_opt"]
+head(data@meta.data[, c("compartment_opt", "annot_full")])
+```
