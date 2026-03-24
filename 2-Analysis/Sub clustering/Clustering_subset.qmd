@@ -671,3 +671,37 @@ ggsave(paste0("bridge_SingleR_", params$patient, ".jpeg"), plotumap, width = 300
 table(data_p2$SingleR_fine)
  
 ```
+
+Myeloid + CLL population
+
+```{r}
+data_sub<-subset(data_p2, subset= final_annot %in% c("B intermediate", "B naive", "B memory", "B", "Monocyte", "Macrophage"))
+data_sub<-run_dim_red(data_sub)
+data_sub <- FindClusters(data_sub, resolution = 0.1)
+```
+
+```{r}
+# Selected only the main CLL cloud related to the bridge (cluster 0)
+data_sub<-subset(data_sub, subset= seurat_clusters %in% c("0", "3"))
+data_sub<-run_dim_red(data_sub)
+data_sub <- FindClusters(data_sub, resolution = 0.1)
+data_sub<-subset(data_sub, subset= seurat_clusters %in% c("0", "1"))
+data_sub<-run_dim_red(data_sub)
+data_sub <- FindClusters(data_sub, resolution = 0.1)
+data_sub<-subset(data_sub, subset= seurat_clusters %in% c("0", "2","3"))
+data_sub<-run_dim_red(data_sub)
+data_sub@meta.data$global <- ifelse(
+  data_sub@meta.data[["Annotation"]] %in% c("B memory", "B intermediate", "B naive", "B"), 
+  "B cells", 
+  data_sub@meta.data[["Annotation"]]
+)
+
+data_sub<-subset(data_sub, subset= seurat_clusters %in% c("2","3","4","5","6","7","8"))
+data_sub<-run_dim_red(data_sub)
+
+# Visualize the CLL "initial" short in the complete data 
+Idents(data_sub) <- "seurat_clusters"
+cells_B_initial <- colnames(data_sub)[Idents(data_sub) %in% c(2, 3)]
+data_p2$macrostate <- data_p2$global
+data_p2$macrostate[cells_B_initial] <- "B_initial"
+```
