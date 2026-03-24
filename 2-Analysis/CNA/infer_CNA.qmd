@@ -28,6 +28,7 @@ library(ggtree)
 library(tidygraph)
 library(patchwork)
 library(ggpubr)
+source("functions.R")
 ```
 
 ```{r}
@@ -486,4 +487,14 @@ data$annot_full <- NA
 data$annot_full[common_cells] <- 
 +     data@meta.data[common_cells, "compartment_opt"]
 head(data@meta.data[, c("compartment_opt", "annot_full")])
+```
+
+```{r}
+cna_complete <- data_tot$compartment_opt
+cna_myeloid <- data_sub$compartment_opt
+common_cells <- intersect(colnames(data_tot), colnames(data_sub))
+cna_entire.pop <- cna_complete[common_cells]
+cna_myeloid.pop <- cna_myeloid[common_cells]
+both_tumor <- sum(cna_entire.pop == "tumor" & cna_myeloid.pop == "tumor")
+table( cna_myeloid.pop,cna_entire.pop)
 ```
