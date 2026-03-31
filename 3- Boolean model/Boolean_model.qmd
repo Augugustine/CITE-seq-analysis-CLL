@@ -1,0 +1,83 @@
+---
+title: "Boolean model"
+params: 
+  patient: "P2"
+  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+format: html
+editor: visual
+---
+
+## Boolean model in P2
+
+```{r}
+#| message: false
+library(Seurat)
+library(ggplot2)
+library(SingleR)
+library(celldex)
+source("functions.R")
+```
+
+```{r}
+data_patient<-readRDS(params$file)
+```
+
+CLL cells + bridge
+
+```{r}
+data_cll<-subset(data_patient, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge")))
+data_cll<-run_dim_red(data_cll)
+```
+
+CLL cells + myeloid cells
+
+```{r}
+data<-subset(data_patient, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
+data<-run_dim_red(data)
+data$timepoint <- factor(data$timepoint, levels = c("D1", "D4", "D8", "D11", "D14"))
+
+plot<-DimPlot(data, group.by = "Annotation", reduction="umap")
+plot1<-DimPlot(data, group.by = "timepoint", reduction="umap")
+p<-plot+plot1
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/umap_cll_myel_annot.jpeg"), p, width = 4500, height = 2000, units = "px")
+```
+
+```{r}
+ref <- celldex::HumanPrimaryCellAtlasData()
+norm_counts <- LayerData(data, assay = "RNA", layer = 'data')
+ref <- ref[,grepl('B_cell', ref$label.fine, ignore.case = TRUE)]
+unique(ref$label.fine)
+annotation<-SingleR(test = norm_counts,
+                  ref = ref, 
+                  labels = ref$label.fine,
+                  de.method = 'wilcox')
+data <- AddMetaData(data, annotation$pruned.labels, col.name = 'B_fine')
+
+data$B_annotation <- ifelse(
+  data$Annotation %in% c("Bridge", "Macrophage", "Monocyte"),
+  data$Annotation,
+  data$B_fine
+)
+
+data$B_annotation <- ifelse(
+  data$B_annotation %in% c("B_cell:CXCR4-_centrocyte", "B_cell:CXCR4+_centroblast"),
+  "B_cell:Germinal_center",
+  data$B_annotation)
+data$B_annotation <- ifelse(
+  data$B_annotation %in% c("Pro-B_cell_CD34+", "Pre-B_cell_CD34-"),
+  "B_progenitor",
+  data$B_annotation)
+plot<-DimPlot(data, group.by = "B_annotation", reduction="umap")
+ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/umap_cll_myel_annotB.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+data$color <- ifelse(
+  data$B_annotation %in% c("B_cell:Naive"),
+  "B_cell:Naive",
+  "Other")
+DimPlot(data, group.by = "color",
+        cols = c("B_cell:Naive" = "red", "Other" = "gray"),
+        pt.size = 0.8,
+        label = FALSE, reduction="umap")
+```
