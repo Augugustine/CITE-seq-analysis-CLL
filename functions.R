@@ -206,6 +206,19 @@ run_wnnumap <- function(seuratobj, resolution, normalization_type) {
   return(seuratobj)
 }
 
+# Run graph reduction UMAP and t-SNE
+run_dim_red <- function(seuratobj){
+  seuratobj <- NormalizeData(seuratobj)
+  seuratobj <- FindVariableFeatures(seuratobj, selection.method = "vst", nfeatures = 2000)
+  all.genes <- rownames(seuratobj)
+  seuratobj <- ScaleData(seuratobj, features = all.genes)
+  seuratobj <- RunPCA(seuratobj, features = VariableFeatures(object = seuratobj))
+  seuratobj <- FindNeighbors(seuratobj, dims = 1:10)
+  seuratobj <- RunUMAP(seuratobj, dims = 1:10)
+  seuratobj <- RunTSNE(seuratobj, dims = 1:10)
+  return(seuratobj)
+}
+
 library(Seurat)
 
 
@@ -345,6 +358,24 @@ ConvertToV4 <- function(seurat_v5, assay = "RNA") {
 }
 
 
+#Export Seurat objet in AnnData for Scanpy
+Convert_Seurat_Anndata <- function(seuratobj, output, raw = FALSE) {
+  library(Seurat)
+  library(SeuratDisk)
+  library(SeuratObject)
+  seuratobj$timepoint <- as.character(seuratobj$timepoint)
+  # Convert Seurat v5 in V3/4
+  seuratobj[["RNA"]] <- as(object = seuratobj[["RNA"]], Class = "Assay")
+  # Delete scale data because put in the main layer (adata.X) in scanpy files
+  seuratobj[["RNA"]]@scale.data <- matrix() 
+  # Raw data save
+  if (raw == TRUE) {
+    seuratobj[["RNA"]]@data <- seuratobj[["RNA"]]@counts
+  }
+  # Convert
+  SaveH5Seurat(seuratobj, filename = paste0(output, ".h5Seurat"), overwrite = TRUE)
+  Convert(paste0(output, ".h5Seurat"),dest = "h5ad",overwrite = TRUE)
+}
 
 
 
