@@ -7,7 +7,13 @@ format: html
 editor: visual
 ---
 
-## Boolean model in P2
+## Prepare the data for the boolean model 
+
+On the patient 2, on the CLL cells and the intermediate population. The data composition is analysed across all CLL cells and myeloid cells to observe the evolution through the bridge. But then the macrostates definition is only based on CLL cells and the bridge.
+
+1- Explore the population composition in cell type, timepoint to define macrostates
+
+2- Define macroostates based on the Stream2 trajectory (in jupyter notebook), the cell type and the timepoint
 
 ```{r}
 #| message: false
@@ -16,12 +22,15 @@ library(ggplot2)
 library(SingleR)
 library(celldex)
 library(dplyr)
+library(tidyr)
 source("functions.R")
 ```
 
 ```{r}
 data_patient<-readRDS(params$file)
 ```
+
+## Data
 
 CLL cells + bridge
 
@@ -42,6 +51,8 @@ plot1<-DimPlot(data, group.by = "timepoint", reduction="umap")
 p<-plot+plot1
 ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/umap_cll_myel_annot.jpeg"), p, width = 4500, height = 2000, units = "px")
 ```
+
+## 1- Exploring the population composition 
 
 Precise B cells annotation
 
@@ -85,12 +96,14 @@ DimPlot(data, group.by = "color",
         label = FALSE, reduction="umap")
 ```
 
-B cells cloud composition
+Clustering to separate the different CLL population and define trajectory
 
 ```{r}
 data<-FindClusters(data, resolution = 0.1)
 DimPlot(data, reduction="umap")
 ```
+
+Proportion in timepoint and cell type (B naive and B intermediate)
 
 ```{r}
 df <- data@meta.data
@@ -231,7 +244,11 @@ ggplot(df_prop, aes(x = seurat_clusters, y = timepoint, fill = prop)) +
 dev.off()
 ```
 
-Method 2: macrostates definition
+## 2- Macrostates definition
+
+Based on : Initial states are D1 and intermediate B cells in the different CLL clusters (clusters 0 and 1). Terminal states are D14 and naive B cells for clusters 1, D14 and B intermediate in cluster 2, and all the bridge (no timepoint selection)
+
+Constraints/Trajectory : I1 –\> T1, I1 –\> T3, I2 –\>T2, I2-\>T3
 
 ```{r}
 data$macrostates <- ifelse(
@@ -250,21 +267,16 @@ data$macrostates <- ifelse(
         data$seurat_clusters == "1" & data$timepoint == "D14" & data$Annotation == "B naive",
         "T2", "None")))))
 
+Idents(data) <- data$macrostates
 cells_red  <- WhichCells(data, idents = c("I1","I2"))
 cells_blue <- WhichCells(data, idents = c("T1","T2","T3"))
 cells_grey <- setdiff(colnames(data), c(cells_red, cells_blue))
 plot<-DimPlot(data,reduction = "umap",cells.highlight = list(Initial = cells_red, Terminal = cells_blue),cols.highlight = c("Initial" = "darkblue", "Terminal" = "red"), sizes.highlight = 0.1, pt.size = 0.01) + ggtitle("Macrostates based on the timepoint, cluster and cell type")
-
 ggsave("~/Documents/Singlecell-R/Scripts/Plots/macrostate.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
 
-Focus on the main B cells cloud
-
 ```{r}
-data<-FindClusters(data, resolution = 0.2)
-DimPlot(data, reduction="umap")
-data_test<-subset(data, subset= seurat_clusters %in% c(0,1, 4, 3))
-DimPlot(data_test, reduction="umap")
-data_test<-run_dim_red(data_test)
-DimPlot(data_test, reduction="umap")
+data_cll<-subset(data, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge")))
+data_cll<-run_dim_red(data_cll)
+Convert_Seurat_Anndata(data_cll, "~/Documents/Singlecell-R/Scripts/Matrix/cll_raw_macro", raw=TRUE)
 ```
