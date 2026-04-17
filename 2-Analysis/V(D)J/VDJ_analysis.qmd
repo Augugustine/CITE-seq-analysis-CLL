@@ -1,0 +1,44 @@
+---
+title: "V(D)J analysis"
+params: 
+  patient: "P2"
+  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+  folder_trust4: "~/Documents/Singlecell-R/Scripts/Matrix/VDJ_TRUST4/"
+  output: "~/Documents/Singlecell-R/Scripts/Plots/"
+format: html
+editor: visual
+---
+
+## V(D)J analysis: track clonotypes 
+
+Analysis done with TRUST4 on the BAM, timepoint separately
+
+Explore the results after the TRUST4 run in the script bash VDJ_TRSUT4.sh
+
+Libraries and data
+
+```{r}
+#| message: false
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+source("functions.R")
+```
+
+```{r}
+#| echo: false
+d1<-read.table(paste0(params$folder_trust4,"vdj_p2_D1_barcode_report.tsv"), header = FALSE, sep="\t")
+colnames(d1)<-c("Barcodes","Celltype","Chain 1", "Chain 2", "Secondary chain 1", "Secondary chain 2")
+d1$Barcodes <- paste0("D1_", d1$Barcodes)
+```
+
+```{r}
+data<-readRDS(params$file)
+barcodes <- colnames(data)
+```
+
+```{r}
+# keep only the cells present in the Seurat object
+d1 <- d1[d1$Barcodes %in% barcodes, ]
+```
