@@ -9,7 +9,7 @@ format: html
 editor: visual
 ---
 
-## V(D)J analysis: track clonotypes 
+## V(D)J analysis: track clonotypes
 
 Analysis done with TRUST4 on the BAM, timepoint separately
 
@@ -28,9 +28,14 @@ source("functions.R")
 
 ```{r}
 #| echo: false
-d1<-read.table(paste0(params$folder_trust4,"vdj_p2_D1_barcode_report.tsv"), header = FALSE, sep="\t")
-colnames(d1)<-c("Barcodes","Celltype","Chain 1", "Chain 2", "Secondary chain 1", "Secondary chain 2")
-d1$Barcodes <- paste0("D1_", d1$Barcodes)
+days <- c("D1", "D4", "D8", "D11", "D14")
+
+for (day in days) {
+  df <- read.table(paste0(params$folder_trust4, "vdj_p2_", day, "_barcode_report.tsv"),header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  colnames(df) <- c("Barcodes", "Celltype", "Chain_1", "Chain_2", "Secondary_chain_1", "Secondary_chain_2")
+  df$Barcodes <- paste0(day, "_", df$Barcodes)
+  assign(day, df)
+}
 ```
 
 ```{r}
@@ -40,5 +45,77 @@ barcodes <- colnames(data)
 
 ```{r}
 # keep only the cells present in the Seurat object
-d1 <- d1[d1$Barcodes %in% barcodes, ]
+for (day in days) {
+  df <- get(day)
+  df <- df[df$Barcodes %in% barcodes, ]
+  assign(day, df)
+}
+```
+
+```{r}
+# Add the TRUST4 results into the seurat object
+combined_vdj <- do.call(rbind, lapply(days, get))
+combined_vdj <- combined_vdj[combined_vdj$Barcodes %in% colnames(data), ]
+rownames(combined_vdj) <- combined_vdj$Barcodes
+combined_vdj$Barcodes <- NULL
+data <- AddMetaData(data, metadata = combined_vdj)
+```
+
+```{r}
+DimPlot(data, reduction="umap", group.by = "Celltype")
+```
+
+```{r}
+
+```
+
+```{r}
+data_T<-subset(data, subset= Annotation %in% c("T", "CD4 T", "CD8 T"))
+# Compare B cells and tumoral cells from CNA analysis 
+meta <- data_T@meta.data %>%
+  as_tibble(rownames = "barcode") %>%
+  select(barcode, Celltype, compartment_opt) %>%
+  filter(
+    !is.na(Celltype),
+    !is.na(compartment_opt))
+
+# Celltype × compartment_opt
+ctab <- meta %>% count(Celltype, compartment_opt, name = "n_cells") %>% arrange(desc(n_cells))
+ctab_wide <- ctab %>% pivot_wider(names_from = compartment_opt, values_from = n_cells, values_fill = 0)
+
+# Plots
+ctab_long <- ctab_wide %>%
+  pivot_longer(!Celltype, names_to = "compartment_opt", values_to = "n_cells")
+
+cols_fun <- colorRampPalette(c("white", "red"))
+
+p_heatmap <- ggplot(ctab_long, aes(
+  x = compartment_opt,
+  y = Celltype,
+  fill = n_cells)) +
+  geom_tile(color = "gray95", size = 0.2) +
+  scale_fill_gradientn(
+    colors = cols_fun(100),
+    na.value = "white") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12),axis.text.y = element_text(size = 8),
+legend.position = "right") +labs(title = "Cell type V(D)J vs tumor annotation CNA",x = "Tumor annotation (CNA)",y = "Lymphoid annotation V(D)J",fill = "Cell number")
+
+p_bar <- ggplot(ctab, aes(x = compartment_opt,y = n_cells,fill = Celltype)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12),axis.text.y = element_text(size = 8),legend.text = element_text(size = 8)) +
+  labs(
+    title = "Stacked barplot cell type V(D)J per tumor annotation CNA",
+    x = "compartment_opt",
+    y = "Cell fraction",
+    fill = "Cell type")
+
+ggsave(paste0(params$output,"vdj_cna_heatmap.jpeg"), p_heatmap, width = 3000, height = 1500, units = "px")
+ggsave(paste0(params$output,"vdj_cna_bar.jpeg"), p_bar, width = 3000, height = 1500, units = "px")
+```
+
+```{r}
+
 ```
