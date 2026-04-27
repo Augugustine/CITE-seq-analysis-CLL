@@ -28,6 +28,8 @@ source("functions.R")
 
 ```{r}
 #| echo: false
+
+#Load the TRUST4 output files 
 days <- c("D1", "D4", "D8", "D11", "D14")
 
 for (day in days) {
@@ -35,6 +37,12 @@ for (day in days) {
   colnames(df) <- c("Barcodes", "Celltype", "Chain_1", "Chain_2", "Secondary_chain_1", "Secondary_chain_2")
   df$Barcodes <- paste0(day, "_", df$Barcodes)
   assign(day, df)
+}
+
+for (day in days) {
+  df <- read.table(paste0(params$folder_trust4, "vdj_p2_", day, "_barcode_airr.tsv"),header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  df$Barcodes <- paste0(day, "_", df$cell_id)
+  assign(paste0(day,"_airr"), df)
 }
 ```
 
@@ -50,9 +58,14 @@ for (day in days) {
   df <- df[df$Barcodes %in% barcodes, ]
   assign(day, df)
 }
-```
 
-```{r}
+days_airr <- c("D1_airr", "D4_airr", "D8_airr", "D11_airr", "D14_airr")
+for (day in days_airr) {
+  df <- get(day)
+  df <- df[df$Barcodes %in% barcodes, ]
+  assign(day, df)
+}
+
 # Add the TRUST4 results into the seurat object
 combined_vdj <- do.call(rbind, lapply(days, get))
 combined_vdj <- combined_vdj[combined_vdj$Barcodes %in% colnames(data), ]
@@ -61,13 +74,14 @@ combined_vdj$Barcodes <- NULL
 data <- AddMetaData(data, metadata = combined_vdj)
 ```
 
-```{r}
-DimPlot(data, reduction="umap", group.by = "Celltype")
-```
+###  B and T annotation by TRUST4
 
 ```{r}
-
+plot<-DimPlot(data, reduction="umap", group.by = "Celltype", cols =c("#ea4258","darkgreen","orange"),na.value = "lightblue") + ggtitle("VDJ annotation") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+ggsave(paste0(params$output,"vdj_umap.jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
+
+Compare annotated B cells by TRUST4 and annotated tumoral cells by Numbat in T cells population
 
 ```{r}
 data_T<-subset(data, subset= Annotation %in% c("T", "CD4 T", "CD8 T"))
@@ -98,24 +112,121 @@ p_heatmap <- ggplot(ctab_long, aes(
     colors = cols_fun(100),
     na.value = "white") +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12),axis.text.y = element_text(size = 8),
-legend.position = "right") +labs(title = "Cell type V(D)J vs tumor annotation CNA",x = "Tumor annotation (CNA)",y = "Lymphoid annotation V(D)J",fill = "Cell number")
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 20),axis.text.y = element_text(size = 20),plot.title = element_text(size = 20, hjust = 0.5), legend.position = "right", legend.text = element_text(size = 20)) +labs(title = "Cell type V(D)J vs tumor annotation CNA",x = "Tumor annotation (CNA)",y = "Lymphoid annotation V(D)J",fill = "Cell number")
 
 p_bar <- ggplot(ctab, aes(x = compartment_opt,y = n_cells,fill = Celltype)) +
   geom_bar(stat = "identity", position = "fill") +
   scale_y_continuous(labels = scales::percent) +
   theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12),axis.text.y = element_text(size = 8),legend.text = element_text(size = 8)) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 20),axis.text.y = element_text(size = 20),legend.text = element_text(size = 20), plot.title = element_text(size = 20, hjust = 0.5)) +
   labs(
     title = "Stacked barplot cell type V(D)J per tumor annotation CNA",
     x = "compartment_opt",
     y = "Cell fraction",
     fill = "Cell type")
 
-ggsave(paste0(params$output,"vdj_cna_heatmap.jpeg"), p_heatmap, width = 3000, height = 1500, units = "px")
-ggsave(paste0(params$output,"vdj_cna_bar.jpeg"), p_bar, width = 3000, height = 1500, units = "px")
+ggsave(paste0(params$output,"vdj_cna_heatmap.jpeg"), p_heatmap, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_cna_bar.jpeg"), p_bar, width = 3000, height = 2000, units = "px")
+
+plot<-ggplot(meta,
+       aes(axis1 = compartment_opt,
+           axis2 = Celltype)) +
+  geom_alluvium(aes(fill = compartment_opt)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=6)+ labs(fill = "CNA annotation",title = "CNA and V(D)J annotation in the T population") +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 20),axis.text.y = element_text(size = 20),legend.text = element_text(size = 20), plot.title = element_text(size = 20, hjust = 0.5), legend.title = element_text(size = 20),)
+ggsave(paste0(params$output,"vdj_cna_flux.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+Compare annotated B cells by TRUST4 and annotated tumoral cells by Numbat in monocyte population
+
+```{r}
+data_myel<-subset(data, subset= Annotation %in% c("Monocyte"))
+# Compare B cells and tumoral cells from CNA analysis 
+meta <- data_myel@meta.data %>%
+  as_tibble(rownames = "barcode") %>%
+  select(barcode, Celltype, compartment_opt) %>%
+  filter(
+    !is.na(Celltype),
+    !is.na(compartment_opt))
+
+# Celltype × compartment_opt
+ctab <- meta %>% count(Celltype, compartment_opt, name = "n_cells") %>% arrange(desc(n_cells))
+ctab_wide <- ctab %>% pivot_wider(names_from = compartment_opt, values_from = n_cells, values_fill = 0)
+
+# Plots
+ctab_long <- ctab_wide %>%
+  pivot_longer(!Celltype, names_to = "compartment_opt", values_to = "n_cells")
+
+cols_fun <- colorRampPalette(c("white", "red"))
+
+p_heatmap <- ggplot(ctab_long, aes(
+  x = compartment_opt,
+  y = Celltype,
+  fill = n_cells)) +
+  geom_tile(color = "gray95", size = 0.2) +
+  scale_fill_gradientn(
+    colors = cols_fun(100),
+    na.value = "white") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 20),axis.text.y = element_text(size = 20),plot.title = element_text(size = 20, hjust = 0.5), legend.position = "right",legend.text = element_text(size = 20)) +labs(title = "Cell type V(D)J vs tumor annotation CNA",x = "Tumor annotation (CNA)",y = "Lymphoid annotation V(D)J",fill = "Cell number")
+
+p_bar <- ggplot(ctab, aes(x = compartment_opt,y = n_cells,fill = Celltype)) +
+  geom_bar(stat = "identity", position = "fill") +
+  scale_y_continuous(labels = scales::percent) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 20),axis.text.y = element_text(size = 20),plot.title = element_text(size = 20, hjust = 0.5), legend.position = "right",legend.text = element_text(size = 20)) +
+  labs(
+    title = "Stacked barplot cell type V(D)J per tumor annotation CNA",
+    x = "compartment_opt",
+    y = "Cell fraction",
+    fill = "Cell type")
+
+
+ggsave(paste0(params$output,"vdj_cna_heatmap_myel.jpeg"), p_heatmap, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_cna_bar_myel.jpeg"), p_bar, width = 3000, height = 2000, units = "px")
+
+plot<-ggplot(meta,
+       aes(axis1 = compartment_opt,
+           axis2 = Celltype)) +
+  geom_alluvium(aes(fill = compartment_opt)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=6)+ labs(fill = "CNA annotation",title = "CNA and V(D)J annotation in the monocyte population") +
+  theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 20),axis.text.y = element_text(size = 20),legend.text = element_text(size = 20), plot.title = element_text(size = 20, hjust = 0.5), legend.title = element_text(size = 20),)
+ggsave(paste0(params$output,"vdj_cna_flux_myel.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+### Clonotypes and SHM (Somatic hypermutation rate of BCR) 
+
+```{r}
+# Filter the dataframe TRUST4 output
+combined_vdj <- do.call(rbind, lapply(days_airr, get))
+combined_vdj <-combined_vdj[, -c(1,2,3,4, 10, 11, 12, 13, 14, 16, 17, 18, 19, 21, 22, 23)]
+  
+# Separate the IGH et IGK/L
+heavy <- subset(combined_vdj, locus == "IGH")
+light <- subset(combined_vdj, locus %in% c("IGK","IGL"))
+
+# 1 chain per cell
+heavy <- heavy %>%
+group_by(Barcodes) %>%
+slice_max(consensus_count, n=1)
+
+light <- light %>%
+group_by(Barcodes) %>%
+slice_max(consensus_count, n=1)
+
+# Combine IGH et IGK/L 
+bcr <- left_join(light, heavy, by="Barcodes", suffix=c("_H","_L"))
 ```
 
 ```{r}
 
+
+# Add the TRUST4 results into the seurat object
+combined_vdj <- do.call(rbind, lapply(days_airr, get))
+combined_vdj <- combined_vdj[combined_vdj$Barcodes %in% colnames(data), ]
+rownames(combined_vdj) <- combined_vdj$Barcodes
+combined_vdj$Barcodes <- NULL
+data <- AddMetaData(data, metadata = combined_vdj)
 ```
