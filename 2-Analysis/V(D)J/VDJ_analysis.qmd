@@ -23,6 +23,7 @@ library(Seurat)
 library(ggplot2)
 library(dplyr)
 library(tidyr)
+library(pheatmap)
 source("functions.R")
 ```
 
@@ -74,7 +75,7 @@ combined_vdj$Barcodes <- NULL
 data <- AddMetaData(data, metadata = combined_vdj)
 ```
 
-###  B and T annotation by TRUST4
+### B and T annotation by TRUST4
 
 ```{r}
 plot<-DimPlot(data, reduction="umap", group.by = "Celltype", cols =c("#ea4258","darkgreen","orange"),na.value = "lightblue") + ggtitle("VDJ annotation") + theme(plot.title = element_text(size = 15, hjust = 0.5))
@@ -196,7 +197,7 @@ plot<-ggplot(meta,
 ggsave(paste0(params$output,"vdj_cna_flux_myel.jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
-### Clonotypes and SHM (Somatic hypermutation rate of BCR) 
+### Clonotypes and SHM (Somatic hypermutation rate of BCR)
 
 ```{r}
 # Filter the dataframe TRUST4 output
@@ -217,16 +218,171 @@ group_by(Barcodes) %>%
 slice_max(consensus_count, n=1)
 
 # Combine IGH et IGK/L 
-bcr <- left_join(light, heavy, by="Barcodes", suffix=c("_H","_L"))
+bcr <- left_join(light, heavy, by="Barcodes", suffix=c("_L","_H"))
+```
+
+Define clonotypes
+
+junction = CDR3 (most variable zone)
+
+Different clonotypes definition :
+
+-   basic : junction on the heavy chain (IGH) or on the light chain (IGK/L)
+
+-   more robust : junction on the heavy chain and light chain (IGK/L)
+
+-   robust : variable zone + junction zone on the heavy and light chain
+
+```{r}
+# more light chain than heavy chain in the output 
+# Add the TRUST4 results into the seurat object
+bcr <-bcr[, -c(3, 5, 8, 12, 14, 17)]
+bcr<-data.frame(bcr)
+rownames(bcr) <- bcr$Barcodes
+bcr$Barcodes <- NULL
+data <- AddMetaData(data, metadata = bcr)
 ```
 
 ```{r}
+plot<-DimPlot(data, reduction="umap", group.by = "j_call_L",na.value = "lightblue") + ggtitle("Germinal gene junction on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+ggsave(paste0(params$output,"vdj_clono_umap_light.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+Combine Variable (v) and junction (j) on light chain
+
+```{r}
+data$v_j_Light<-paste(data$v_call_L, data$j_call_L, sep="_")
+
+counts <- table(data@meta.data$v_j_Light)
+keep_annotations <- names(counts[counts > 100])
+
+data@meta.data$v_j_Light_filtered <- ifelse(
+  data@meta.data$v_j_Light %in% keep_annotations,
+  data@meta.data$v_j_Light,
+  "Others (<100 cells)")
 
 
-# Add the TRUST4 results into the seurat object
-combined_vdj <- do.call(rbind, lapply(days_airr, get))
-combined_vdj <- combined_vdj[combined_vdj$Barcodes %in% colnames(data), ]
-rownames(combined_vdj) <- combined_vdj$Barcodes
-combined_vdj$Barcodes <- NULL
-data <- AddMetaData(data, metadata = combined_vdj)
+DimPlot(data, reduction = "umap", group.by = "v_j_Light_filtered",cols=c("red", "orange", "darkgreen", "blue","lightblue", "grey", "grey"), na.value = "lightblue") + ggtitle("Clonotypes VJ Light chain (>100 cells)") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+Combine junction (j) on light chain and heavy chain
+
+```{r}
+data$j_j_light_heavy<-paste(data$j_call_L, data$j_call_H, sep="_")
+
+counts <- table(data@meta.data$j_j_light_heavy)
+keep_annotations <- names(counts[counts > 100])
+
+data@meta.data$j_j_light_heavy_filtered <- ifelse(
+  data@meta.data$j_j_light_heavy %in% keep_annotations,
+  data@meta.data$j_j_light_heavy,
+  "Others (<100 cells)")
+
+
+DimPlot(data, reduction = "umap", group.by = "j_j_light_heavy_filtered",cols=c("red", "orange", "darkgreen", "blue","lightblue","yellow", "purple", "grey", "grey"), na.value = "lightblue") + ggtitle("Clonotypes VJ Light chain (>100 cells)") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+CDR3 junction_aa
+
+```{r}
+tab <- table(data$junction_aa_L)
+keep <- names(tab[tab > 30])
+data_filt <- subset(data, junction_aa_L %in% keep)
+tab<-table(data_filt$junction_aa_L)
+cdr3 <- names(tab)
+
+data$highlight_cdr3_L <- ifelse(
+  data$junction_aa_L %in% cdr3,
+  data$junction_aa_L,
+  "Others"
+)
+
+plot<-DimPlot(data, reduction = "umap", group.by = "highlight_cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+ggsave(paste0(params$output,"vdj_clono_cdr3_umap_light.jpeg"), plot, width = 3000, height = 2000, units = "px")
+
+clone_matrix <- table(data$Annotation, 
+                     ifelse(data$junction_aa_L %in% cdr3, data$junction_aa_L, "Other"))
+mat <- clone_matrix[, colnames(clone_matrix) != "Other"]
+mat_log <- log1p(mat)
+mat_log <- mat_log[apply(mat_log, 1, var) > 0, ]
+plot<-pheatmap(mat_log,scale = "row",main = "Main CDR3 per clusters",angle_col = 45,fontsize = 18,fontsize_row = 16,fontsize_col = 16)
+ggsave(paste0(params$output,"vdj_clono_cdr3_heatmap_light.jpeg"), plot, width = 4000, height = 2500, units = "px")
+```
+
+```{r}
+tab <- table(data$junction_aa_H)
+keep <- names(tab[tab > 30])
+data_filt <- subset(data, junction_aa_H %in% keep)
+tab<-table(data_filt$junction_aa_H)
+cdr3 <- names(tab)
+
+data$highlight_cdr3_H <- ifelse(
+  data$junction_aa_H %in% cdr3,
+  data$junction_aa_H,
+  "Others"
+)
+
+plot<-DimPlot(data, reduction = "umap", group.by = "highlight_cdr3",cols=c("#12A8F5", "#E58B00", "#6A0DAD","#006400",  "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on heavy chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+ggsave(paste0(params$output,"vdj_clono_cdr3_umap_heavy.jpeg"), plot, width = 3000, height = 2000, units = "px")
+
+clone_matrix <- table(data$Annotation, 
+                     ifelse(data$junction_aa_L %in% cdr3, data$junction_aa_L, "Other"))
+mat <- clone_matrix[, colnames(clone_matrix) != "Other"]
+mat_log <- log1p(mat)
+mat_log <- mat_log[apply(mat_log, 1, var) > 0, ]
+mat_scaled <- t(scale(t(mat_log)))
+# NA/Inf
+mat_scaled <- mat_scaled[apply(mat_scaled, 1, function(x) all(is.finite(x))), ]
+
+pheatmap(mat_scaled,
+         scale = "none",
+         main = "Main CDR3 per clusters")
+ggsave(paste0(params$output,"vdj_clono_cdr3_heatmap_heavy.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+Subset myeloid and B pop
+
+```{r}
+# On the subset myeloid and B populations 
+data_myel<-subset(data, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
+data_myel<-run_dim_red(data_myel)
+
+plot<-DimPlot(data_myel, reduction="umap", group.by = "j_call_L",na.value = "lightblue") + ggtitle("Germinal gene junction on light chain on B and myeloid population") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+ggsave(paste0(params$output,"vdj_clono_umap_light_myel.jpeg"), plot, width = 3000, height = 2000, units = "px")
+
+plot<-DimPlot(data_myel, reduction = "umap", group.by = "highlight_cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 on light chain on B and myeloid population") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+ggsave(paste0(params$output,"vdj_clono__cdr3_umap_light_myel.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+data<-FindClusters(data, resolution = 0.2)
+DimPlot(data, reduction="umap")
+```
+
+SHM
+
+```{r}
+
+shm_df <- data.frame(
+  v_call_L = data$v_identity_L,
+  Annotation=data$Annotation,
+  shm_rate = 1-data$v_identity_L  # ou calculez: 1 - v_call_L
+)
+
+
+ggplot(shm_df, aes(x = v_call_L*100)) +
+  geom_histogram(bins = 50, fill = "skyblue", color = "black", alpha = 0.7) +
+  geom_vline(aes(xintercept = median(shm_rate*100)), 
+             color = "red", linetype = "dashed", size = 1) +
+  labs(x = "Taux de SHM (%)", y = "Nombre de clonotypes", 
+       title = "Distribution du SHM par clonotype") +
+  theme_minimal()
+
+ggplot(shm_df, aes(x = v_call_L*100, fill = Annotation)) +
+  geom_histogram(bins = 50, alpha = 0.7, position = "identity") +
+  geom_vline(xintercept = tapply(shm_df$v_call_L*100, shm_df$macrostate, median, na.rm = TRUE),
+             color = "red", linetype = "dashed") +
+  facet_wrap(~macrostate, scales = "free_y") +
+  labs(x = "Taux de SHM (%)", y = "Nombre de cellules") +
+  theme_minimal()
 ```
