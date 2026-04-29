@@ -24,6 +24,12 @@ library(ggplot2)
 library(dplyr)
 library(tidyr)
 library(pheatmap)
+library(ggalluvial)
+library(tibble)
+library(ggpubr)
+library(ape)
+library(ggtree)
+library(stringdist)
 source("functions.R")
 ```
 
@@ -66,7 +72,11 @@ for (day in days_airr) {
   df <- df[df$Barcodes %in% barcodes, ]
   assign(day, df)
 }
+```
 
+### B and T annotation by TRUST4
+
+```{r}
 # Add the TRUST4 results into the seurat object
 combined_vdj <- do.call(rbind, lapply(days, get))
 combined_vdj <- combined_vdj[combined_vdj$Barcodes %in% colnames(data), ]
@@ -74,8 +84,6 @@ rownames(combined_vdj) <- combined_vdj$Barcodes
 combined_vdj$Barcodes <- NULL
 data <- AddMetaData(data, metadata = combined_vdj)
 ```
-
-### B and T annotation by TRUST4
 
 ```{r}
 plot<-DimPlot(data, reduction="umap", group.by = "Celltype", cols =c("#ea4258","darkgreen","orange"),na.value = "lightblue") + ggtitle("VDJ annotation") + theme(plot.title = element_text(size = 15, hjust = 0.5))
@@ -291,13 +299,13 @@ data_filt <- subset(data, junction_aa_L %in% keep)
 tab<-table(data_filt$junction_aa_L)
 cdr3 <- names(tab)
 
-data$highlight_cdr3_L <- ifelse(
+data$cdr3_L <- ifelse(
   data$junction_aa_L %in% cdr3,
   data$junction_aa_L,
   "Others"
 )
 
-plot<-DimPlot(data, reduction = "umap", group.by = "highlight_cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+plot<-DimPlot(data, reduction = "umap", group.by = "cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
 ggsave(paste0(params$output,"vdj_clono_cdr3_umap_light.jpeg"), plot, width = 3000, height = 2000, units = "px")
 
 clone_matrix <- table(data$Annotation, 
@@ -307,37 +315,6 @@ mat_log <- log1p(mat)
 mat_log <- mat_log[apply(mat_log, 1, var) > 0, ]
 plot<-pheatmap(mat_log,scale = "row",main = "Main CDR3 per clusters",angle_col = 45,fontsize = 18,fontsize_row = 16,fontsize_col = 16)
 ggsave(paste0(params$output,"vdj_clono_cdr3_heatmap_light.jpeg"), plot, width = 4000, height = 2500, units = "px")
-```
-
-```{r}
-tab <- table(data$junction_aa_H)
-keep <- names(tab[tab > 30])
-data_filt <- subset(data, junction_aa_H %in% keep)
-tab<-table(data_filt$junction_aa_H)
-cdr3 <- names(tab)
-
-data$highlight_cdr3_H <- ifelse(
-  data$junction_aa_H %in% cdr3,
-  data$junction_aa_H,
-  "Others"
-)
-
-plot<-DimPlot(data, reduction = "umap", group.by = "highlight_cdr3",cols=c("#12A8F5", "#E58B00", "#6A0DAD","#006400",  "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on heavy chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
-ggsave(paste0(params$output,"vdj_clono_cdr3_umap_heavy.jpeg"), plot, width = 3000, height = 2000, units = "px")
-
-clone_matrix <- table(data$Annotation, 
-                     ifelse(data$junction_aa_L %in% cdr3, data$junction_aa_L, "Other"))
-mat <- clone_matrix[, colnames(clone_matrix) != "Other"]
-mat_log <- log1p(mat)
-mat_log <- mat_log[apply(mat_log, 1, var) > 0, ]
-mat_scaled <- t(scale(t(mat_log)))
-# NA/Inf
-mat_scaled <- mat_scaled[apply(mat_scaled, 1, function(x) all(is.finite(x))), ]
-
-pheatmap(mat_scaled,
-         scale = "none",
-         main = "Main CDR3 per clusters")
-ggsave(paste0(params$output,"vdj_clono_cdr3_heatmap_heavy.jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 Subset myeloid and B pop
@@ -352,37 +329,270 @@ ggsave(paste0(params$output,"vdj_clono_umap_light_myel.jpeg"), plot, width = 300
 
 plot<-DimPlot(data_myel, reduction = "umap", group.by = "highlight_cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 on light chain on B and myeloid population") + theme(plot.title = element_text(size = 15, hjust = 0.5))
 ggsave(paste0(params$output,"vdj_clono__cdr3_umap_light_myel.jpeg"), plot, width = 3000, height = 2000, units = "px")
+
+clone_matrix <- table(data_myel$Annotation, 
+                     ifelse(data_myel$junction_aa_L %in% cdr3, data_myel$junction_aa_L, "Other"))
+mat <- clone_matrix[, colnames(clone_matrix) != "Other"]
+mat_log <- log1p(mat)
+mat_log <- mat_log[apply(mat_log, 1, var) > 0, ]
+plot<-pheatmap(mat_log,scale = "row",main = "Main CDR3 per clusters on B and myeloid population",angle_col = 45,fontsize = 18,fontsize_row = 16,fontsize_col = 16)
+ggsave(paste0(params$output,"vdj_clono_cdr3_heatmap_myel.jpeg"), plot, width = 4000, height = 2500, units = "px")
 ```
 
 ```{r}
-data<-FindClusters(data, resolution = 0.2)
+clono_color=c("CAIWYSSTSHSDTHTW"="black","CMQALQTL"="#12A8F5", "CQQYNSYWTF"="#E58B00", "CQSADSSGTYVVF"="#6A0DAD","CSAWDTSLGVWVF"="#006400", "Others"="grey")
+data<-FindClusters(data, resolution = 0.15)
 DimPlot(data, reduction="umap")
+data_myel<-FindClusters(data_myel, resolution = 0.15)
+plot<-DimPlot(data_myel, reduction="umap",label=T, label.size = 6 )
+ggsave(paste0(params$output,"umap_myel_clusters.jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
-SHM
+Clonotype x time x celltype
 
 ```{r}
+meta <- data_myel@meta.data
 
-shm_df <- data.frame(
-  v_call_L = data$v_identity_L,
-  Annotation=data$Annotation,
-  shm_rate = 1-data$v_identity_L  # ou calculez: 1 - v_call_L
+# Alluvial Plot
+df_alluv <- meta %>%
+  mutate(
+    clonotype = as.character(cdr3_L),
+    cluster   = as.character(seurat_clusters),
+    timepoint = as.character(timepoint)
+  ) %>%
+  filter(
+    !is.na(clonotype),
+    !is.na(cluster),
+    !is.na(timepoint),
+    clonotype != "Others",
+    clonotype != ""
+  ) %>%
+  count(clonotype, cluster, timepoint, name = "n")
+
+df_alluv$timepoint <- factor(
+  df_alluv$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14"))
+
+plot <- ggplot(df_alluv,
+       aes(axis1 = clonotype,
+           axis2 = cluster,
+           axis3 = timepoint,
+           y = n)) +
+  geom_alluvium(aes(fill = clonotype), width = 1/12) +
+  geom_stratum(width = 1/8, fill = "grey85") +
+  geom_text(stat = "stratum",
+            aes(label = after_stat(stratum)),
+            size = 5,
+            check_overlap = FALSE) +
+  scale_x_discrete(limits = c("Clonotype", "Cluster", "Timepoint"),
+                   expand = c(0.3, 0.05)) +
+  theme_minimal(base_size = 16) +
+  theme(plot.margin = margin(t=10, r=10, b=10, l=60)) +
+  ggtitle("Clone per cluster and per timepoint in myeloid and B population ")
+plot
+ggsave(paste0(params$output,"vdj_flow_myel.jpeg"), plot, width = 3500, height = 2000, units = "px")
+
+# Proportion
+
+meta <- meta %>%
+  mutate(
+    clonotype = as.character(cdr3_L),
+    timepoint = as.character(timepoint),
+    cluster = as.character(seurat_clusters),
+    celltype = as.character(Annotation))
+
+prop <-prop %>%
+  filter(!celltype %in% c("Monocyte", "B memory")) %>%
+  mutate(timepoint = factor(timepoint, levels = c("D1", "D4", "D8", "D11", "D14")))
+  
+
+plot<-ggplot(prop, aes(x = timepoint, fill = clonotype)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::number) +
+  scale_fill_manual(values = clono_color) +
+  facet_wrap(~ celltype, nrow = 1) +
+  theme_minimal(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(y = "Fraction", fill = "Clonotype",
+       title = "Clonal composition over time and cell type")
+plot
+ggsave(paste0(params$output,"vdj_prop_cell_time_myel.jpeg"), plot, width = 3500, height = 1500, units = "px")
+```
+
+Fisher's test : Enrichment clonotype and clusters
+
+```{r}
+res <- list()
+
+enrich <-meta %>%
+  filter(!is.na(clonotype),clonotype != "Others")
+
+for(cl in unique(enrich$clonotype)){
+  for(clus in unique(enrich$cluster)){
+
+    a <- sum(meta$clonotype == cl & meta$cluster == clus)
+    b <- sum(meta$clonotype == cl & meta$cluster != clus)
+    c <- sum(meta$clonotype != cl & meta$cluster == clus)
+    d <- sum(meta$clonotype != cl & meta$cluster != clus)
+
+    mat <- matrix(c(a,b,c,d), nrow=2)
+
+    ft <- fisher.test(mat)
+
+    res[[paste(cl,clus,sep="_")]] <- data.frame(
+      clonotype = cl,
+      cluster = clus,
+      odds_ratio = ft$estimate,
+      pvalue = ft$p.value)
+  }
+}
+
+enrich <- bind_rows(res) %>%
+  mutate(FDR = p.adjust(pvalue, method="BH")) %>%
+  arrange(FDR)
+
+enrich <- enrich %>%
+  mutate(
+    odds_ratio = ifelse(is.infinite(odds_ratio), NA, odds_ratio),
+    odds_ratio = ifelse(odds_ratio <= 0, NA, odds_ratio),
+    FDR = ifelse(FDR == 0, 1e-300, FDR))
+
+cluster_order <- c("0","1","2","3","4")
+mat <- enrich %>%
+  mutate(
+    score = sign(log2(odds_ratio)) * -log10(FDR),
+    cluster = factor(cluster, levels = c("0","1","2","3","4"))
+  ) %>%
+  select(clonotype, cluster, score) %>%
+  pivot_wider(
+    names_from = cluster,
+    values_from = score,
+    values_fill = 0
+  ) %>%
+  column_to_rownames("clonotype") %>%
+  as.matrix()
+
+
+plot<-pheatmap(mat,main = "Fisher's test : clone-cluster enrichment",fontsize = 14,fontsize_row = 12, fontsize_col = 16, angle_col = 45, cluster_cols = TRUE, cluster_rows = TRUE, show_rownames = TRUE, show_colnames = TRUE)
+ggsave(paste0(params$output,"vdj_heatmap_enrich_myel.jpeg"), plot, width = 3000, height = 1500, units = "px")
+```
+
+Somatic Hypermutation (SHM)
+
+SHM on the light chain (IGK/L). Here the SHM is calculated on the variable zone (V identity)
+
+Variable zone is longer than junction zone, that's why it's better to calculate SHM on this zone
+
+When SHM is high ( for example 100%) it means that the cells are naive, because no or not a lot of mutation. When SHM is lower it means that the cell has more mutation so more mature and old.
+
+```{r}
+df_plot <- meta %>%
+  filter(Annotation != "Monocyte") %>%
+  filter(cdr3_L != "Others") %>%
+  mutate(Annotation_merged = case_when(
+    Annotation %in% c("B", "B naive", "B intermediate", "B memory") ~ "B cells",
+    TRUE ~ as.character(Annotation) ))
+
+plot<-ggplot(df_plot, aes(x = cdr3_L, y = v_identity_L, fill = Annotation_merged)) +
+  geom_boxplot(outlier.shape = NA, width = 0.8) +
+  theme_minimal() +
+  ylim(90, 100) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12), axis.text.y = element_text(size = 12) , axis.title=element_text(size = 12), legend.text=element_text(size = 12), legend.title=element_text(size = 12)) + 
+  labs(title = "Somatic Hypermutation (SHM) per CDR3 IGK/L and per cell type",
+       y = "% Germinal V identity",
+       x = "CDR3 Sequence", fill = "Cell type")
+plot
+ggsave(paste0(params$output,"vdj_box_celltype.jpeg"), plot, width = 3000, height = 1500, units = "px")
+
+my_comparisons <- combn(unique(df_plot$cdr3_L), 2, simplify = FALSE)
+plot<-ggplot(df_plot, aes(x = cdr3_L, y = v_identity_L)) +
+  geom_boxplot(outlier.shape = NA, width = 0.8) +
+  theme_minimal() +
+  ylim(90, 110) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12), axis.text.y = element_text(size = 12) , axis.title=element_text(size = 12), plot.title=element_text(size = 18)) +
+  labs(title = "Somatic Hypermutation (SHM) per CDR3",
+       y = "% Germinal V identity",
+       x = "CDR3 Sequence") +
+ # global test : kruskal and wallis 
+  stat_compare_means(method = "kruskal.test",label.y = 109.5) +
+  # pairwise tests
+  stat_compare_means(comparisons = my_comparisons, method = "wilcox.test",method.args = list(exact = FALSE),p.adjust.method = "BH",hide.ns = FALSE,label = "p.signif",step.increase = 0.04)
+ggsave(paste0(params$output,"vdj_box_clone.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+# Cells and sequences selection
+df_tree <- data_myel@meta.data %>% 
+  filter(!is.na(junction_aa_L)) %>% 
+  group_by(junction_aa_L) %>% 
+  slice(1) %>%
+  ungroup()
+
+# Distance matrix (Hamming on CDR3)
+seqs <- df_tree$junction_aa_L
+names(seqs) <- df_tree$junction_aa_L
+dist_mat <- stringdistmatrix(seqs, seqs, method = "lv")
+rownames(dist_mat) <- names(seqs)
+
+# Build the tree
+tree <- nj(as.dist(dist_mat))
+
+# Plot
+plot<-ggtree(tree, layout="circular") + geom_tiplab(size=2) + theme_tree2() + labs(title = "Clonotypes Phylogeny (Levenshtein distance)")
+plot
+ggsave(paste0(params$output,"vdj_tree.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+tab <- table(data_myel$junction_aa_L)
+keep <- names(tab[tab > 2])
+data_filt <- subset(data_myel, junction_aa_L %in% keep)
+tab<-table(data_filt$junction_aa_L)
+cdr3 <- names(tab)
+
+data_myel$cdr3_low_L <- ifelse(
+  data_myel$junction_aa_L %in% cdr3,
+  data_myel$junction_aa_L,
+  "Others"
 )
 
+# Cells and sequences selection
+df_tree <- data_myel@meta.data %>%
+  filter(
+    !is.na(cdr3_low_L),
+    cdr3_low_L != "Others",
+    !is.na(junction_aa_L),
+    junction_aa_L != ""
+  ) %>%
+  group_by(cdr3_low_L) %>%
+  slice(1) %>%
+  ungroup()
 
-ggplot(shm_df, aes(x = v_call_L*100)) +
-  geom_histogram(bins = 50, fill = "skyblue", color = "black", alpha = 0.7) +
-  geom_vline(aes(xintercept = median(shm_rate*100)), 
-             color = "red", linetype = "dashed", size = 1) +
-  labs(x = "Taux de SHM (%)", y = "Nombre de clonotypes", 
-       title = "Distribution du SHM par clonotype") +
-  theme_minimal()
+# Distance matrix (Hamming on CDR3)
+seqs <- df_tree$junction_aa_L
+names(seqs) <- df_tree$junction_aa_L
+dist_mat <- stringdistmatrix(seqs, seqs, method = "lv")
+rownames(dist_mat) <- names(seqs)
 
-ggplot(shm_df, aes(x = v_call_L*100, fill = Annotation)) +
-  geom_histogram(bins = 50, alpha = 0.7, position = "identity") +
-  geom_vline(xintercept = tapply(shm_df$v_call_L*100, shm_df$macrostate, median, na.rm = TRUE),
-             color = "red", linetype = "dashed") +
-  facet_wrap(~macrostate, scales = "free_y") +
-  labs(x = "Taux de SHM (%)", y = "Nombre de cellules") +
-  theme_minimal()
+# Build the tree
+tree <- nj(as.dist(dist_mat))
+
+# Plot
+clones<-unique(data$cdr3_L)
+tip_df <- data.frame(label = tree$tip.label) %>%
+  mutate(highlight = ifelse(label %in% clones, "Dominant clones", "Non-dominant clones") )
+
+plot<-ggtree(tree, layout = "dendrogram") %<+% tip_df +
+  geom_tiplab(aes(color = highlight),size = 5, hjust = 0) +
+  scale_color_manual(name = "Dominance (cell num > 30)",values = c("Dominant clones" = "red","Non-dominant clones" = "black")) + xlim_tree(8) +
+  theme_tree() +theme(
+    plot.margin = margin(20, 100, 80, 20),
+    plot.clip = "off",
+    legend.position = "right",
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    plot.title = element_text(size = 16, face = "bold")) +
+  labs(title = "Clonotypes Phylogeny (Levenshtein distance)")
+plot
+ggsave(paste0(params$output,"vdj_tree_small.jpeg"), plot, width = 4000, height = 4000, units = "px")
 ```
