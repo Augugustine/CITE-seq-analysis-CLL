@@ -293,6 +293,36 @@ DimPlot(data, reduction = "umap", group.by = "j_j_light_heavy_filtered",cols=c("
 CDR3 junction_aa
 
 ```{r}
+meta <- data@meta.data
+
+# size for each clone
+clone_sizes <- meta %>%
+  filter(!is.na(junction_aa_L)) %>%
+  count(junction_aa_L, name = "n_cells")
+
+# clones classes
+clone_sizes <- clone_sizes %>%
+  mutate(
+    class = case_when(
+      n_cells == 1 ~ "1",
+      n_cells <= 5 ~ "2-10",
+      n_cells <= 10 ~ "11-30",
+      n_cells <= 50 ~ "31-50",
+      n_cells <= 100 ~ "51-100",
+      n_cells <= 500 ~ "101-500",
+      TRUE ~ "500+"))
+
+# clones per classe
+plot_df <- clone_sizes %>%count(class)
+plot_df$class <- factor(plot_df$class,levels = c("1","2-10","11-30","31-50","51-100","101-500","500+"))
+
+# plot
+plot<-ggplot(plot_df, aes(x = class, y = n)) +geom_col(fill = "steelblue", width = 0.8) + labs( title = "Distribution clonotype size",x = "Number of cells carrying the clone", y = "Number of clones") + theme_classic(base_size = 16)
+plot
+ggsave(paste0(params$output,"vdj_clone_distribution.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
 tab <- table(data$junction_aa_L)
 keep <- names(tab[tab > 30])
 data_filt <- subset(data, junction_aa_L %in% keep)
