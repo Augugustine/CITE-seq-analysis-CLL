@@ -1,8 +1,8 @@
 ---
 title: "V(D)J analysis"
 params: 
-  patient: "P2"
-  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+  patient: "p3" # format p2 or p3
+  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3.rds"
   folder_trust4: "~/Documents/Singlecell-R/Scripts/Matrix/VDJ_TRUST4/"
   output: "~/Documents/Singlecell-R/Scripts/Plots/"
 format: html
@@ -40,14 +40,14 @@ source("functions.R")
 days <- c("D1", "D4", "D8", "D11", "D14")
 
 for (day in days) {
-  df <- read.table(paste0(params$folder_trust4, "vdj_p2_", day, "_barcode_report.tsv"),header = FALSE, sep = "\t", stringsAsFactors = FALSE)
+  df <- read.table(paste0(params$folder_trust4, "vdj_",params$patient,"_", day, "_barcode_report.tsv"),header = FALSE, sep = "\t", stringsAsFactors = FALSE)
   colnames(df) <- c("Barcodes", "Celltype", "Chain_1", "Chain_2", "Secondary_chain_1", "Secondary_chain_2")
   df$Barcodes <- paste0(day, "_", df$Barcodes)
   assign(day, df)
 }
 
 for (day in days) {
-  df <- read.table(paste0(params$folder_trust4, "vdj_p2_", day, "_barcode_airr.tsv"),header = TRUE, sep = "\t", stringsAsFactors = FALSE)
+  df <- read.table(paste0(params$folder_trust4, "vdj_",params$patient,"_", day, "_barcode_airr.tsv"),header = TRUE, sep = "\t", stringsAsFactors = FALSE)
   df$Barcodes <- paste0(day, "_", df$cell_id)
   assign(paste0(day,"_airr"), df)
 }
@@ -87,7 +87,7 @@ data <- AddMetaData(data, metadata = combined_vdj)
 
 ```{r}
 plot<-DimPlot(data, reduction="umap", group.by = "Celltype", cols =c("#ea4258","darkgreen","orange"),na.value = "lightblue") + ggtitle("VDJ annotation") + theme(plot.title = element_text(size = 15, hjust = 0.5))
-ggsave(paste0(params$output,"vdj_umap.jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_umap_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 Compare annotated B cells by TRUST4 and annotated tumoral cells by Numbat in T cells population
@@ -134,8 +134,8 @@ p_bar <- ggplot(ctab, aes(x = compartment_opt,y = n_cells,fill = Celltype)) +
     y = "Cell fraction",
     fill = "Cell type")
 
-ggsave(paste0(params$output,"vdj_cna_heatmap.jpeg"), p_heatmap, width = 3000, height = 2000, units = "px")
-ggsave(paste0(params$output,"vdj_cna_bar.jpeg"), p_bar, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_cna_heatmap_",params$patient,".jpeg"), p_heatmap, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_cna_bar_",params$patient,".jpeg"), p_bar, width = 3000, height = 2000, units = "px")
 
 plot<-ggplot(meta,
        aes(axis1 = compartment_opt,
@@ -144,7 +144,7 @@ plot<-ggplot(meta,
   geom_stratum() +
   geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=6)+ labs(fill = "CNA annotation",title = "CNA and V(D)J annotation in the T population") +
   theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 20),axis.text.y = element_text(size = 20),legend.text = element_text(size = 20), plot.title = element_text(size = 20, hjust = 0.5), legend.title = element_text(size = 20),)
-ggsave(paste0(params$output,"vdj_cna_flux.jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_cna_flux_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 Compare annotated B cells by TRUST4 and annotated tumoral cells by Numbat in monocyte population
@@ -192,8 +192,8 @@ p_bar <- ggplot(ctab, aes(x = compartment_opt,y = n_cells,fill = Celltype)) +
     fill = "Cell type")
 
 
-ggsave(paste0(params$output,"vdj_cna_heatmap_myel.jpeg"), p_heatmap, width = 3000, height = 2000, units = "px")
-ggsave(paste0(params$output,"vdj_cna_bar_myel.jpeg"), p_bar, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_cna_heatmap_myel_",params$patient,".jpeg"), p_heatmap, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_cna_bar_myel_",params$patient,".jpeg"), p_bar, width = 3000, height = 2000, units = "px")
 
 plot<-ggplot(meta,
        aes(axis1 = compartment_opt,
@@ -202,7 +202,7 @@ plot<-ggplot(meta,
   geom_stratum() +
   geom_text(stat = "stratum", aes(label = after_stat(stratum)), size=6)+ labs(fill = "CNA annotation",title = "CNA and V(D)J annotation in the monocyte population") +
   theme_minimal()+ theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 20),axis.text.y = element_text(size = 20),legend.text = element_text(size = 20), plot.title = element_text(size = 20, hjust = 0.5), legend.title = element_text(size = 20),)
-ggsave(paste0(params$output,"vdj_cna_flux_myel.jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_cna_flux_myel_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 ### Clonotypes and SHM (Somatic hypermutation rate of BCR)
@@ -253,7 +253,7 @@ data <- AddMetaData(data, metadata = bcr)
 
 ```{r}
 plot<-DimPlot(data, reduction="umap", group.by = "j_call_L",na.value = "lightblue") + ggtitle("Germinal gene junction on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
-ggsave(paste0(params$output,"vdj_clono_umap_light.jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_clono_umap_light_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 Combine Variable (v) and junction (j) on light chain
@@ -319,12 +319,17 @@ plot_df$class <- factor(plot_df$class,levels = c("1","2-10","11-30","31-50","51-
 # plot
 plot<-ggplot(plot_df, aes(x = class, y = n)) +geom_col(fill = "steelblue", width = 0.8) + labs( title = "Distribution clonotype size",x = "Number of cells carrying the clone", y = "Number of clones") + theme_classic(base_size = 16)
 plot
-ggsave(paste0(params$output,"vdj_clone_distribution.jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_clone_distribution_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 ```{r}
 tab <- table(data$junction_aa_L)
-keep <- names(tab[tab > 30])
+if (params$patient == "p2"){
+  keep <- names(tab[tab > 30])
+}
+if (params$patient == "p3"){
+  keep <- names(tab[tab > 10])
+}
 data_filt <- subset(data, junction_aa_L %in% keep)
 tab<-table(data_filt$junction_aa_L)
 cdr3 <- names(tab)
@@ -335,8 +340,13 @@ data$cdr3_L <- ifelse(
   "Others"
 )
 
-plot<-DimPlot(data, reduction = "umap", group.by = "cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
-ggsave(paste0(params$output,"vdj_clono_cdr3_umap_light.jpeg"), plot, width = 3000, height = 2000, units = "px")
+if (params$patient == "p2"){
+  plot<-DimPlot(data, reduction = "umap", group.by = "cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+}
+if (params$patient == "p3"){
+  plot<-DimPlot(data, reduction = "umap", group.by = "cdr3_L",cols=c("#006400","#12A8F5", "grey","#E58B00"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+}
+ggsave(paste0(params$output,"vdj_clono_cdr3_umap_light_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 
 clone_matrix <- table(data$Annotation, 
                      ifelse(data$junction_aa_L %in% cdr3, data$junction_aa_L, "Other"))
@@ -344,7 +354,7 @@ mat <- clone_matrix[, colnames(clone_matrix) != "Other"]
 mat_log <- log1p(mat)
 mat_log <- mat_log[apply(mat_log, 1, var) > 0, ]
 plot<-pheatmap(mat_log,scale = "row",main = "Main CDR3 per clusters",angle_col = 45,fontsize = 18,fontsize_row = 16,fontsize_col = 16)
-ggsave(paste0(params$output,"vdj_clono_cdr3_heatmap_light.jpeg"), plot, width = 4000, height = 2500, units = "px")
+ggsave(paste0(params$output,"vdj_clono_cdr3_heatmap_light_",params$patient,".jpeg"), plot, width = 4000, height = 2500, units = "px")
 ```
 
 Subset myeloid and B pop
@@ -355,10 +365,15 @@ data_myel<-subset(data, subset = (Annotation %in% c("B intermediate", "B naive",
 data_myel<-run_dim_red(data_myel)
 
 plot<-DimPlot(data_myel, reduction="umap", group.by = "j_call_L",na.value = "lightblue") + ggtitle("Germinal gene junction on light chain on B and myeloid population") + theme(plot.title = element_text(size = 15, hjust = 0.5))
-ggsave(paste0(params$output,"vdj_clono_umap_light_myel.jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_clono_umap_light_myel_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 
-plot<-DimPlot(data_myel, reduction = "umap", group.by = "highlight_cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 on light chain on B and myeloid population") + theme(plot.title = element_text(size = 15, hjust = 0.5))
-ggsave(paste0(params$output,"vdj_clono__cdr3_umap_light_myel.jpeg"), plot, width = 3000, height = 2000, units = "px")
+if (params$patient == "p2"){
+  plot<-DimPlot(data_myel, reduction = "umap", group.by = "cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 on light chain on B and myeloid population") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+}
+if (params$patient == "p3"){
+  plot<-DimPlot(data_myel, reduction = "umap", group.by = "cdr3_L",cols=c("#006400","#12A8F5", "grey","#E58B00"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 on light chain on B and myeloid population") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+}
+ggsave(paste0(params$output,"vdj_clono_cdr3_umap_light_myel_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 
 clone_matrix <- table(data_myel$Annotation, 
                      ifelse(data_myel$junction_aa_L %in% cdr3, data_myel$junction_aa_L, "Other"))
@@ -366,16 +381,22 @@ mat <- clone_matrix[, colnames(clone_matrix) != "Other"]
 mat_log <- log1p(mat)
 mat_log <- mat_log[apply(mat_log, 1, var) > 0, ]
 plot<-pheatmap(mat_log,scale = "row",main = "Main CDR3 per clusters on B and myeloid population",angle_col = 45,fontsize = 18,fontsize_row = 16,fontsize_col = 16)
-ggsave(paste0(params$output,"vdj_clono_cdr3_heatmap_myel.jpeg"), plot, width = 4000, height = 2500, units = "px")
+ggsave(paste0(params$output,"vdj_clono_cdr3_heatmap_myel_",params$patient,".jpeg"), plot, width = 4000, height = 2500, units = "px")
 ```
 
 ```{r}
-clono_color=c("CAIWYSSTSHSDTHTW"="black","CMQALQTL"="#12A8F5", "CQQYNSYWTF"="#E58B00", "CQSADSSGTYVVF"="#6A0DAD","CSAWDTSLGVWVF"="#006400", "Others"="grey")
+if (params$patient == "p2"){
+  clono_color=c("CAIWYSSTSHSDTHTW"="black","CMQALQTL"="#12A8F5", "CQQYNSYWTF"="#E58B00", "CQSADSSGTYVVF"="#6A0DAD","CSAWDTSLGVWVF"="#006400", "Others"="grey")
+}
+if (params$patient == "p3"){
+  clono_color=c("CQQYYSYPRTF"="#12A8F5", "SYPRTF"="#E58B00","CQQDYSYPRTF"="#006400", "Others"="grey")
+}
+
 data<-FindClusters(data, resolution = 0.15)
 DimPlot(data, reduction="umap")
 data_myel<-FindClusters(data_myel, resolution = 0.15)
 plot<-DimPlot(data_myel, reduction="umap",label=T, label.size = 6 )
-ggsave(paste0(params$output,"umap_myel_clusters.jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"umap_myel_clusters_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 Clonotype x time x celltype
@@ -420,10 +441,9 @@ plot <- ggplot(df_alluv,
   theme(plot.margin = margin(t=10, r=10, b=10, l=60)) +
   ggtitle("Clone per cluster and per timepoint in myeloid and B population ")
 plot
-ggsave(paste0(params$output,"vdj_flow_myel.jpeg"), plot, width = 3500, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_flow_myel_",params$patient,".jpeg"), plot, width = 3500, height = 2000, units = "px")
 
 # Proportion
-
 meta <- meta %>%
   mutate(
     clonotype = as.character(cdr3_L),
@@ -431,11 +451,13 @@ meta <- meta %>%
     cluster = as.character(seurat_clusters),
     celltype = as.character(Annotation))
 
-prop <-prop %>%
+prop <-meta %>%
   filter(!celltype %in% c("Monocyte", "B memory")) %>%
   mutate(timepoint = factor(timepoint, levels = c("D1", "D4", "D8", "D11", "D14")))
-  
 
+if (params$patient == "p3"){
+  prop$clonotype <- factor(prop$clonotype,levels = c("CQQDYSYPRTF", "CQQYYSYPRTF", "SYPRTF", "Others"))
+}
 plot<-ggplot(prop, aes(x = timepoint, fill = clonotype)) +
   geom_bar(position = "fill") +
   scale_y_continuous(labels = scales::number) +
@@ -446,7 +468,7 @@ plot<-ggplot(prop, aes(x = timepoint, fill = clonotype)) +
   labs(y = "Fraction", fill = "Clonotype",
        title = "Clonal composition over time and cell type")
 plot
-ggsave(paste0(params$output,"vdj_prop_cell_time_myel.jpeg"), plot, width = 3500, height = 1500, units = "px")
+ggsave(paste0(params$output,"vdj_prop_cell_time_myel_",params$patient,".jpeg"), plot, width = 3500, height = 1500, units = "px")
 ```
 
 Fisher's test : Enrichment clonotype and clusters
@@ -487,11 +509,10 @@ enrich <- enrich %>%
     odds_ratio = ifelse(odds_ratio <= 0, NA, odds_ratio),
     FDR = ifelse(FDR == 0, 1e-300, FDR))
 
-cluster_order <- c("0","1","2","3","4")
 mat <- enrich %>%
   mutate(
     score = sign(log2(odds_ratio)) * -log10(FDR),
-    cluster = factor(cluster, levels = c("0","1","2","3","4"))
+    cluster = factor(cluster, levels = sort(unique(cluster)))
   ) %>%
   select(clonotype, cluster, score) %>%
   pivot_wider(
@@ -504,7 +525,7 @@ mat <- enrich %>%
 
 
 plot<-pheatmap(mat,main = "Fisher's test : clone-cluster enrichment",fontsize = 14,fontsize_row = 12, fontsize_col = 16, angle_col = 45, cluster_cols = TRUE, cluster_rows = TRUE, show_rownames = TRUE, show_colnames = TRUE)
-ggsave(paste0(params$output,"vdj_heatmap_enrich_myel.jpeg"), plot, width = 3000, height = 1500, units = "px")
+ggsave(paste0(params$output,"vdj_heatmap_enrich_myel_",params$patient,".jpeg"), plot, width = 3000, height = 1500, units = "px")
 ```
 
 Somatic Hypermutation (SHM)
@@ -516,6 +537,7 @@ Variable zone is longer than junction zone, that's why it's better to calculate 
 When SHM is high ( for example 100%) it means that the cells are naive, because no or not a lot of mutation. When SHM is lower it means that the cell has more mutation so more mature and old.
 
 ```{r}
+meta$SHM_L<-100-meta$v_identity_L
 df_plot <- meta %>%
   filter(Annotation != "Monocyte") %>%
   filter(cdr3_L != "Others") %>%
@@ -523,31 +545,31 @@ df_plot <- meta %>%
     Annotation %in% c("B", "B naive", "B intermediate", "B memory") ~ "B cells",
     TRUE ~ as.character(Annotation) ))
 
-plot<-ggplot(df_plot, aes(x = cdr3_L, y = v_identity_L, fill = Annotation_merged)) +
+plot<-ggplot(df_plot, aes(x = cdr3_L, y = SHM_L, fill = Annotation_merged)) +
   geom_boxplot(outlier.shape = NA, width = 0.8) +
   theme_minimal() +
-  ylim(90, 100) +
+  #ylim(90, 100) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12), axis.text.y = element_text(size = 12) , axis.title=element_text(size = 12), legend.text=element_text(size = 12), legend.title=element_text(size = 12)) + 
   labs(title = "Somatic Hypermutation (SHM) per CDR3 IGK/L and per cell type",
-       y = "% Germinal V identity",
+       y = "Somatic hypermutation (%)",
        x = "CDR3 Sequence", fill = "Cell type")
 plot
-ggsave(paste0(params$output,"vdj_box_celltype.jpeg"), plot, width = 3000, height = 1500, units = "px")
+ggsave(paste0(params$output,"vdj_box_celltype_",params$patient,".jpeg"), plot, width = 3000, height = 1500, units = "px")
 
 my_comparisons <- combn(unique(df_plot$cdr3_L), 2, simplify = FALSE)
-plot<-ggplot(df_plot, aes(x = cdr3_L, y = v_identity_L)) +
+plot<-ggplot(df_plot, aes(x = cdr3_L, y = SHM_L)) +
   geom_boxplot(outlier.shape = NA, width = 0.8) +
   theme_minimal() +
-  ylim(90, 110) +
+  #ylim(90, 110) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 12), axis.text.y = element_text(size = 12) , axis.title=element_text(size = 12), plot.title=element_text(size = 18)) +
   labs(title = "Somatic Hypermutation (SHM) per CDR3",
-       y = "% Germinal V identity",
+       y = "Somatic hypermutation (%)",
        x = "CDR3 Sequence") +
  # global test : kruskal and wallis 
-  stat_compare_means(method = "kruskal.test",label.y = 109.5) +
+  stat_compare_means(method = "kruskal.test",label.y = 20) +
   # pairwise tests
   stat_compare_means(comparisons = my_comparisons, method = "wilcox.test",method.args = list(exact = FALSE),p.adjust.method = "BH",hide.ns = FALSE,label = "p.signif",step.increase = 0.04)
-ggsave(paste0(params$output,"vdj_box_clone.jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_box_clone_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 ```{r}
@@ -570,7 +592,7 @@ tree <- nj(as.dist(dist_mat))
 # Plot
 plot<-ggtree(tree, layout="circular") + geom_tiplab(size=2) + theme_tree2() + labs(title = "Clonotypes Phylogeny (Levenshtein distance)")
 plot
-ggsave(paste0(params$output,"vdj_tree.jpeg"), plot, width = 3000, height = 2000, units = "px")
+ggsave(paste0(params$output,"vdj_tree_",params$patient,".jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
 
 ```{r}
@@ -614,7 +636,7 @@ tip_df <- data.frame(label = tree$tip.label) %>%
 
 plot<-ggtree(tree, layout = "dendrogram") %<+% tip_df +
   geom_tiplab(aes(color = highlight),size = 5, hjust = 0) +
-  scale_color_manual(name = "Dominance (cell num > 30)",values = c("Dominant clones" = "red","Non-dominant clones" = "black")) + xlim_tree(8) +
+  scale_color_manual(name = "Dominance",values = c("Dominant clones" = "red","Non-dominant clones" = "black")) + xlim_tree(8) +
   theme_tree() +theme(
     plot.margin = margin(20, 100, 80, 20),
     plot.clip = "off",
@@ -624,5 +646,5 @@ plot<-ggtree(tree, layout = "dendrogram") %<+% tip_df +
     plot.title = element_text(size = 16, face = "bold")) +
   labs(title = "Clonotypes Phylogeny (Levenshtein distance)")
 plot
-ggsave(paste0(params$output,"vdj_tree_small.jpeg"), plot, width = 4000, height = 4000, units = "px")
+ggsave(paste0(params$output,"vdj_tree_small_",params$patient,".jpeg"), plot, width = 4000, height = 4000, units = "px")
 ```
