@@ -3,8 +3,8 @@ title: "Bridge B-macro"
 params: 
   patient: "P2"
   patientbis: "P3"
-  fileP2: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_annotated_Seurat_LogNorm_P2.rds"
-  fileP3: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_annotated_Seurat_LogNorm_P3.rds"
+  fileP2: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+  fileP3: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3.rds"
 format: html
 editor: visual
 ---
@@ -33,6 +33,8 @@ library(starTracer)
 library(ComplexHeatmap)
 library(VISION)
 library(scrapper)
+library(ggpubr)
+library(msigdbr)
 source("functions.R")
 ```
 
@@ -373,6 +375,187 @@ data_B<-subset(data_p2, subset=B_cells=="Macrophage")
 auc_bridge<-data_B$geneSet1
 auc_bridge<-t(auc_bridge)
 wilcox.test(auc_bridge, mu = 0.074, alternative = "greater")
+```
+
+Combination signatures CLL and differentiation myeloid
+
+```{r}
+# Meloid cell differenciation signature (GO:0035726) GO:0061515 GO:0035726 (good : GO:0002274)
+myel <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys   = "GO:0002274",
+  columns = c("ENTREZID", "SYMBOL"),
+  keytype = "GO")
+myel <- unique(na.omit(myel))
+myel <- unique(myel$SYMBOL)
+
+genes<-myel
+geneSets <- list(geneSet1=genes)
+geneSets
+
+counts <- GetAssayData(data_p2, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_myel.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet1"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+colnames(AUC) <- "myel_signature"
+data_p2 <- AddMetaData(data_p2, metadata = AUC)
+# Group the B cells in one annotation
+data_p2@meta.data$B_cells <- ifelse(
+  data_p2@meta.data[["Annotation"]] %in% c("B memory", "B intermediate", "B naive", "B"), 
+  "B cells", 
+  data_p2@meta.data[["Annotation"]]
+)
+
+#Violin plot
+comparisons <- list(
+  c("B cells", "Bridge"),
+  c("Bridge", "Macrophage"),
+  c("B cells", "Macrophage"))
+plot<-ggplot(data_p2@meta.data, aes(x = B_cells, y = myel_signature, fill = B_cells)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test", size=6)+ theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18),
+legend.text = element_text(size = 18) ) + geom_hline(yintercept = 0.31, color = "red", linetype = "dashed", size = 0.5) + xlab("Cell type") + ylab("AUC (signature myeloid leukocyte activation)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/myel_leuko_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+# Meloid cell differenciation signature (GO:0035726)
+myel <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys   = "GO:0035726",
+  columns = c("ENTREZID", "SYMBOL"),
+  keytype = "GO")
+myel <- unique(na.omit(myel))
+myel <- unique(myel$SYMBOL)
+
+genes<-myel
+geneSets <- list(geneSet1=genes)
+geneSets
+
+counts <- GetAssayData(data_p2, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_myel.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet1"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+data_p2 <- AddMetaData(data_p2, metadata = AUC)
+
+#Violin plot
+comparisons <- list(c("Macrophage", "Bridge"),c("Bridge", "B intermediate"),c("B intermediate", "B naive"))
+plot<-ggplot(data_p2@meta.data, aes(x = B_cells, y = geneSet1, fill = B_cells)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test", size=6) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18),
+legend.text = element_text(size = 18) ) + geom_hline(yintercept = 0.028, color = "red", linetype = "dashed", size = 0.5) + xlab("Cell type") + ylab("AUC")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/myel_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+# Meloid cell differenciation signature (GO:0035726)
+msig <- msigdbr(species = "Homo sapiens")
+cll <- msig[msig$gs_name == "BILBAN_B_CLL_LPL_UP", ]
+genes <- unique(cll$gene_symbol)
+geneSets <- list(geneSet1=genes)
+geneSets
+
+counts <- GetAssayData(data_p2, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_cll.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet1"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+colnames(AUC) <- "cll_signature"
+data_p2 <- AddMetaData(data_p2, metadata = AUC)
+# Group the B cells in one annotation
+data_p2@meta.data$B_cells <- ifelse(
+  data_p2@meta.data[["Annotation"]] %in% c("B memory", "B intermediate", "B naive", "B"), 
+  "B cells", 
+  data_p2@meta.data[["Annotation"]]
+)
+
+#Violin plot
+comparisons <- list(
+  c("B cells", "Bridge"),
+  c("Bridge", "Macrophage"),
+  c("B cells", "Macrophage"))
+plot<-ggplot(data_p2@meta.data, aes(x = B_cells, y = cll_signature, fill = B_cells)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test", size=6) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18),
+legend.text = element_text(size = 18) ) + geom_hline(yintercept = 0.14, color = "red", linetype = "dashed", size = 0.5) + xlab("Cell type") + ylab("AUC")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/cll_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+cll <- msig[msig$gs_name == "BILBAN_B_CLL_LPL_UP", ]
+genes <- unique(cll$gene_symbol)
+myel <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys   = "GO:0035726",
+  columns = c("ENTREZID", "SYMBOL"),
+  keytype = "GO")
+myel <- unique(na.omit(myel))
+myel <- unique(myel$SYMBOL)
+combined<-c(genes, myel)
+
+geneSets <- list(geneSet1=combined)
+geneSets
+
+counts <- GetAssayData(data_p2, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_cll.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet1"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+colnames(AUC) <- "combined_signature"
+data_p2 <- AddMetaData(data_p2, metadata = AUC)
+
+#Violin plot
+comparisons <- list(
+  c("B cells", "Bridge"),
+  c("Bridge", "Macrophage"),
+  c("B cells", "Macrophage"))
+plot<-ggplot(data_p2@meta.data, aes(x = B_cells, y = combined_signature, fill = B_cells)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test", size=6) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18),
+legend.text = element_text(size = 18) ) + geom_hline(yintercept = 0.14, color = "red", linetype = "dashed", size = 0.5) + xlab("Cell type") + ylab("AUC")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/cll_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
 
 ## Patient 3
