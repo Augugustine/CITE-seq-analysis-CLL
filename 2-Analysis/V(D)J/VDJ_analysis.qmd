@@ -1,8 +1,8 @@
 ---
 title: "V(D)J analysis"
 params: 
-  patient: "p3" # format p2 or p3
-  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3.rds"
+  patient: "p2" # format p2 or p3
+  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
   folder_trust4: "~/Documents/Singlecell-R/Scripts/Matrix/VDJ_TRUST4/"
   output: "~/Documents/Singlecell-R/Scripts/Plots/"
 format: html
@@ -469,6 +469,95 @@ plot<-ggplot(prop, aes(x = timepoint, fill = clonotype)) +
        title = "Clonal composition over time and cell type")
 plot
 ggsave(paste0(params$output,"vdj_prop_cell_time_myel_",params$patient,".jpeg"), plot, width = 3500, height = 1500, units = "px")
+```
+
+```{r}
+meta <- data_myel@meta.data
+# Proportion
+meta <- meta %>%
+  mutate(
+    clonotype = as.character(cdr3_L),
+    timepoint = as.character(timepoint),
+    cluster = as.character(seurat_clusters),
+    celltype = as.character(Annotation))
+
+prop <-meta %>%
+  filter(cluster %in% c("0")) %>%
+  filter(celltype %in% c("B intermediate","B naive","B memory", "B")) %>%
+  mutate(timepoint = factor(timepoint, levels = c("D1", "D4", "D8", "D11", "D14"))) %>%
+  mutate(celltype = factor(celltype, levels = c("B intermediate", "B", "B naive", "B memory" )))
+
+if (params$patient == "p3"){
+  prop$clonotype <- factor(prop$clonotype,levels = c("CQQDYSYPRTF", "CQQYYSYPRTF", "SYPRTF", "Others"))
+}
+plot<-ggplot(prop, aes(x = timepoint, fill = celltype)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::number) +
+  scale_fill_manual(values = c(
+    "B intermediate" = "#1f78b4",
+    "B naive" = "#33a02c", 
+    "B memory" = "darkblue",
+    "B" = "darkgreen"
+  )) +
+  facet_wrap(~ clonotype, nrow = 1) +
+  theme_minimal(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(y = "Fraction", fill = "Clonotype",
+       title = "Clonal composition over time and cell type - cluster 0")
+plot
+ggsave(paste0(params$output,"vdj_prop_cell_time_clus0_",params$patient,".jpeg"), plot, width = 3500, height = 1500, units = "px")
+
+prop <-meta %>%
+  filter(cluster %in% c("1")) %>%
+  filter(celltype %in% c("B intermediate","B naive","B memory", "B")) %>%
+  mutate(timepoint = factor(timepoint, levels = c("D1", "D4", "D8", "D11", "D14"))) %>%
+  mutate(celltype = factor(celltype, levels = c("B intermediate", "B", "B naive", "B memory" )))
+
+if (params$patient == "p3"){
+  prop$clonotype <- factor(prop$clonotype,levels = c("CQQDYSYPRTF", "CQQYYSYPRTF", "SYPRTF", "Others"))
+}
+plot<-ggplot(prop, aes(x = timepoint, fill = celltype)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::number) +
+  scale_fill_manual(values = c(
+    "B intermediate" = "#1f78b4",
+    "B naive" = "#33a02c", 
+    "B memory" = "darkblue",
+    "B" = "darkgreen"
+  )) +
+  facet_wrap(~ clonotype, nrow = 1) +
+  theme_minimal(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(y = "Fraction", fill = "Clonotype",
+       title = "Clonal composition over time and cell type - cluster 1")
+plot
+ggsave(paste0(params$output,"vdj_prop_cell_time_clus1_",params$patient,".jpeg"), plot, width = 3500, height = 1500, units = "px")
+
+prop <-meta %>%
+  filter(cluster %in% c("2")) %>%
+  filter(celltype %in% c("B intermediate","B naive","B memory", "B")) %>%
+  mutate(timepoint = factor(timepoint, levels = c("D1", "D4", "D8", "D11", "D14"))) %>%
+  mutate(celltype = factor(celltype, levels = c("B intermediate", "B", "B naive", "B memory" )))
+
+if (params$patient == "p3"){
+  prop$clonotype <- factor(prop$clonotype,levels = c("CQQDYSYPRTF", "CQQYYSYPRTF", "SYPRTF", "Others"))
+}
+plot<-ggplot(prop, aes(x = timepoint, fill = celltype)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::number) +
+  scale_fill_manual(values = c(
+    "B intermediate" = "#1f78b4",
+    "B naive" = "#33a02c", 
+    "B memory" = "darkblue",
+    "B" = "darkgreen"
+  )) +
+  facet_wrap(~ clonotype, nrow = 1) +
+  theme_minimal(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(y = "Fraction", fill = "Clonotype",
+       title = "Clonal composition over time and cell type - cluster 2")
+plot
+ggsave(paste0(params$output,"vdj_prop_cell_time_clus2_",params$patient,".jpeg"), plot, width = 3500, height = 1500, units = "px")
 ```
 
 Fisher's test : Enrichment clonotype and clusters
