@@ -4,8 +4,10 @@ params:
   patient: "P2"
   patientbis: "P3"
   patient_numbat: "p3"
+  patient_infercnv: "p2"
   file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
   filebis: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3.rds"
+  output: "~/Documents/Singlecell-R/Scripts/Plots/"
 format: html
 editor: visual
 ---
@@ -28,6 +30,8 @@ library(ggtree)
 library(tidygraph)
 library(patchwork)
 library(ggpubr)
+library(infercnv)
+library(biomaRt)
 source("functions.R")
 ```
 
@@ -497,4 +501,60 @@ cna_entire.pop <- cna_complete[common_cells]
 cna_myeloid.pop <- cna_myeloid[common_cells]
 both_tumor <- sum(cna_entire.pop == "tumor" & cna_myeloid.pop == "tumor")
 table( cna_myeloid.pop,cna_entire.pop)
+```
+
+## inferCNV
+
+Object preparation
+
+```{r}
+data <- get(paste0("data_", params$patient_infercnv))
+data<- subset(data, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","CD4 T","CD8 T","Erythroblast","Macrophage","Monocyte","Neutrophil","NK"))
+# raw cout
+counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
+# cell annotation
+#annotations <- data.frame(cell = colnames(data), group = "tumor")
+meta <- data@meta.data %>%
+  dplyr::select(Annotation)
+meta$cellid <- rownames(meta)
+meta <- meta[, ncol(meta):1]
+meta <- as.data.frame(meta)
+write.table(meta,"cellAnnotations.txt",sep = "\t",quote = FALSE,col.names = FALSE, row.names = FALSE)
+
+# gene order 
+mart <- useEnsembl(
+  biomart = "genes",
+  dataset = "hsapiens_gene_ensembl")
+
+gene_order <- getBM(
+  attributes = c(
+    "hgnc_symbol",
+    "chromosome_name",
+    "start_position",
+    "end_position"),mart = mart)
+gene_order <- gene_order[gene_order$chromosome_name %in% c(as.character(1:22), "X", "Y"),]
+gene_order$chromosome_name <- paste0("chr",gene_order$chromosome_name)
+gene_order <- gene_order[gene_order$hgnc_symbol != "" & !is.na(gene_order$hgnc_symbol), ]
+gene_order <- gene_order[!duplicated(gene_order$hgnc_symbol), ]
+gene_order <- as.data.frame(gene_order)
+write.table(gene_order,"gene_ordering_file.txt",sep = "\t",quote = FALSE,col.names = FALSE,row.names = FALSE)
+
+# create the infercnv object
+infercnv_obj = CreateInfercnvObject(raw_counts_matrix=counts_matrix,
+                                    annotations_file="cellAnnotations.txt",
+                                    delim="\t",
+                                    gene_order_file="gene_ordering_file.txt",
+                                    ref_group_names=NULL)  # no reference cell as normal 
+```
+
+Run infercnv
+
+```{r}
+# perform infercnv operations to reveal cnv signal
+infercnv_obj = infercnv::run(infercnv_obj,
+                             cutoff=0.1,  # use 1 for smart-seq, 0.1 for 10x-genomics
+                             out_dir="infercnv_res",  # dir is auto-created for storing outputs
+                             cluster_by_groups=T,   # cluster
+                             denoise=T,
+                             HMM=T)
 ```
