@@ -510,6 +510,7 @@ Object preparation
 ```{r}
 data <- get(paste0("data_", params$patient_infercnv))
 data<- subset(data, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","CD4 T","CD8 T","Erythroblast","Macrophage","Monocyte","Neutrophil","NK"))
+#data<- subset(data, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge"))
 # raw cout
 counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
 # cell annotation
@@ -519,6 +520,8 @@ meta <- data@meta.data %>%
 meta$cellid <- rownames(meta)
 meta <- meta[, ncol(meta):1]
 meta <- as.data.frame(meta)
+meta$Type <- ifelse(meta$Annotation %in% c("CD4 T","CD8 T","Monocyte","Neutrophil","NK"), "Normal", "Tumor")
+meta <- meta[,-2]
 write.table(meta,"cellAnnotations.txt",sep = "\t",quote = FALSE,col.names = FALSE, row.names = FALSE)
 
 # gene order 
@@ -544,17 +547,52 @@ infercnv_obj = CreateInfercnvObject(raw_counts_matrix=counts_matrix,
                                     annotations_file="cellAnnotations.txt",
                                     delim="\t",
                                     gene_order_file="gene_ordering_file.txt",
-                                    ref_group_names=NULL)  # no reference cell as normal 
+                                    ref_group_names=c("Normal"))  
+# ref_group_names=NULL : no reference cell as normal, take the average of all the celltype
 ```
 
 Run infercnv
 
 ```{r}
 # perform infercnv operations to reveal cnv signal
+options(bitmapType = "Xlib")
 infercnv_obj = infercnv::run(infercnv_obj,
                              cutoff=0.1,  # use 1 for smart-seq, 0.1 for 10x-genomics
-                             out_dir="infercnv_res",  # dir is auto-created for storing outputs
+                             out_dir=paste0(params$output,"infercnv_resultat"),
                              cluster_by_groups=T,   # cluster
                              denoise=T,
                              HMM=T)
+```
+
+```{r}
+# Charger les prédictions par région
+cnv_regions <- read.table(paste0(params$output,"infercnv_res/HMM_CNV_predictions.HMMi6.leiden.hmm_mode-subclusters.Pnorm_0.5.pred_cnv_regions.dat"),
+  header=T, sep="\t")
+
+# Charger les probabilités d'être normal (Bayesian Network)
+# C'est le fichier le plus fiable pour tumeur vs normal
+cnv_state_probs <- read.table(paste0(params$output,"infercnv_res/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/CNV_State_Probabilities.dat"),
+  header=T, sep="\t")
+
+cell_groupings <- read.table(
+  paste0(params$output,"infercnv_res/17_HMM_predHMMi6.leiden.hmm_mode-subclusters.cell_groupings"),
+  header=T, sep="\t")
+```
+
+##  
+
+## XClone from the CellSNP lite results 
+
+```{r}
+# Xclone
+meta <- data@meta.data %>%
+  dplyr::select(Annotation)
+meta$cell_id <- rownames(meta)
+meta <- meta[, ncol(meta):1]
+meta <- as.data.frame(meta)
+meta$cell_type <- ifelse(meta$Annotation %in% c("CD4 T","CD8 T","Monocyte","Neutrophil","NK"), "Normal", "Tumor")
+meta$sample <- sub("_.*", "", meta$cell_id)
+meta$cell <- sub(".*_", "", meta$cell_id)
+write.table(meta,"Xclone.tsv",sep = "\t",quote = FALSE,col.names = TRUE, row.names = FALSE)
+
 ```
