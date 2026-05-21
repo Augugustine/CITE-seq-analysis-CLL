@@ -558,6 +558,38 @@ plot
 ggsave("~/Documents/Singlecell-R/Scripts/Plots/cll_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
 
+Cell cycle score
+
+```{r}
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+data_p2 <- CellCycleScoring(data_p2, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+# Visualize the distribution of cell cycle markers across
+RidgePlot(data_p2,features = c("PCNA", "TOP2A", "MCM6", "MKI67"), ncol = 2)
+# Running a PCA on cell cycle genes reveals, unsurprisingly, that cells separate entirely by phase
+plot1<-DimPlot(data_p2, group.by = "Phase", reduction = "umap")
+plot1
+
+prop_phase <- data_p2@meta.data %>%
+  group_by(Annotation, Phase) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(Annotation) %>%
+  mutate(
+    proportion = n / sum(n))
+
+plot2<-ggplot(prop_phase, aes(x = Annotation, y = proportion, fill = Phase)) +
+  geom_bar(stat = "identity") +
+  theme_classic() + theme(axis.text.x = element_text(size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18), legend.text = element_text(size = 18) ) + labs(
+    title = "Cell cycle phases",
+    x = "Cell type",
+    y = "Proportion"
+  ) + coord_flip()
+plot<-plot1+plot2
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/phase_p2.jpeg", plot, width = 4000, height = 1500, units = "px")
+```
+
 ## Patient 3
 
 ```{r}
@@ -839,6 +871,40 @@ auc_bridge<-data_B$geneSet1
 auc_bridge<-t(auc_bridge)
 wilcox.test(auc_bridge, mu = 0.068, alternative = "greater")
 ```
+
+Cell cycle score
+
+```{r}
+s.genes <- cc.genes$s.genes
+g2m.genes <- cc.genes$g2m.genes
+
+data_p3 <- CellCycleScoring(data_p3, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+# Visualize the distribution of cell cycle markers across
+RidgePlot(data_p3,features = c("PCNA", "TOP2A", "MCM6", "MKI67"), ncol = 2)
+# Running a PCA on cell cycle genes reveals, unsurprisingly, that cells separate entirely by phase
+plot1<-DimPlot(data_p3, group.by = "Phase", reduction = "umap")
+plot1
+
+prop_phase <- data_p3@meta.data %>%
+  group_by(Annotation, Phase) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(Annotation) %>%
+  mutate(
+    proportion = n / sum(n))
+
+plot2<-ggplot(prop_phase, aes(x = Annotation, y = proportion, fill = Phase)) +
+  geom_bar(stat = "identity") +
+  theme_classic() + theme(axis.text.x = element_text(size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18), legend.text = element_text(size = 18) ) + labs(
+    title = "Cell cycle phases",
+    x = "Cell type",
+    y = "Proportion"
+  ) + coord_flip()
+plot<-plot1+plot2
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/phase_p3.jpeg", plot, width = 4000, height = 1500, units = "px")
+```
+
+## 
 
 ## Venn diagram
 
