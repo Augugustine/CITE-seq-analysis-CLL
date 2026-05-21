@@ -377,5 +377,43 @@ Convert_Seurat_Anndata <- function(seuratobj, output, raw = FALSE) {
   Convert(paste0(output, ".h5Seurat"),dest = "h5ad",overwrite = TRUE)
 }
 
+# ── AF per timepoint: CellSNP lite results, pileup ──────────────────────────
+process_timepoint <- function(tp) {
+  cat("\n=== Processing", tp, "===\n")
+  
+  AD <- readMM(file.path(base_path, tp, "cellSNP.tag.AD.mtx"))
+  DP <- readMM(file.path(base_path, tp, "cellSNP.tag.DP.mtx"))
+  vcf_file <- file.path(base_path, tp, "cellSNP.base.vcf")
+  vcf <- read.table(vcf_file, comment.char = "#", header = FALSE, stringsAsFactors = FALSE)
+  snp_ids <- paste0(vcf$V1, ":", vcf$V2, ":", vcf$V4, ":", vcf$V5)
+  rownames(AD) <- snp_ids
+  rownames(DP) <- snp_ids
+  
+  # Filtering SNPs
+  keep_snps <- rowSums(DP > 0) >= 10
+  AD <- AD[keep_snps, ]; DP <- DP[keep_snps, ]
+  
+  keep_depth <- rowSums(DP) >= 5
+  AD <- AD[keep_depth, ]; DP <- DP[keep_depth, ]
+  
+  # AF
+  AD <- as(AD, "CsparseMatrix")
+  DP <- as(DP, "CsparseMatrix")
+  AF <- as.matrix(AD) / as.matrix(DP)
+  AF[as.matrix(DP) == 0] <- NA
+  
+  # Filtering missing rate
+  missing_rate <- rowMeans(is.na(AF))
+  AF <- AF[missing_rate < 0.7, ]
+  
+  # Filtering variability
+  mean_af <- rowMeans(AF, na.rm = TRUE)
+  keep_var <- mean_af > 0.1 & mean_af < 0.9
+  AF <- AF[keep_var, ]
+  
+  cat("Dimensions after filtering:", nrow(AF), "SNPs x", ncol(AF), "cells\n")
+  return(AF)
+}
+
 
 
