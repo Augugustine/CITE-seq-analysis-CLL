@@ -32,6 +32,8 @@ library(patchwork)
 library(ggpubr)
 library(infercnv)
 library(biomaRt)
+library(Matrix)
+library(uwot)
 source("functions.R")
 ```
 
@@ -509,7 +511,7 @@ Object preparation
 
 ```{r}
 data <- get(paste0("data_", params$patient_infercnv))
-data<- subset(data, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","CD4 T","CD8 T","Erythroblast","Macrophage","Monocyte","Neutrophil","NK"))
+#data<- subset(data, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","CD4 T","CD8 T","Erythroblast","Macrophage","Monocyte","Neutrophil","NK"))
 #data<- subset(data, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge"))
 # raw cout
 counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
@@ -555,10 +557,9 @@ Run infercnv
 
 ```{r}
 # perform infercnv operations to reveal cnv signal
-options(bitmapType = "Xlib")
 infercnv_obj = infercnv::run(infercnv_obj,
                              cutoff=0.1,  # use 1 for smart-seq, 0.1 for 10x-genomics
-                             out_dir=paste0(params$output,"infercnv_resultat"),
+                             out_dir=paste0(params$output,"infercnv_res"),
                              cluster_by_groups=T,   # cluster
                              denoise=T,
                              HMM=T)
@@ -579,9 +580,7 @@ cell_groupings <- read.table(
   header=T, sep="\t")
 ```
 
-##  
-
-## XClone from the CellSNP lite results 
+## XClone from the CellSNP lite results
 
 ```{r}
 # Xclone
@@ -595,4 +594,89 @@ meta$sample <- sub("_.*", "", meta$cell_id)
 meta$cell <- sub(".*_", "", meta$cell_id)
 write.table(meta,"Xclone.tsv",sep = "\t",quote = FALSE,col.names = TRUE, row.names = FALSE)
 
+```
+
+## Cell SNP lite - AF clustering
+
+```{r}
+timepoints <- c("D1", "D4", "D8", "D11", "D14")
+base_path <- "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Cell_snp_lite"
+
+# Step 1 : AF per timepoint
+# Apply to each tiempoint
+af_list <- lapply(timepoints, process_timepoint)
+names(af_list) <- timepoints
+
+# Step 2 : combine matrix
+# Find common SNPs to all tiempoints  
+snp_ids <- lapply(af_list, rownames)
+common_snps <- Reduce(intersect, snp_ids)
+cat("\nSNPs common to all  timepoints :", length(common_snps), "\n")
+AF_combined <- do.call(cbind, lapply(af_list, function(af) af[common_snps, ]))
+cat("Matrix combined :", nrow(AF_combined), "SNPs x", ncol(AF_combined), "cells\n")
+
+# Steps 3 : imputation + PCA + UMAP
+# Imputation per mean of the SNP
+AF_imputed <- AF_combined
+for (i in 1:nrow(AF_combined)) {
+  AF_imputed[i, is.na(AF_combined[i, ])] <- mean(AF_combined[i, ], na.rm = TRUE)
+}
+
+# PCA
+pca_res <- prcomp(t(AF_imputed), center = TRUE, scale. = FALSE)
+n_pcs <- min(20, ncol(pca_res$x))
+var_explained <- pca_res$sdev^2 / sum(pca_res$sdev^2) * 100
+
+# Scree plot
+plot(var_explained[1:20], type = "b", pch = 19,
+     xlab = "PC", ylab = "% explained variance",
+     main = "Scree plot")
+
+# UMAP
+umap_res <- umap(pca_res$x[, 1:n_pcs],
+                 n_neighbors = 15, min_dist = 0.3, metric = "euclidean")
+
+# Final dataframe
+tp_labels <- rep(timepoints, times = sapply(af_list, ncol))
+
+umap_df <- data.frame(
+  UMAP1     = umap_res[, 1],
+  UMAP2     = umap_res[, 2],
+  PC1       = pca_res$x[, 1],
+  PC2       = pca_res$x[, 2],
+  timepoint = tp_labels
+)
+
+# PCA
+ggplot(umap_df, aes(x = PC1, y = PC2, color = timepoint)) +
+  geom_point(size = 0.8, alpha = 0.7) +
+  theme_classic() +
+  labs(title = "PCA SNP",
+       x = paste0("PC1 (", round(var_explained[1], 1), "%)"),
+       y = paste0("PC2 (", round(var_explained[2], 1), "%)"))
+
+# UMAP colorée par timepoint
+ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = timepoint)) +
+  geom_point(size = 0.8, alpha = 0.7) +
+  theme_classic() +
+  labs(title = "UMAP SNP")
+
+# Clustering
+dist_mat <- dist(pca_res$x[, 1:n_pcs])
+hc <- hclust(dist_mat, method = "ward.D2")
+
+# 1st : visualize
+plot(hc, labels = FALSE, main = "Dendrogram (cells)")
+
+# Choose the number of clusters/clones
+k <- 4
+clone_labels <- cutree(hc, k = k)
+umap_df$clone <- factor(clone_labels)
+
+# visualize
+ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = clone)) +
+  geom_point(size = 0.8, alpha = 0.7) +
+  scale_color_brewer(palette = "Set1") +
+  theme_classic() +
+  labs(title = "Clones SNP")
 ```
