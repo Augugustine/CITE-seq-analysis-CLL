@@ -7,7 +7,7 @@ format: html
 editor: visual
 ---
 
-## Prepare the data for the boolean model 
+## Prepare the data for the boolean model
 
 On the patient 2, on the CLL cells and the intermediate population. The data composition is analysed across all CLL cells and myeloid cells to observe the evolution through the bridge. But then the macrostates definition is only based on CLL cells and the bridge.
 
@@ -52,7 +52,7 @@ p<-plot+plot1
 ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/umap_cll_myel_annot.jpeg"), p, width = 4500, height = 2000, units = "px")
 ```
 
-## 1- Exploring the population composition 
+## 1- Exploring the population composition
 
 Precise B cells annotation
 
@@ -158,8 +158,21 @@ df2 <- df2 %>%
 
 png("~/Documents/Singlecell-R/Scripts/Plots/prop_time_clus.png", width = 900, height = 500)
 df2 %>%
-  count(cluster_side, timepoint) %>%
+  dplyr::count(cluster_side, timepoint) %>%
   group_by(cluster_side) %>%
+  mutate(prop = n / sum(n)) %>%
+  ggplot(aes(x = timepoint, y = factor(cluster_side, levels = c("0_left", "0_right", "1_left", "1_right", "2")), fill = prop)) +
+  geom_tile(color = "white") +
+  geom_text(aes(label = round(prop, 2)), size = 6) +
+  scale_fill_gradient(low = "white", high = "red", limits = c(0, 1)) +
+  labs(x = "Timepoint", y = "Clusters", fill = "Proportion") +
+  theme_classic()+theme(axis.title = element_text(size = 18),axis.text = element_text(size = 18),legend.title = element_text(size = 18),legend.text = element_text(size = 14),strip.text = element_text(size = 18))
+dev.off()
+
+png("~/Documents/Singlecell-R/Scripts/Plots/prop_time_clus_bis.png", width = 900, height = 500)
+df2 %>%
+  dplyr::count(cluster_side, timepoint) %>%
+  group_by(timepoint) %>%
   mutate(prop = n / sum(n)) %>%
   ggplot(aes(x = timepoint, y = factor(cluster_side, levels = c("0_left", "0_right", "1_left", "1_right", "2")), fill = prop)) +
   geom_tile(color = "white") +
