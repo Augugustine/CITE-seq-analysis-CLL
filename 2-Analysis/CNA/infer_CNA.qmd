@@ -661,22 +661,71 @@ ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = timepoint)) +
   theme_classic() +
   labs(title = "UMAP SNP")
 
-# Clustering
+## 1. Hierarchical clustering : 
 dist_mat <- dist(pca_res$x[, 1:n_pcs])
 hc <- hclust(dist_mat, method = "ward.D2")
-
 # 1st : visualize
 plot(hc, labels = FALSE, main = "Dendrogram (cells)")
-
 # Choose the number of clusters/clones
 k <- 4
 clone_labels <- cutree(hc, k = k)
 umap_df$clone <- factor(clone_labels)
-
 # visualize
 ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = clone)) +
   geom_point(size = 0.8, alpha = 0.7) +
   scale_color_brewer(palette = "Set1") +
   theme_classic() +
   labs(title = "Clones SNP")
+
+## 2. K-means clustering : 
+# "elbow" method
+set.seed(42)
+wss <- sapply(1:15, function(k) {
+  kmeans(pca_res$x[, 1:n_pcs], centers = k, nstart = 25, iter.max = 100)$tot.withinss
+})
+
+elbow_df <- data.frame(k = 1:15, wss = wss)
+plot_elbow <- ggplot(elbow_df, aes(x = k, y = wss)) +
+  geom_line() + geom_point(size = 2) +
+  scale_x_continuous(breaks = 1:15) +
+  theme_classic() +
+  labs(title = "Elbow plot – K-means",
+       x = "Clusters number (k)", y = "WSS (intra inertia)")
+ggsave(paste0(params$output, "kmeans_elbow_", params$patient_infercnv, ".jpeg"),plot_elbow, width = 3000, height = 1500, units = "px")
+
+# K-means 
+k <- 4 
+set.seed(42)
+km_res <- kmeans(pca_res$x[, 1:n_pcs], centers = k, nstart = 50, iter.max = 200)
+
+umap_df$clone_kmeans <- factor(km_res$cluster)
+
+plot_km <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = clone_kmeans)) +
+  geom_point(size = 0.8, alpha = 0.7) +
+  scale_color_brewer(palette = "Set1") +
+  theme_classic() +
+  labs(title = "Clones SNP – K-means")
+ggsave(paste0(params$output, "umap_clone_kmeans_", params$patient_infercnv, ".jpeg"),plot_km, width = 3000, height = 1500, units = "px")
+
+# clone kmeans and cells ID 
+clone_df <- data.frame(
+  cell      = colnames(AF_combined),
+  timepoint = tp_labels,
+  clone_kmeans = factor(km_res$cluster),
+  row.names = colnames(AF_combined))
+intersect(colnames(data), rownames(clone_df))
+```
+
+```{r}
+# Add to the seurat object the clones 
+umap_df$clone_kmeans
+rownames(meta_subset) <- meta_subset$cell
+meta_subset$cell <- NULL
+head(colnames(data))
+head(rownames(meta_subset))
+data <- AddMetaData(data, metadata = meta_subset)
+DimPlot(data, group.by = "AF_clones", reduction = "umap", pt.size=0.1, label.size = 2.5 ) + ggtitle(str_wrap("Clones clustering based on allelic frequency", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+
+AF_imputed<-readRDS("~/Documents/Singlecell-R/Scripts/Matrix/AF_imputed.rds")
+af_list<-readRDS("~/Documents/Singlecell-R/Scripts/Matrix/af_list.rds")
 ```
