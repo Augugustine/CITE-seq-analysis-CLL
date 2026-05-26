@@ -708,6 +708,9 @@ plot_km <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = clone_kmeans)) +
 ggsave(paste0(params$output, "umap_clone_kmeans_", params$patient_infercnv, ".jpeg"),plot_km, width = 3000, height = 1500, units = "px")
 
 # clone kmeans and cells ID 
+cell_names <- unlist(lapply(af_list, colnames))
+colnames(AF_combined) <- cell_names
+
 clone_df <- data.frame(
   cell      = colnames(AF_combined),
   timepoint = tp_labels,
