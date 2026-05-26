@@ -389,6 +389,12 @@ process_timepoint <- function(tp) {
   rownames(AD) <- snp_ids
   rownames(DP) <- snp_ids
   
+  # Colnames (barcodes)
+  barcodes <- readLines(file.path(base_path, tp, "cellSNP.samples.tsv"))
+  barcodes <- paste0(tp, "_", barcodes) 
+  colnames(AD) <- barcodes
+  colnames(DP) <- barcodes
+  
   # Filtering SNPs
   keep_snps <- rowSums(DP > 0) >= 10
   AD <- AD[keep_snps, ]; DP <- DP[keep_snps, ]
