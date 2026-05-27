@@ -706,29 +706,36 @@ plot_km <- ggplot(umap_df, aes(x = UMAP1, y = UMAP2, color = clone_kmeans)) +
   theme_classic() +
   labs(title = "Clones SNP – K-means")
 ggsave(paste0(params$output, "umap_clone_kmeans_", params$patient_infercnv, ".jpeg"),plot_km, width = 3000, height = 1500, units = "px")
-
-# clone kmeans and cells ID 
-cell_names <- unlist(lapply(af_list, colnames))
-colnames(AF_combined) <- cell_names
-
-clone_df <- data.frame(
-  cell      = colnames(AF_combined),
-  timepoint = tp_labels,
-  clone_kmeans = factor(km_res$cluster),
-  row.names = colnames(AF_combined))
-intersect(colnames(data), rownames(clone_df))
 ```
 
 ```{r}
 # Add to the seurat object the clones 
-umap_df$clone_kmeans
-rownames(meta_subset) <- meta_subset$cell
-meta_subset$cell <- NULL
-head(colnames(data))
-head(rownames(meta_subset))
-data <- AddMetaData(data, metadata = meta_subset)
+AF_clones<-km_res[["cluster"]]
+AF_clones<-data.frame(AF_clones)
+data <- get(paste0("data_", params$patient_infercnv))
+data <- AddMetaData(data, metadata = AF_clones)
 DimPlot(data, group.by = "AF_clones", reduction = "umap", pt.size=0.1, label.size = 2.5 ) + ggtitle(str_wrap("Clones clustering based on allelic frequency", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
 
-AF_imputed<-readRDS("~/Documents/Singlecell-R/Scripts/Matrix/AF_imputed.rds")
-af_list<-readRDS("~/Documents/Singlecell-R/Scripts/Matrix/af_list.rds")
+```{r}
+
+tumor_prop<-data@meta.data
+tumor_prop_filtered <- tumor_prop %>%
+  filter(Annotation %in% c("B","B intermediate","B memory","B naive","Macrophage","Bridge", "Monocyte")) %>%
+  mutate(
+    Annotation = recode(
+      Annotation,
+      "Bridge" = "Intermediate population"))
+tumor_prop_filtered$AF_clones<-as.factor(tumor_prop_filtered$AF_clones)
+
+ggplot(tumor_prop_filtered,
+       aes(x = Annotation,
+           fill = AF_clones)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::percent,
+                     limits = c(0, 1)) +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1,size=13)) +
+  ylab("Timepoint proportion") + xlab(" ")+
+  labs(fill = "Clones")
 ```
