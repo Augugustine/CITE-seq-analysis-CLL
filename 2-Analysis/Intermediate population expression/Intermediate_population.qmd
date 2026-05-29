@@ -35,6 +35,7 @@ library(VISION)
 library(scrapper)
 library(ggpubr)
 library(msigdbr)
+library(ggsignif)
 source("functions.R")
 ```
 
@@ -52,7 +53,7 @@ data_p3<-subset(data_p3, subset = (final_annot %in% c("B","B intermediate","B me
 
 Cells bridge
 
-Patient 2
+## Patient 2
 
 ```{r}
 plotumap<-DimPlot(data_p2, group.by = "final_annot", reduction = "umap", pt.size=0.1, label.size = 2.5) + ggtitle(str_wrap("UMAP", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
@@ -470,7 +471,7 @@ ggsave("~/Documents/Singlecell-R/Scripts/Plots/myel_p2.jpeg", plot, width = 3000
 ```
 
 ```{r}
-# Meloid cell differenciation signature (GO:0035726)
+# CLL signatures
 msig <- msigdbr(species = "Homo sapiens")
 cll <- msig[msig$gs_name == "BILBAN_B_CLL_LPL_UP", ]
 genes <- unique(cll$gene_symbol)
@@ -513,49 +514,172 @@ plot
 ggsave("~/Documents/Singlecell-R/Scripts/Plots/cll_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
 
+1 plot (CLL + myeloid siganture)
+
 ```{r}
-cll <- msig[msig$gs_name == "BILBAN_B_CLL_LPL_UP", ]
-genes <- unique(cll$gene_symbol)
+# --- 1. SIGNATURE MYELOID (GO:0002274) ---
 myel <- AnnotationDbi::select(
   org.Hs.eg.db,
-  keys   = "GO:0035726",
+  keys    = "GO:0002274",
   columns = c("ENTREZID", "SYMBOL"),
   keytype = "GO")
 myel <- unique(na.omit(myel))
 myel <- unique(myel$SYMBOL)
-combined<-c(genes, myel)
 
-geneSets <- list(geneSet1=combined)
-geneSets
-
+geneSets <- list(geneSet1 = myel)
 counts <- GetAssayData(data_p2, slot = "counts")
-cells_rankings <- AUCell_buildRankings(
-  counts, plotStats = FALSE)
+cells_rankings <- AUCell_buildRankings(counts, plotStats = FALSE)
 cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
-
-png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_cll.png", width = 1200, height = 1000)
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_myel_p2.png", width = 1200, height = 1000)
 par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
 cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
 dev.off()
 
-# AUCell score = signature activity per cell
-AUC<-getAUC(cells_AUC)
-AUC<-t(AUC)
-#Color the cell with higher AUC score than the thresholds
-thre<-cells_assignment[["geneSet1"]][["aucThr"]][["selected"]] 
-# Add the signature activity in teh seurat object
-colnames(AUC) <- "combined_signature"
-data_p2 <- AddMetaData(data_p2, metadata = AUC)
+AUC_myel <- t(getAUC(cells_AUC))
+colnames(AUC_myel) <- "myel_signature"
+data_p2 <- AddMetaData(data_p2, metadata = AUC_myel)
 
-#Violin plot
-comparisons <- list(
-  c("B cells", "Bridge"),
-  c("Bridge", "Macrophage"),
-  c("B cells", "Macrophage"))
-plot<-ggplot(data_p2@meta.data, aes(x = B_cells, y = combined_signature, fill = B_cells)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test", size=6) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18),
-legend.text = element_text(size = 18) ) + geom_hline(yintercept = 0.14, color = "red", linetype = "dashed", size = 0.5) + xlab("Cell type") + ylab("AUC")
-plot
-ggsave("~/Documents/Singlecell-R/Scripts/Plots/cll_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+# --- 2. SIGNATURE CLL (BILBAN_B_CLL_LPL_UP) ---
+msig <- msigdbr(species = "Homo sapiens")
+cll  <- msig[msig$gs_name == "BILBAN_B_CLL_LPL_UP", ]
+genes_cll <- unique(cll$gene_symbol)
+
+geneSets <- list(geneSet1 = genes_cll)
+cells_rankings <- AUCell_buildRankings(counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_cll_p2.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+AUC_cll <- t(getAUC(cells_AUC))
+colnames(AUC_cll) <- "cll_signature"
+data_p2 <- AddMetaData(data_p2, metadata = AUC_cll)
+
+# --- 3. Group B CELLS
+data_p2@meta.data$B_cells <- ifelse(data_p2@meta.data[["Annotation"]] %in% c("B memory", "B intermediate", "B naive", "B"),"B cells",data_p2@meta.data[["Annotation"]])
+
+data_p2@meta.data$B_cells <- recode(data_p2@meta.data$B_cells,"Bridge" = "Intermediate population")
+
+k <- 1 / 0.3
+
+meta <- data_p2@meta.data %>%
+  dplyr::filter(B_cells %in% cell_order) %>%
+  dplyr::mutate(B_cells = factor(B_cells, levels = cell_order))
+
+df_long <- meta %>%
+  dplyr::select(B_cells, myel_signature, cll_signature) %>%
+  tidyr::pivot_longer(
+    cols      = c(myel_signature, cll_signature),
+    names_to  = "Signature",
+    values_to = "AUC"
+  ) %>%
+  dplyr::mutate(
+    AUC_scaled = ifelse(Signature == "cll_signature", AUC * k, AUC),
+    Signature  = dplyr::recode(Signature,
+      "myel_signature" = "Myeloid activation (GO:0002274)",
+      "cll_signature"  = "CLL (BILBAN_B_CLL_LPL_UP)"
+    )
+  )
+
+cell_order <- c("B cells", "Intermediate population", "Macrophage")
+df_long$B_cells <- factor(df_long$B_cells, levels = cell_order)
+
+palette_sig <- c(
+  "Myeloid activation (GO:0002274)" = "#E07B54",
+  "CLL (BILBAN_B_CLL_LPL_UP)"       = "#5B8DB8")
+
+dodge_w <- 0.85
+offset  <- dodge_w / 4  # ≈ 0.2125
+
+# Translation p-values in * 
+get_pval_label <- function(data, sig1, sig2, y_col) {
+  g1 <- data %>% dplyr::filter(B_cells == sig1, Signature == y_col) %>% dplyr::pull(AUC_scaled)
+  g2 <- data %>% dplyr::filter(B_cells == sig2, Signature == y_col) %>% dplyr::pull(AUC_scaled)
+  p  <- wilcox.test(g1, g2)$p.value
+  dplyr::case_when(
+    p < 0.001 ~ "***",
+    p < 0.01  ~ "**",
+    p < 0.05  ~ "*",
+    TRUE      ~ "ns"
+  )
+}
+
+cll_label  <- "CLL (BILBAN_B_CLL_LPL_UP)"
+myel_label <- "Myeloid activation (GO:0002274)"
+
+s_cll_bI  <- get_pval_label(df_long, "B cells",               "Intermediate population", cll_label)
+s_cll_IM  <- get_pval_label(df_long, "Intermediate population","Macrophage",              cll_label)
+s_myel_bI <- get_pval_label(df_long, "B cells",               "Intermediate population", myel_label)
+s_myel_IM <- get_pval_label(df_long, "Intermediate population","Macrophage",              myel_label)
+
+y_low  <- 1.18
+y_high <- 1.1
+
+plot_combined <- ggplot(df_long,
+    aes(x = B_cells, y = AUC_scaled, fill = Signature)) +
+  geom_violin(trim = FALSE, alpha = 0.55,
+              position = position_dodge(width = dodge_w)) +
+  geom_boxplot(width = 0.05, outlier.shape = NA, color = "white",
+               position = position_dodge(width = dodge_w)) +
+
+  geom_signif(
+    # B cells vs Intermediate pop — CLL
+    xmin = 1 - offset, xmax = 2 - offset,
+    y_position = y_low, annotations = s_cll_bI,
+    tip_length = 0.01, textsize = 8, color = "#5B8DB8",
+    manual = FALSE
+  ) +
+  geom_signif(
+    # Intermediate pop vs Macrophage — CLL
+    xmin = 2 - offset, xmax = 3 - offset,
+    y_position = y_low, annotations = s_cll_IM,
+    tip_length = 0.01, textsize = 8, color = "#5B8DB8",
+    manual = FALSE
+  ) +
+
+  geom_signif(
+    # B cells vs Intermediate pop — Myeloid
+    xmin = 1 + offset, xmax = 2 + offset,
+    y_position = y_high, annotations = s_myel_bI,
+    tip_length = 0.01, textsize = 8, color = "#E07B54",
+    manual = FALSE
+  ) +
+  geom_signif(
+    # Intermediate pop vs Macrophage — Myeloid
+    xmin = 2 + offset, xmax = 3 + offset,
+    y_position = y_high, annotations = s_myel_IM,
+    tip_length = 0.01, textsize = 8, color = "#E07B54",
+    manual = FALSE
+  ) +
+
+  scale_y_continuous(
+    name     = "AUC – Myeloid activation",
+    limits   = c(0, 1.2),
+    breaks   = seq(0, 1.2, by = 0.2),
+    sec.axis = sec_axis(
+      transform = ~ . / k,
+      name      = "AUC – CLL",
+      breaks    = seq(0, 0.3, by = 0.05)
+    )
+  ) +
+  geom_hline(yintercept = 0.25,     color = "#E07B54", linetype = "dashed", linewidth = 0.6) +
+  geom_hline(yintercept = 0.14 * k, color = "#5B8DB8", linetype = "dashed", linewidth = 0.6) +
+  scale_fill_manual(values = palette_sig) +
+  theme_classic() +
+  theme(
+    axis.text.x        = element_text(angle = 45, hjust = 1, size = 20),
+    axis.text.y.left   = element_text(size = 18, color = "#E07B54"),
+    axis.text.y.right  = element_text(size = 18, color = "#5B8DB8"),
+    axis.title.y.left  = element_text(size = 20, color = "#E07B54"),
+    axis.title.y.right = element_text(size = 20, color = "#5B8DB8"),
+    axis.title.x       = element_text(size = 18),
+    legend.position    = "none"
+  ) + xlab(" ")
+
+plot_combined
+
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/combined_signatures_p2.jpeg",plot_combined,width  = 3600,height = 2400,units  = "px")
 ```
 
 Cell cycle score
@@ -872,6 +996,172 @@ auc_bridge<-t(auc_bridge)
 wilcox.test(auc_bridge, mu = 0.068, alternative = "greater")
 ```
 
+```{r}
+# --- 1. SIGNATURE MYELOID (GO:0002274) ---
+myel <- AnnotationDbi::select(
+  org.Hs.eg.db,
+  keys    = "GO:0002274",
+  columns = c("ENTREZID", "SYMBOL"),
+  keytype = "GO")
+myel <- unique(na.omit(myel))
+myel <- unique(myel$SYMBOL)
+
+geneSets <- list(geneSet1 = myel)
+counts <- GetAssayData(data_p3, slot = "counts")
+cells_rankings <- AUCell_buildRankings(counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_myel_p3.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+AUC_myel <- t(getAUC(cells_AUC))
+colnames(AUC_myel) <- "myel_signature"
+data_p3 <- AddMetaData(data_p3, metadata = AUC_myel)
+
+# --- 2. SIGNATURE CLL (BILBAN_B_CLL_LPL_UP) ---
+msig <- msigdbr(species = "Homo sapiens")
+cll  <- msig[msig$gs_name == "BILBAN_B_CLL_LPL_UP", ]
+genes_cll <- unique(cll$gene_symbol)
+
+geneSets <- list(geneSet1 = genes_cll)
+cells_rankings <- AUCell_buildRankings(counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_cll_p3.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+AUC_cll <- t(getAUC(cells_AUC))
+colnames(AUC_cll) <- "cll_signature"
+data_p3 <- AddMetaData(data_p3, metadata = AUC_cll)
+
+# --- 3. Group B CELLS
+data_p3@meta.data$B_cells <- ifelse(data_p3@meta.data[["Annotation"]] %in% c("B memory", "B intermediate", "B naive", "B"),"B cells",data_p3@meta.data[["Annotation"]])
+
+data_p3@meta.data$B_cells <- recode(data_p3@meta.data$B_cells,"Bridge" = "Intermediate population")
+
+k <- 1 / 0.3
+
+meta <- data_p3@meta.data %>%
+  dplyr::filter(B_cells %in% cell_order) %>%
+  dplyr::mutate(B_cells = factor(B_cells, levels = cell_order))
+
+df_long <- meta %>%
+  dplyr::select(B_cells, myel_signature, cll_signature) %>%
+  tidyr::pivot_longer(
+    cols      = c(myel_signature, cll_signature),
+    names_to  = "Signature",
+    values_to = "AUC"
+  ) %>%
+  dplyr::mutate(
+    AUC_scaled = ifelse(Signature == "cll_signature", AUC * k, AUC),
+    Signature  = dplyr::recode(Signature,
+      "myel_signature" = "Myeloid activation (GO:0002274)",
+      "cll_signature"  = "CLL (BILBAN_B_CLL_LPL_UP)"
+    )
+  )
+
+cell_order <- c("B cells", "Intermediate population", "Macrophage")
+df_long$B_cells <- factor(df_long$B_cells, levels = cell_order)
+
+palette_sig <- c(
+  "Myeloid activation (GO:0002274)" = "#E07B54",
+  "CLL (BILBAN_B_CLL_LPL_UP)"       = "#5B8DB8")
+
+dodge_w <- 0.85
+offset  <- dodge_w / 4  # ≈ 0.2125
+
+# Translation p-values in * 
+get_pval_label <- function(data, sig1, sig2, y_col) {
+  g1 <- data %>% dplyr::filter(B_cells == sig1, Signature == y_col) %>% dplyr::pull(AUC_scaled)
+  g2 <- data %>% dplyr::filter(B_cells == sig2, Signature == y_col) %>% dplyr::pull(AUC_scaled)
+  p  <- wilcox.test(g1, g2)$p.value
+  dplyr::case_when(
+    p < 0.001 ~ "***",
+    p < 0.01  ~ "**",
+    p < 0.05  ~ "*",
+    TRUE      ~ "ns"
+  )
+}
+
+cll_label  <- "CLL (BILBAN_B_CLL_LPL_UP)"
+myel_label <- "Myeloid activation (GO:0002274)"
+
+s_cll_bI  <- get_pval_label(df_long, "B cells",               "Intermediate population", cll_label)
+s_cll_IM  <- get_pval_label(df_long, "Intermediate population","Macrophage",              cll_label)
+s_myel_bI <- get_pval_label(df_long, "B cells",               "Intermediate population", myel_label)
+s_myel_IM <- get_pval_label(df_long, "Intermediate population","Macrophage",              myel_label)
+
+y_low  <- 1.18
+y_high <- 1.1
+
+plot_combined <- ggplot(df_long,
+    aes(x = B_cells, y = AUC_scaled, fill = Signature)) +
+  geom_violin(trim = FALSE, alpha = 0.55,
+              position = position_dodge(width = dodge_w)) +
+  geom_boxplot(width = 0.05, outlier.shape = NA, color = "white",
+               position = position_dodge(width = dodge_w)) +
+
+  geom_signif(
+    # B cells vs Intermediate pop — CLL
+    xmin = 1 - offset, xmax = 2 - offset,
+    y_position = y_low, annotations = s_cll_bI,
+    tip_length = 0.01, textsize = 8, color = "#5B8DB8",
+    manual = FALSE
+  ) +
+  geom_signif(
+    # Intermediate pop vs Macrophage — CLL
+    xmin = 2 - offset, xmax = 3 - offset,
+    y_position = y_low, annotations = s_cll_IM,
+    tip_length = 0.01, textsize = 8, color = "#5B8DB8",
+    manual = FALSE
+  ) +
+
+  geom_signif(
+    # B cells vs Intermediate pop — Myeloid
+    xmin = 1 + offset, xmax = 2 + offset,
+    y_position = y_high, annotations = s_myel_bI,
+    tip_length = 0.01, textsize = 8, color = "#E07B54",
+    manual = FALSE
+  ) +
+  geom_signif(
+    # Intermediate pop vs Macrophage — Myeloid
+    xmin = 2 + offset, xmax = 3 + offset,
+    y_position = y_high, annotations = s_myel_IM,
+    tip_length = 0.01, textsize = 8, color = "#E07B54",
+    manual = FALSE
+  ) +
+
+  scale_y_continuous(
+    name     = "AUC – Myeloid activation",
+    limits   = c(0, 1.2),
+    breaks   = seq(0, 1.2, by = 0.2),
+    sec.axis = sec_axis(
+      transform = ~ . / k,
+      name      = "AUC – CLL",
+      breaks    = seq(0, 0.3, by = 0.05)
+    )
+  ) +
+  geom_hline(yintercept = 0.46,     color = "#E07B54", linetype = "dashed", linewidth = 0.6) +
+  geom_hline(yintercept = 0.13 * k, color = "#5B8DB8", linetype = "dashed", linewidth = 0.6) +
+  scale_fill_manual(values = palette_sig) +
+  theme_classic() +
+  theme(
+    axis.text.x        = element_text(angle = 45, hjust = 1, size = 20),
+    axis.text.y.left   = element_text(size = 18, color = "#E07B54"),
+    axis.text.y.right  = element_text(size = 18, color = "#5B8DB8"),
+    axis.title.y.left  = element_text(size = 20, color = "#E07B54"),
+    axis.title.y.right = element_text(size = 20, color = "#5B8DB8"),
+    axis.title.x       = element_text(size = 18),
+    legend.position    = "none"
+  ) + xlab(" ")
+
+plot_combined
+
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/combined_signatures_p3.jpeg",plot_combined,width  = 3600,height = 2400,units  = "px")
+```
+
 Cell cycle score
 
 ```{r}
@@ -904,8 +1194,6 @@ plot
 ggsave("~/Documents/Singlecell-R/Scripts/Plots/phase_p3.jpeg", plot, width = 4000, height = 1500, units = "px")
 ```
 
-## 
-
 ## Venn diagram
 
 The bridge signatures between patient 2 and 3
@@ -935,7 +1223,6 @@ ggsave("venn_adt.jpeg", venn_plot, width = 3000, height = 2000, units = "px")
 ```
 
 ```{r}
-
 obj <- Convert_Assay(seurat_object = data_p3, assay='RNA', convert_to = "V3")
 obj@assays <- obj@assays["RNA"]
 SaveH5Seurat(obj, filename = "Matrix/data_p3.h5Seurat", overwrite = TRUE)
