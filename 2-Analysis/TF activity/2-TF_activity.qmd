@@ -1,12 +1,12 @@
 ---
 title: "GRN"
 params: 
-  file_p2: "Matrix/CLL_annotated_Seurat_LogNorm_P2.rds"
-  file_p3: "Matrix/CLL_annotated_Seurat_LogNorm_P3.rds"
-  file_step2_p2: "Matrix/step_2_reg_p2.csv"
-  file_step3_p2: "Matrix/step_3_aucell_p2.csv"
-  file_step2_p3: "Matrix/step_2_reg_p3.csv"
-  file_step3_p3: "Matrix/step_3_aucell_p3.csv"
+  file_p2: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+  file_p3: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3.rds"
+  file_step2_p2: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/step_2_reg_p2.csv"
+  file_step3_p2: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/step_3_aucell_p2.csv"
+  file_step2_p3: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/step_2_reg_p3.csv"
+  file_step3_p3: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/step_3_aucell_p3.csv"
 format: html
 editor: visual
 ---
@@ -31,6 +31,8 @@ library(SeuratExtend)
 library(AUCell)
 library(clusterProfiler)
 library(org.Hs.eg.db)
+library(SCENIC)
+library(ComplexHeatmap)
 source("functions.R")
 ```
 
@@ -370,6 +372,75 @@ plot<-VlnPlot(data_p2, features = c("CEBPB"))
 ggsave("PAX5.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
 
+```{r}
+selectedResolution <- "Annotation_B" # select resolution
+# Split the cells by cluster:
+cellClusters<-data_p2@meta.data %>%
+  dplyr::select(Annotation) %>%
+  dplyr::mutate(Annotation=dplyr::recode(Annotation, "Bridge" = "Intermediate population")) 
+
+cellClusters$Annotation_B <- ifelse(cellClusters$Annotation %in% c("B memory", "B intermediate", "B naive", "B"),"B cells",cellClusters$Annotation)
+
+cellsPerCluster <- split(rownames(cellClusters), cellClusters[,selectedResolution]) 
+regulonAUC <- read.csv("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/step_3_aucell_p2.csv", row.names = 1, check.names=FALSE)
+regulonAUC <-t(regulonAUC)
+regulonAUC <- regulonAUC[onlyNonDuplicatedExtended(rownames(regulonAUC)),]
+# Calculate average expression:
+regulonAUC_mat <- as.matrix(regulonAUC)
+
+regulonActivity_byCellType <- sapply(
+  cellsPerCluster,
+  function(cells) {
+    rowMeans(regulonAUC_mat[, cells, drop = FALSE])
+  })
+
+# Scale expression:
+regulonActivity_byCellType_Scaled <- t(scale(t(regulonActivity_byCellType), center = T, scale=T))
+
+# Plots
+options(repr.plot.width=8, repr.plot.height=10) # To set the figure size in Jupyter
+hm <- draw(ComplexHeatmap::Heatmap(regulonActivity_byCellType_Scaled, name="Regulon activity",
+                       row_names_gp=grid::gpar(fontsize=5), show_row_names = FALSE, column_names_rot = 45)) # row font size
+
+
+regulonOrder <- rownames(regulonActivity_byCellType_Scaled)[row_order(hm)] # to save the clustered regulons for later
+
+tf_interest <- c("SPI1(+)", "CEBPD(+)", "CEBPA(+)","CEBPB(+)","ETV6(+)","NFIX(+)")
+
+idx <- which(rownames(regulonActivity_byCellType_Scaled) %in% tf_interest)
+
+ha <- rowAnnotation(
+  mark = anno_mark(
+    at = idx,
+    labels = rownames(regulonActivity_byCellType_Scaled)[idx]
+  )
+)
+
+Heatmap(
+  regulonActivity_byCellType_Scaled,
+  name = "Regulon activity",
+  show_row_names = FALSE,
+  right_annotation = ha,
+  column_names_rot = 45
+)
+```
+
+```{r}
+rss <- calcRSS(AUC = regulonAUC,cellAnnotation = cellClusters[colnames(regulonAUC), selectedResolution])
+## Showing regulons and cell types with any RSS > 0.01 
+rssPlot <- plotRSS(rss)
+plotly::ggplotly(rssPlot$plot)
+options(repr.plot.width=5, repr.plot.height=5) # To set the figure size in Jupyter
+plotRSS_oneSet(rss, setName = "Macrophage",n=10) # cluster ID
+plotRSS_oneSet(rss, setName = "B cells",n=10) # cluster ID
+par(
+  cex.axis = 1.5,   # axes ticks
+  cex.lab = 1.8,    # titres des axes
+  cex.main = 2      # titre principal
+)
+plotRSS_oneSet(rss, setName = "Intermediate population",n=15) # cluster ID
+```
+
 ## Patient 3 analysis
 
 ```{r}
@@ -569,4 +640,52 @@ plot<-DimPlot2(
 )
 plot
 ggsave("Plots/tf_activity_P3.jpeg", plot, width = 2000, height = 1000, units = "px")
+```
+
+```{r}
+selectedResolution <- "Annotation_B" # select resolution
+# Split the cells by cluster:
+cellClusters<-data_p3@meta.data %>%
+  dplyr::select(Annotation) %>%
+  dplyr::mutate(Annotation=dplyr::recode(Annotation, "Bridge" = "Intermediate population")) 
+
+cellClusters$Annotation_B <- ifelse(cellClusters$Annotation %in% c("B memory", "B intermediate", "B naive", "B"),"B cells",cellClusters$Annotation)
+
+cellsPerCluster <- split(rownames(cellClusters), cellClusters[,selectedResolution]) 
+regulonAUC <- read.csv("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/step_3_aucell_p3.csv", row.names = 1, check.names=FALSE)
+regulonAUC <-t(regulonAUC)
+regulonAUC <- regulonAUC[onlyNonDuplicatedExtended(rownames(regulonAUC)),]
+# Calculate average expression:
+regulonAUC_mat <- as.matrix(regulonAUC)
+
+regulonActivity_byCellType <- sapply(
+  cellsPerCluster,
+  function(cells) {
+    rowMeans(regulonAUC_mat[, cells, drop = FALSE])
+  })
+
+# Scale expression:
+regulonActivity_byCellType_Scaled <- t(scale(t(regulonActivity_byCellType), center = T, scale=T))
+
+# Plots
+options(repr.plot.width=8, repr.plot.height=10) # To set the figure size in Jupyter
+hm <- draw(ComplexHeatmap::Heatmap(regulonActivity_byCellType_Scaled, name="Regulon activity",
+                       row_names_gp=grid::gpar(fontsize=6), show_row_names = FALSE, column_names_rot = 45)) # row font size
+regulonOrder <- rownames(regulonActivity_byCellType_Scaled)[row_order(hm)] # to save the clustered regulons for later
+```
+
+```{r}
+rss <- calcRSS(AUC = regulonAUC,cellAnnotation = cellClusters[colnames(regulonAUC), selectedResolution])
+## Showing regulons and cell types with any RSS > 0.01 
+rssPlot <- plotRSS(rss)
+plotly::ggplotly(rssPlot$plot)
+options(repr.plot.width=5, repr.plot.height=5) # To set the figure size in Jupyter
+plotRSS_oneSet(rss, setName = "Macrophage",n=10) # cluster ID
+plotRSS_oneSet(rss, setName = "B cells",n=10) # cluster ID
+par(
+  cex.axis = 1.5,   # axes ticks
+  cex.lab = 1.8,    # titres des axes
+  cex.main = 2      # titre principal
+)
+plotRSS_oneSet(rss, setName = "Intermediate population",n=10) # cluster ID
 ```
