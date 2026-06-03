@@ -3,6 +3,8 @@ title: "Boolean model"
 params: 
   patient: "P2"
   file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+  Matrix: "~/Documents/Singlecell-R/Scripts/Matrix/"
+  Output: "~/Documents/Singlecell-R/Scripts/Plots/"
 format: html
 editor: visual
 ---
@@ -23,6 +25,8 @@ library(SingleR)
 library(celldex)
 library(dplyr)
 library(tidyr)
+library(dorothea)
+library(readr)
 source("functions.R")
 ```
 
@@ -292,4 +296,90 @@ ggsave("~/Documents/Singlecell-R/Scripts/Plots/macrostate.jpeg", plot, width = 3
 data_cll<-subset(data, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge")))
 data_cll<-run_dim_red(data_cll)
 Convert_Seurat_Anndata(data_cll, "~/Documents/Singlecell-R/Scripts/Matrix/cll_raw_macro", raw=TRUE)
+```
+
+## 3 - Influence graph for BoNesis: DorothEA and infered GRN
+
+```{r}
+# DoRothEA 
+data(dorothea_hs, package = "dorothea")
+
+dorothea_base <- dorothea_hs %>%
+  filter(confidence %in% c("A", "B","C")) %>%
+  transmute(
+    source = tf,
+    target,
+    sign = ifelse(mor == 1, "+", "-"),
+    origin = "dorothea")
+
+# GRN SCENIC
+# Parameters
+NES_MIN          <- 3.0   # strength of the argument
+QVALUE_MAX       <- 0.05  # reliability of annotation (0 = directly annotated)
+ORTHO_MIN        <- 0.8   # minimal orthological identity
+TARGET_SCORE_MIN <- 0.5   # minimum target size
+
+scenic_grn <- read.csv(paste0(params$Matrix,"step_2_reg_p2.csv"), skip = 3) 
+colnames(scenic_grn) <- c("TF", "MotifID", "AUC", "NES", "MotifQvalue","OrthologousIdentity", "Annotation", "Context","TargetGenes", "RankAtMax")
+
+scenic_filt <- scenic_grn %>%
+  filter(
+    NES                 >= NES_MIN,
+    MotifQvalue         <= QVALUE_MAX,
+    OrthologousIdentity >= ORTHO_MIN)
+cat("Regulons before filtering :", nrow(scenic_grn), "\n")
+cat("Regulons after filtering  :", nrow(scenic_filt), "\n")
+
+parse_targets_with_scores <- function(tg_string) {
+  matches <- str_match_all(tg_string, "'([A-Z0-9\\-\\.]+)',\\s*([0-9\\.]+)")[[1]]
+  if (nrow(matches) == 0) return(tibble(target = character(), score = numeric()))
+  tibble(
+    target = matches[, 2],
+    score  = as.numeric(matches[, 3])
+  )
+}
+
+scenic_edges <- scenic_filt %>%
+  select(TF, TargetGenes) %>%
+  rowwise() %>%
+  mutate(targets = list(parse_targets_with_scores(TargetGenes))) %>%
+  unnest(targets) %>%
+  select(source = TF, target, score) %>%
+  group_by(source, target) %>%
+  summarise(score = max(score), .groups = "drop") %>%
+  filter(score >= TARGET_SCORE_MIN)
+
+cat("Edges after targets filtering:", nrow(scenic_edges), "\n")
+
+# Keep edges SCENIC missing in DoRothEA
+scenic_new <- scenic_edges %>%
+  anti_join(dorothea_base, by = c("source", "target"))
+
+# Sign "+" for SCENIC
+scenic <- scenic_new %>%
+  mutate(sign = "+", origin = "scenic_default")
+
+# Combine DoRothEA + SCENIC
+influence_graph <- bind_rows(
+  dorothea_base,
+  scenic
+) %>%
+  select(source, target, sign)
+
+# Recap
+cat("Edges DoRothEA     :", nrow(dorothea_base), "\n")
+cat("Edges SCENIC       :", nrow(scenic), "\n")
+cat("Total              :", nrow(influence_graph), "\n")
+
+write_csv(influence_graph, paste0(params$Matrix,"influence_graph_bonesis.csv"))
+```
+
+```{r}
+data_cll<-subset(data, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Macrophage","Monocyte")))
+data_cll<-run_dim_red(data_cll)
+data_cll<-FindClusters(data_cll, resolution = 0.1)
+DimPlot(data_cll, reduction="umap")
+data_cll<-subset(data_cll, subset = (seurat_clusters %in% c("0", "2", "3")))
+data_cll<-run_dim_red(data_cll)
+DimPlot(data_cll, reduction="umap",group.by = "Annotation")
 ```
