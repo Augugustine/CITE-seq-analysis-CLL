@@ -27,6 +27,7 @@ library(dplyr)
 library(tidyr)
 library(dorothea)
 library(readr)
+library(stringr)
 source("functions.R")
 ```
 
@@ -309,7 +310,7 @@ dorothea_base <- dorothea_hs %>%
   transmute(
     source = tf,
     target,
-    sign = ifelse(mor == 1, "+", "-"),
+    sign = ifelse(mor == 1, "+1", "-1"),
     origin = "dorothea")
 
 # GRN SCENIC
@@ -357,7 +358,7 @@ scenic_new <- scenic_edges %>%
 
 # Sign "+" for SCENIC
 scenic <- scenic_new %>%
-  mutate(sign = "+", origin = "scenic_default")
+  mutate(sign = "+1", origin = "scenic_default")
 
 # Combine DoRothEA + SCENIC
 influence_graph <- bind_rows(
