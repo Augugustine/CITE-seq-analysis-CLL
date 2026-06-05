@@ -321,12 +321,12 @@ p1<-ggplot(tumor_prop, aes(x = Annotation, y = prop, fill = compartment_opt)) +
             aes(x = Annotation, y = 1.05, label = paste0("n=", n)),
             inherit.aes = FALSE,
             size = 3) +
-  scale_y_continuous(labels = scales::percent, limits = c(0, 1.1)) +
+  scale_y_continuous( limits = c(0, 1)) +
   theme_classic() +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ylab("Cell proportion") +
   xlab("Cell Type") +
-  labs(fill = "Cell annotation\n(tumor/normal)")
+  labs(fill = "Cell annotation")
 
 p2 <- ggplot(counts, aes(x = Annotation, y = n)) +
   geom_bar(stat = "identity", fill = "grey50") +
@@ -553,16 +553,77 @@ infercnv_obj = CreateInfercnvObject(raw_counts_matrix=counts_matrix,
 # ref_group_names=NULL : no reference cell as normal, take the average of all the celltype
 ```
 
-Run infercnv
+Run infercnv (on the HPC because 200G and 1 day and 16h running)
 
 ```{r}
-# perform infercnv operations to reveal cnv signal
+# perform infercnv
 infercnv_obj = infercnv::run(infercnv_obj,
                              cutoff=0.1,  # use 1 for smart-seq, 0.1 for 10x-genomics
                              out_dir=paste0(params$output,"infercnv_res"),
                              cluster_by_groups=T,   # cluster
                              denoise=T,
                              HMM=T)
+```
+
+Heatmap
+
+```{r}
+# Plot heatmap
+infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","run.final.infercnv_obj"))
+options(bitmapType="Xlib")
+plot_cnv(infercnv_obj,write_expr_matrix = FALSE,contig_cex = 3)
+```
+
+Prediction tumor cells
+
+```{r}
+infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","19_HMM_pred.Bayes_NetHMMi6.leiden.hmm_mode-subclusters.Pnorm_0.5.infercnv_obj"))
+p_normal_matrix <- infercnv_obj@expr.data
+
+# Mean de probability on all the genes per cells 
+p_normal_per_cell <- colMeans(p_normal_matrix)
+p_normal_per_cell <- data.frame(p_normal_per_cell)
+
+classification <- ifelse(p_normal_per_cell < 0.5, "Tumor", "Normal")
+```
+
+Clones / clusters
+
+```{r}
+# Clones/clusters
+infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","19_HMM_pred.Bayes_NetHMMi6.leiden.hmm_mode-subclusters.Pnorm_0.5.infercnv_obj"))
+
+pred<-read.table(file.path(params$output,"infercnv_p2","17_HMM_predHMMi6.leiden.hmm_mode-subclusters.cell_groupings"), sep="\t", header=T)
+pred$Clones <- sub("^[^.]*\\.", "", pred$cell_group_name)
+pred<-pred[,-1]
+rownames(pred)<-pred$cell
+pred$cell <- NULL
+data <- get(paste0("data_", params$patient_infercnv))
+data <- AddMetaData(data, metadata = pred)
+
+# size for each clone
+clone_sizes <- pred %>%
+  count(Clones, name = "n_cells")
+clone_sizes <- clone_sizes %>%
+  mutate(
+    class = case_when(
+      n_cells == 1 ~ "1",
+      n_cells <= 5 ~ "2-10",
+      n_cells <= 10 ~ "11-30",
+      n_cells <= 50 ~ "31-50",
+      n_cells <= 100 ~ "51-100",
+      n_cells <= 500 ~ "101-500",
+      TRUE ~ "500+"))
+
+# clones per classe
+plot_df <- clone_sizes %>%count(class)
+plot_df$class <- factor(plot_df$class,levels = c("1","2-10","11-30","31-50","51-100","101-500","500+"))
+
+# plot
+plot<-ggplot(plot_df, aes(x = class, y = n)) +geom_col(fill = "steelblue", width = 0.8) + labs( title = "Distribution clonotype size",x = "Number of cells carrying the clone", y = "Number of clones") + theme_classic(base_size = 16)
+plot
+
+DimPlot(data, group.by = "Prediction", reduction = "umap", pt.size=0.1, label.size = 2.5 ) + ggtitle(str_wrap("Clones clustering based on allelic frequency", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
 ```
 
 ```{r}
@@ -593,7 +654,6 @@ meta$cell_type <- ifelse(meta$Annotation %in% c("CD4 T","CD8 T","Monocyte","Neut
 meta$sample <- sub("_.*", "", meta$cell_id)
 meta$cell <- sub(".*_", "", meta$cell_id)
 write.table(meta,"Xclone.tsv",sep = "\t",quote = FALSE,col.names = TRUE, row.names = FALSE)
-
 ```
 
 ## Cell SNP lite - AF clustering
