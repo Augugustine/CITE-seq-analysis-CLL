@@ -28,6 +28,8 @@ library(tidyr)
 library(dorothea)
 library(readr)
 library(stringr)
+library(VennDiagram)
+library(grid)
 source("functions.R")
 ```
 
@@ -341,11 +343,11 @@ parse_targets_with_scores <- function(tg_string) {
 }
 
 scenic_edges <- scenic_filt %>%
-  select(TF, TargetGenes) %>%
+  dplyr::select(TF, TargetGenes) %>%
   rowwise() %>%
   mutate(targets = list(parse_targets_with_scores(TargetGenes))) %>%
   unnest(targets) %>%
-  select(source = TF, target, score) %>%
+  dplyr::select(source = TF, target, score) %>%
   group_by(source, target) %>%
   summarise(score = max(score), .groups = "drop") %>%
   filter(score >= TARGET_SCORE_MIN)
@@ -365,7 +367,7 @@ influence_graph <- bind_rows(
   dorothea_base,
   scenic
 ) %>%
-  select(source, target, sign)
+  dplyr::select(source, target, sign)
 
 # Recap
 cat("Edges DoRothEA     :", nrow(dorothea_base), "\n")
@@ -376,11 +378,38 @@ write_csv(influence_graph, paste0(params$Matrix,"influence_graph_bonesis.csv"))
 ```
 
 ```{r}
-data_cll<-subset(data, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Macrophage","Monocyte")))
-data_cll<-run_dim_red(data_cll)
-data_cll<-FindClusters(data_cll, resolution = 0.1)
-DimPlot(data_cll, reduction="umap")
-data_cll<-subset(data_cll, subset = (seurat_clusters %in% c("0", "2", "3")))
-data_cll<-run_dim_red(data_cll)
-DimPlot(data_cll, reduction="umap",group.by = "Annotation")
+# Nodes
+nodes_scenic   <- unique(c(scenic_edges$source, scenic_edges$target))
+nodes_dorothea <- unique(c(dorothea_base$source, dorothea_base$target))
+tf_scenic <- unique(scenic_edges$source)
+dorothea_filtered <- dorothea_base[dorothea_base$source %in% tf_scenic, ]
+
+# Edges
+edges_scenic   <- paste(scenic_edges$source, scenic_edges$target,   sep = "__")
+edges_dorothea <- paste(dorothea_filtered$source, dorothea_filtered$target, sep = "__")
+
+venn_nodes <- venn.diagram(
+  x = list(SCENIC = nodes_scenic, DoRothEA = nodes_dorothea),
+  filename = NULL,
+  category.names = c("SCENIC", "DoRothEA"),
+  fill = c("#4E79A7", "#F28E2B"),
+  alpha = 0.5,
+  cex = 2,
+  cat.cex = 1.8,
+  main = "Commons nodes (TF + Target)",print.mode = c("raw", "percent"),
+  main.cex = 1.5
+)
+
+plot <- venn.diagram(
+  x = list(SCENIC = edges_scenic, DoRothEA = edges_dorothea),
+  filename = NULL,
+  category.names = c("SCENIC", "DoRothEA"),
+  fill = c("#76B7B2", "#E15759"),
+  alpha = 0.5,
+  cex = 2,
+  cat.cex = 1.8,cat.pos = c(180, 180),
+  main = "Commons edges",print.mode = c("raw", "percent"),
+  main.cex = 1.5
+)
+ggsave(paste0(params$Output,"venn_edges.jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
