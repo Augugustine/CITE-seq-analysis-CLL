@@ -30,6 +30,9 @@ library(readr)
 library(stringr)
 library(VennDiagram)
 library(grid)
+library(ggpubr)
+library(pROC)
+library(patchwork)
 source("functions.R")
 ```
 
@@ -412,4 +415,96 @@ plot <- venn.diagram(
   main.cex = 1.5
 )
 ggsave(paste0(params$Output,"venn_edges.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+```{r}
+dorothea_net <- get_dorothea(organism = "human", levels = c("A", "B", "C"))
+scenic <- read.csv(paste0(params$Matrix,"step_2_reg_p2.csv"), skip = 3) 
+colnames(scenic) <- c("TF", "MotifID", "AUC", "NES", "MotifQvalue","OrthologousIdentity", "Annotation", "Context","TargetGenes", "RankAtMax")
+
+scenic <- scenic %>%
+   dplyr::select(TF, TargetGenes, NES) %>%
+   rowwise() %>%
+   mutate(targets = list(parse_targets_with_scores(TargetGenes))) %>%
+   unnest(targets) %>%
+   dplyr::select(TF, target, score, NES) %>%
+   group_by(TF, target) %>%
+   summarise(
+      score = max(score),
+      NES = max(NES),
+      .groups = "drop")
+
+scenic <- scenic %>%
+  mutate(in_dorothea = paste(TF, target) %in% paste(dorothea_base$source, dorothea_base$target),
+         status = ifelse(in_dorothea, "Known (DoroTHEA)", "New (SCENIC)"))
+```
+
+```{r}
+# Wilcoxon 
+wilcox_NES <- wilcox.test(NES ~ status, data = scenic)
+cat("Wilcoxon NES p-value:", wilcox_NES$p.value, "\n")
+
+# Effect size (Cohen's d ou rank-biserial)
+library(rstatix)
+scenic %>% wilcox_effsize(NES ~ status)
+
+wilcox_aff <- wilcox.test(affiliation_score ~ status, data = scenic)
+cat("Wilcoxon affiliation p-value:", wilcox_aff$p.value, "\n")
+
+scenic %>% wilcox_effsize(score ~ status)
+```
+
+```{r}
+p1<- ggplot(scenic, aes(x = status, y = NES, fill = status)) +
+  geom_violin(alpha = 0.6, trim = FALSE) +
+  geom_boxplot(width = 0.15, outlier.shape = NA, fill = "white") +
+  stat_compare_means(method = "wilcox.test", label = "p.signif", 
+                     comparisons = list(c("Known (DoroTHEA)", "New (SCENIC)"))) +
+  scale_fill_manual(values = c("Known (DoroTHEA)" = "#2196F3", 
+                                "New (SCENIC)" = "#FF9800")) +
+  labs(title = "NES",
+       x = "", y = "NES") +
+  theme_bw() + theme(legend.position = "none")
+
+p2<- ggplot(scenic, aes(x = status, y = score, fill = status)) +
+  geom_violin(alpha = 0.6, trim = FALSE) +
+  geom_boxplot(width = 0.15, outlier.shape = NA, fill = "white") +
+  stat_compare_means(method = "wilcox.test", label = "p.signif",
+                     comparisons = list(c("Known (DoroTHEA)", "New (SCENIC)"))) +
+  scale_fill_manual(values = c("Known (DoroTHEA)" = "#2196F3", 
+                                "New (SCENIC)" = "#FF9800")) +
+  labs(title = "Affiliation score",
+       x = "", y = "Affiliation score") +
+  theme_bw() + theme(legend.position = "none")
+
+p3<- ggplot(scenic, aes(x = NES, y = score, color = status)) +
+  geom_point(alpha = 0.4, size = 1) +
+  geom_density_2d(aes(group = status), linewidth = 0.4) +
+  scale_color_manual(values = c("Known (DoroTHEA)" = "#2196F3", 
+                                 "New (SCENIC)" = "#FF9800")) +
+  labs(title = "NES vs Affiliation score",
+       x = "NES", y = "Affiliation score", color = "") +
+  theme_bw() + theme(legend.position = "bottom")
+
+
+roc_NES <- roc(scenic$in_dorothea, scenic$NES, quiet = TRUE)
+roc_aff <- roc(scenic$in_dorothea, scenic$score, quiet = TRUE)
+
+cat("AUC NES:", auc(roc_NES), "\n")
+cat("AUC affiliation:", auc(roc_aff), "\n")
+
+# Plot ROC
+p4<- ggroc(list(NES = roc_NES, Affiliation = roc_aff)) +
+  geom_abline(slope = 1, intercept = 1, linetype = "dashed", color = "grey") +
+  scale_color_manual(values = c("NES" = "#2196F3", "Affiliation" = "#FF9800")) +
+  labs(title = "ROC : DoroTHEA interaction prediction",
+       subtitle = paste0("AUC NES = ", round(auc(roc_NES), 3),
+                         " | AUC Affiliation = ", round(auc(roc_aff), 3)),
+       color = "") +
+  theme_bw()
+
+plot<-(p1 | p2) / (p3 | p4)+
+  plot_annotation(title = "Validation SCENIC, comparison with DoroTHEA",
+                  theme = theme(plot.title = element_text(size = 16, face = "bold")))
+ggsave(paste0(params$Output,"score_scenic.jpeg"), plot, width = 3000, height = 2000, units = "px")
 ```
