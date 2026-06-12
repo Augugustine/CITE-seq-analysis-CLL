@@ -7,7 +7,7 @@ params:
   patient_infercnv: "p2"
   file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
   filebis: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3.rds"
-  output: "~/Documents/Singlecell-R/Scripts/Plots/"
+  output: "~/Documents/Singlecell-R/Scripts/Plots"
 format: html
 editor: visual
 ---
@@ -34,6 +34,9 @@ library(infercnv)
 library(biomaRt)
 library(Matrix)
 library(uwot)
+library(ComplexHeatmap) 
+library(circlize)
+library(RColorBrewer)
 source("functions.R")
 ```
 
@@ -129,7 +132,8 @@ Timepoints combined
 Patient 2
 
 ```{r}
-copykat.res <- do.call(rbind, pred_results)data_p2$copykat_pred <- NA
+copykat.res <- do.call(rbind, pred_results)
+data_p2$copykat_pred <- NA
 rownames(copykat.res) <- copykat.res$cell.names
 data_p2$copykat_pred <- copykat.res[colnames(data_p2), "copykat.pred"]
 
@@ -141,7 +145,8 @@ ggsave(paste0("~/Documents/Singlecell-R/Scripts/Plots/cna_", params$patient, ".j
 Patient 3
 
 ```{r}
-copykat.res <- do.call(rbind, pred_results)data_p3$copykat_pred <- NA
+copykat.res <- do.call(rbind, pred_results)
+data_p3$copykat_pred <- NA
 rownames(copykat.res) <- copykat.res$cell.names
 data_p3$copykat_pred <- copykat.res[colnames(data_p3), "copykat.pred"]
 
@@ -522,8 +527,8 @@ meta <- data@meta.data %>%
 meta$cellid <- rownames(meta)
 meta <- meta[, ncol(meta):1]
 meta <- as.data.frame(meta)
-meta$Type <- ifelse(meta$Annotation %in% c("CD4 T","CD8 T","Monocyte","Neutrophil","NK"), "Normal", "Tumor")
-meta <- meta[,-2]
+#meta$Type <- ifelse(meta$Annotation %in% c("CD4 T","CD8 T","Monocyte","Neutrophil","NK"), "Normal", "Tumor")
+#meta <- meta[,-2]
 write.table(meta,"cellAnnotations.txt",sep = "\t",quote = FALSE,col.names = FALSE, row.names = FALSE)
 
 # gene order 
@@ -571,74 +576,28 @@ Heatmap
 # Plot heatmap
 infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","run.final.infercnv_obj"))
 options(bitmapType="Xlib")
-plot_cnv(infercnv_obj,write_expr_matrix = FALSE,contig_cex = 3)
-```
 
-Prediction tumor cells
+# Cell type annotation, add to the infercnv_obj for the heatmap
+correspondence_df <- data.frame(
+  index     = seq_along(colnames(infercnv_obj@expr.data)),
+  cell_id   = colnames(infercnv_obj@expr.data)
+)
+tumor_indices <- infercnv_obj@observation_grouped_cell_indices[["Tumor"]]
 
-```{r}
-infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","19_HMM_pred.Bayes_NetHMMi6.leiden.hmm_mode-subclusters.Pnorm_0.5.infercnv_obj"))
-p_normal_matrix <- infercnv_obj@expr.data
+tumor_df <- correspondence_df[correspondence_df$index %in% tumor_indices, ]
+tumor_df$cell_type <- data_p2@meta.data[tumor_df$cell_id, "Annotation"]
+new_obs_indices <- list()
+for (ct in unique(tumor_df$cell_type)) {
+  new_obs_indices[[ct]] <- tumor_df$index[tumor_df$cell_type == ct]
+}
 
-# Mean de probability on all the genes per cells 
-p_normal_per_cell <- colMeans(p_normal_matrix)
-p_normal_per_cell <- data.frame(p_normal_per_cell)
+# Verification
+lapply(new_obs_indices, length)
+# Reassign
+infercnv_obj@observation_grouped_cell_indices <- new_obs_indices
 
-classification <- ifelse(p_normal_per_cell < 0.5, "Tumor", "Normal")
-```
-
-Clones / clusters
-
-```{r}
-# Clones/clusters
-infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","19_HMM_pred.Bayes_NetHMMi6.leiden.hmm_mode-subclusters.Pnorm_0.5.infercnv_obj"))
-
-pred<-read.table(file.path(params$output,"infercnv_p2","17_HMM_predHMMi6.leiden.hmm_mode-subclusters.cell_groupings"), sep="\t", header=T)
-pred$Clones <- sub("^[^.]*\\.", "", pred$cell_group_name)
-pred<-pred[,-1]
-rownames(pred)<-pred$cell
-pred$cell <- NULL
-data <- get(paste0("data_", params$patient_infercnv))
-data <- AddMetaData(data, metadata = pred)
-
-# size for each clone
-clone_sizes <- pred %>%
-  count(Clones, name = "n_cells")
-clone_sizes <- clone_sizes %>%
-  mutate(
-    class = case_when(
-      n_cells == 1 ~ "1",
-      n_cells <= 5 ~ "2-10",
-      n_cells <= 10 ~ "11-30",
-      n_cells <= 50 ~ "31-50",
-      n_cells <= 100 ~ "51-100",
-      n_cells <= 500 ~ "101-500",
-      TRUE ~ "500+"))
-
-# clones per classe
-plot_df <- clone_sizes %>%count(class)
-plot_df$class <- factor(plot_df$class,levels = c("1","2-10","11-30","31-50","51-100","101-500","500+"))
-
-# plot
-plot<-ggplot(plot_df, aes(x = class, y = n)) +geom_col(fill = "steelblue", width = 0.8) + labs( title = "Distribution clonotype size",x = "Number of cells carrying the clone", y = "Number of clones") + theme_classic(base_size = 16)
-plot
-
-DimPlot(data, group.by = "Prediction", reduction = "umap", pt.size=0.1, label.size = 2.5 ) + ggtitle(str_wrap("Clones clustering based on allelic frequency", width = 60)) + theme(plot.title = element_text(size = 15, hjust = 0.5))
-```
-
-```{r}
-# Charger les prédictions par région
-cnv_regions <- read.table(paste0(params$output,"infercnv_res/HMM_CNV_predictions.HMMi6.leiden.hmm_mode-subclusters.Pnorm_0.5.pred_cnv_regions.dat"),
-  header=T, sep="\t")
-
-# Charger les probabilités d'être normal (Bayesian Network)
-# C'est le fichier le plus fiable pour tumeur vs normal
-cnv_state_probs <- read.table(paste0(params$output,"infercnv_res/BayesNetOutput.HMMi6.leiden.hmm_mode-subclusters/CNV_State_Probabilities.dat"),
-  header=T, sep="\t")
-
-cell_groupings <- read.table(
-  paste0(params$output,"infercnv_res/17_HMM_predHMMi6.leiden.hmm_mode-subclusters.cell_groupings"),
-  header=T, sep="\t")
+# Plot heatmap
+plot_cnv(infercnv_obj)
 ```
 
 ## XClone from the CellSNP lite results
