@@ -37,6 +37,7 @@ library(uwot)
 library(ComplexHeatmap) 
 library(circlize)
 library(RColorBrewer)
+library(scPred)
 source("functions.R")
 ```
 
@@ -516,19 +517,15 @@ Object preparation
 
 ```{r}
 data <- get(paste0("data_", params$patient_infercnv))
-#data<- subset(data, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","CD4 T","CD8 T","Erythroblast","Macrophage","Monocyte","Neutrophil","NK"))
 #data<- subset(data, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge"))
 # raw cout
 counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
 # cell annotation
-#annotations <- data.frame(cell = colnames(data), group = "tumor")
 meta <- data@meta.data %>%
   dplyr::select(Annotation)
 meta$cellid <- rownames(meta)
 meta <- meta[, ncol(meta):1]
 meta <- as.data.frame(meta)
-#meta$Type <- ifelse(meta$Annotation %in% c("CD4 T","CD8 T","Monocyte","Neutrophil","NK"), "Normal", "Tumor")
-#meta <- meta[,-2]
 write.table(meta,"cellAnnotations.txt",sep = "\t",quote = FALSE,col.names = FALSE, row.names = FALSE)
 
 # gene order 
@@ -554,7 +551,43 @@ infercnv_obj = CreateInfercnvObject(raw_counts_matrix=counts_matrix,
                                     annotations_file="cellAnnotations.txt",
                                     delim="\t",
                                     gene_order_file="gene_ordering_file.txt",
-                                    ref_group_names=c("Normal"))  
+                                    ref_group_names=c("CD4 T","CD8 T","Monocyte","Neutrophil","NK"))  
+# ref_group_names=NULL : no reference cell as normal, take the average of all the celltype
+```
+
+Infercnv with normal cell reference from Azimuth Atlas PBMC
+
+```{r}
+# raw cout
+counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
+# raw ount atlas 
+pbmc_ref <- scPred::pbmc_1
+counts_atlas <- GetAssayData(pbmc_ref, assay = "RNA", layer = "counts")
+
+
+
+# cell annotation
+# data
+meta <- data@meta.data %>%
+  dplyr::select(Annotation)
+meta$cellid <- rownames(meta)
+meta <- meta[, ncol(meta):1]
+meta <- as.data.frame(meta)
+# atlas 
+meta <- data@meta.data %>%
+  dplyr::select(Annotation)
+meta$cellid <- rownames(meta)
+meta <- meta[, ncol(meta):1]
+meta <- as.data.frame(meta)
+
+write.table(meta,"cellAnnotations.txt",sep = "\t",quote = FALSE,col.names = FALSE, row.names = FALSE)
+
+# create the infercnv object
+infercnv_obj = CreateInfercnvObject(raw_counts_matrix=counts_matrix,
+                                    annotations_file="cellAnnotations.txt",
+                                    delim="\t",
+                                    gene_order_file="gene_ordering_file.txt",
+                                    ref_group_names=c("CD4 T","CD8 T","Monocyte","Neutrophil","NK"))  
 # ref_group_names=NULL : no reference cell as normal, take the average of all the celltype
 ```
 
@@ -573,31 +606,9 @@ infercnv_obj = infercnv::run(infercnv_obj,
 Heatmap
 
 ```{r}
-# Plot heatmap
-infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","run.final.infercnv_obj"))
+infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","run.final.infercnv_obj_no_ref"))
 options(bitmapType="Xlib")
-
-# Cell type annotation, add to the infercnv_obj for the heatmap
-correspondence_df <- data.frame(
-  index     = seq_along(colnames(infercnv_obj@expr.data)),
-  cell_id   = colnames(infercnv_obj@expr.data)
-)
-tumor_indices <- infercnv_obj@observation_grouped_cell_indices[["Tumor"]]
-
-tumor_df <- correspondence_df[correspondence_df$index %in% tumor_indices, ]
-tumor_df$cell_type <- data_p2@meta.data[tumor_df$cell_id, "Annotation"]
-new_obs_indices <- list()
-for (ct in unique(tumor_df$cell_type)) {
-  new_obs_indices[[ct]] <- tumor_df$index[tumor_df$cell_type == ct]
-}
-
-# Verification
-lapply(new_obs_indices, length)
-# Reassign
-infercnv_obj@observation_grouped_cell_indices <- new_obs_indices
-
-# Plot heatmap
-plot_cnv(infercnv_obj)
+plot_cnv(infercnv_obj, out_dir = params$output, output_filename = "infercnv_no_ref", plot_chr_scale = FALSE)
 ```
 
 ## XClone from the CellSNP lite results
