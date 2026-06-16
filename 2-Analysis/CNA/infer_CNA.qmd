@@ -555,32 +555,40 @@ infercnv_obj = CreateInfercnvObject(raw_counts_matrix=counts_matrix,
 # ref_group_names=NULL : no reference cell as normal, take the average of all the celltype
 ```
 
-Infercnv with normal cell reference from Azimuth Atlas PBMC
+Infercnv with normal cell reference from scPred PBMC
 
 ```{r}
+# if we want not all cells (for example B-CLL + myeloid)
+data<-subset(data, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","Macrophage","Monocyte"))
+
+# raw count atlas 
+pbmc_ref1 <- scPred::pbmc_1
+pbmc_ref2 <- scPred::pbmc_2
+pbmc_ref <- merge(pbmc_ref1, y = pbmc_ref2, add.cell.ids = c("s1", "s2"))
+pbmc_ref$Annotation<-pbmc_ref$cell_type
+# if only B cells and monocyte
+pbmc_ref<-subset(pbmc_ref, subset = Annotation %in% c("cMono","B cell","ncMono"))
+
+# Intersetion of the genes 
+common_genes <- intersect(rownames(data),rownames(pbmc_ref))
+data <- data[common_genes, ]
+pbmc_ref <- pbmc_ref[common_genes, ]
+
+# Combine ref and data 
+data_ref <- merge(data, y = pbmc_ref)
+data_ref[["RNA"]] <- JoinLayers(data_ref[["RNA"]])
 # raw cout
-counts_matrix <- GetAssayData(data, assay = "RNA", layer = "counts")
-# raw ount atlas 
-pbmc_ref <- scPred::pbmc_1
-counts_atlas <- GetAssayData(pbmc_ref, assay = "RNA", layer = "counts")
-
-
+counts_matrix <- GetAssayData(data_ref, assay = "RNA", layer = "counts")
+#counts_matrix <- LayerData(data_ref, assay = "RNA", layer = "counts")
 
 # cell annotation
-# data
-meta <- data@meta.data %>%
-  dplyr::select(Annotation)
-meta$cellid <- rownames(meta)
-meta <- meta[, ncol(meta):1]
-meta <- as.data.frame(meta)
-# atlas 
-meta <- data@meta.data %>%
+meta <- data_ref@meta.data %>%
   dplyr::select(Annotation)
 meta$cellid <- rownames(meta)
 meta <- meta[, ncol(meta):1]
 meta <- as.data.frame(meta)
 
-write.table(meta,"cellAnnotations.txt",sep = "\t",quote = FALSE,col.names = FALSE, row.names = FALSE)
+write.table(meta,"cellAnnotations_scPred_myel.txt",sep = "\t",quote = FALSE,col.names = FALSE, row.names = FALSE)
 
 # create the infercnv object
 infercnv_obj = CreateInfercnvObject(raw_counts_matrix=counts_matrix,
@@ -606,9 +614,9 @@ infercnv_obj = infercnv::run(infercnv_obj,
 Heatmap
 
 ```{r}
-infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","run.final.infercnv_obj_no_ref"))
+infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","run.final.infercnv_obj_ref_inter"))
 options(bitmapType="Xlib")
-plot_cnv(infercnv_obj, out_dir = params$output, output_filename = "infercnv_no_ref", plot_chr_scale = FALSE)
+plot_cnv(infercnv_obj, out_dir = params$output, output_filename = "infercnv_ref_internal", plot_chr_scale = FALSE)
 ```
 
 ## XClone from the CellSNP lite results
