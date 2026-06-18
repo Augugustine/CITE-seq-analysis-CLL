@@ -304,6 +304,22 @@ data_cll<-run_dim_red(data_cll)
 Convert_Seurat_Anndata(data_cll, "~/Documents/Singlecell-R/Scripts/Matrix/cll_raw_macro", raw=TRUE)
 ```
 
+```{r}
+data_cll<-subset(data_p2, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
+data_cll<-run_dim_red(data_cll)
+data_cll<-FindClusters(data_cll,resolution = 0.1)
+DimPlot(data_cll,reduction="umap")
+data_cll<-subset(data_cll, subset = (seurat_clusters %in% c("0", "2", "3")))
+data_cll<-run_dim_red(data_cll)
+data_cll<-FindClusters(data_cll,resolution = 0.1)
+DimPlot(data_cll,reduction="umap")
+data_cll<-subset(data_cll, subset = (seurat_clusters %in% c("0", "1", "3","4")))
+data_cll<-run_dim_red(data_cll)
+DimPlot(data_cll,reduction="umap")
+DimPlot(data_cll,reduction="umap", group.by = "TF",cols =c("CEBPA"="grey", "None"="grey", "NANOG"="blue","NANOG+CEBPA"="darkgreen"))
+Convert_Seurat_Anndata(data_cll, "~/Documents/Singlecell-R/Scripts/Matrix/cll_raw_macro", raw=TRUE)
+```
+
 ## 3 - Influence graph for BoNesis: DorothEA and infered GRN
 
 ```{r}
