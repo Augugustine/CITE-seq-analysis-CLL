@@ -619,6 +619,31 @@ options(bitmapType="Xlib")
 plot_cnv(infercnv_obj, out_dir = params$output, output_filename = "infercnv_ref_internal", plot_chr_scale = FALSE)
 ```
 
+Score
+
+```{r}
+scores=apply(infercnv_obj@expr.data,2,function(x){ sum(x < 0.95 | x > 1.05)/length(x) })
+df <- data.frame(score = scores)
+
+ggplot(df, aes(x = score)) +
+  geom_histogram(bins = 50) +
+  theme_classic()
+```
+
+```{r}
+infercnv::add_to_seurat(
+  infercnv_output_path = "~/Documents/Singlecell-R/Scripts/Plots/infercnv_p2/test/",
+  seurat_obj = data,
+  top_n = 10
+)
+
+# Nouvelles colonnes ajoutées aux métadonnées Seurat :
+# - proportion_cnv_altered      → % gènes avec CNV
+# - mean_cnv_score              → score moyen
+# - top_loss_regions_*          → régions avec délétions
+# - top_dupli_regions_*         → régions avec gains
+```
+
 ## XClone from the CellSNP lite results
 
 ```{r}
