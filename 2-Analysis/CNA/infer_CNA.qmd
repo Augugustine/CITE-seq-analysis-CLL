@@ -38,6 +38,8 @@ library(ComplexHeatmap)
 library(circlize)
 library(RColorBrewer)
 library(scPred)
+library(cluster)
+library(clusterCrit)
 source("functions.R")
 ```
 
@@ -631,17 +633,228 @@ ggplot(df, aes(x = score)) +
 ```
 
 ```{r}
-infercnv::add_to_seurat(
-  infercnv_output_path = "~/Documents/Singlecell-R/Scripts/Plots/infercnv_p2/test/",
+data_infer<-infercnv::add_to_seurat(
+  infercnv_output_path = "~/Documents/Singlecell-R/Scripts/Plots/infercnv_p2/infercnv_no_ref_cll_myel/",
   seurat_obj = data,
   top_n = 10
 )
+data_infer<-run_dim_red(data_infer)
+# New columns added to Seurat metadata:
+# - proportion_cnv_altered      → % of genes with CNVs
+# - mean_cnv_score              → mean score
+# - top_loss_regions_*          → regions with deletions
+# - top_dupli_regions_*         → regions with gains
 
-# Nouvelles colonnes ajoutées aux métadonnées Seurat :
-# - proportion_cnv_altered      → % gènes avec CNV
-# - mean_cnv_score              → score moyen
-# - top_loss_regions_*          → régions avec délétions
-# - top_dupli_regions_*         → régions avec gains
+# Features plot cnv for one chrom 
+FeaturePlot(data_infer,
+            features = c("proportion_scaled_loss_chr6",
+                         "proportion_scaled_dupli_chr6"),
+            ncol = 3,reduction="umap",
+            cols = c("lightgrey","blue","red"))
+
+FeaturePlot(data_infer,
+            features = c("proportion_scaled_loss_chr11",
+                         "proportion_scaled_dupli_chr11"),
+            ncol = 3,reduction="umap",
+            cols = c("lightgrey","blue","red"))
+
+# Per timepoint 
+data_infer$timepoint <- factor(data_infer$timepoint,levels = c("D1", "D4", "D8", "D11", "D14"))
+ggplot(data_infer@meta.data,aes(x = timepoint, y = proportion_scaled_dupli_chr6, fill = timepoint))+geom_boxplot() +facet_wrap(~Annotation) +theme_bw()
+```
+
+```{r}
+meta <- data_infer@meta.data
+# Gobal score : sum of scaled cnv on all chrom (amplification and total)
+dupli_scaled_cols <- grep("proportion_scaled_dupli_chr", colnames(meta), value=TRUE)
+data_infer$dupli_cnv_score <- rowMeans(meta[, dupli_scaled_cols])
+cnv_scaled_cols <- grep("proportion_scaled_dupli_chr", colnames(meta), value=TRUE)
+data_infer$global_cnv_score <- rowMeans(meta[, cnv_scaled_cols])
+
+# Number of chrom with cnv 
+has_cols <- grep("^has_cnv_chr",
+                 colnames(data_infer@meta.data),
+                 value = TRUE)
+data_infer$n_chr_altered <- rowSums(data_infer@meta.data[, has_cols])
+
+# Visualisation 
+FeaturePlot(data_infer, features="global_cnv_score",
+            cols=c("lightgrey","blue","red"), reduction="umap") +
+  ggtitle("Malignancy score based on CNVs")
+
+FeaturePlot(data_infer, features="dupli_cnv_score",
+            cols=c("lightgrey","blue","red"), reduction="umap") +
+  ggtitle("Malignancy score based on CNVs amplification")
+
+FeaturePlot(data_infer, features="n_chr_altered",
+            cols=c("lightgrey","blue","red"), reduction="umap") +
+  ggtitle("Malignancy score based on the number of chrom with CNVs")
+
+# Comparison
+VlnPlot(data_infer, features="global_cnv_score",
+        group.by="Annotation", pt.size=0)
+VlnPlot(data_infer, features="dupli_cnv_score",
+        group.by="Annotation", pt.size=0)
+VlnPlot(data_infer, features="n_chr_altered",
+        group.by="Annotation", pt.size=0)
+
+
+cnv_cols <- grep("^proportion_scaled_cnv_chr",
+                 colnames(data_infer@meta.data),
+                 value = TRUE)
+
+data_infer$Tumor_CNV_score <- rowSums(data_infer@meta.data[, cnv_cols])
+
+# Per timepoint 
+ggplot(data_infer@meta.data,aes(x = timepoint, y = global_cnv_score, fill = timepoint))+geom_boxplot() +facet_wrap(~Annotation) +theme_bw()
+
+# WARINNG : Relatif tumor score, normalize based on the normal pop score 
+```
+
+Clones based on the CNVs
+
+```{r}
+meta <- data_infer@meta.data
+
+# Matrix CNV
+#cnv_features <- grep("proportion_scaled_cnv_chr|proportion_scaled_loss_chr|proportion_scaled_dupli_chr",colnames(meta), value=TRUE)
+cnv_features <- grep("proportion_scaled_cnv_chr",colnames(meta), value=TRUE)
+
+cnv_matrix <- meta[, cnv_features] %>% as.matrix()
+cnv_matrix[is.na(cnv_matrix)] <- 0
+
+# Index Calinski-Harabasz
+ch_scores <- sapply(2:15, function(k) {
+  set.seed(42)
+  km <- kmeans(cnv_matrix, centers=k, nstart=25, iter.max=100)
+  
+  # Avec clusterCrit
+  ch <- intCriteria(cnv_matrix, km$cluster, "Calinski_Harabasz")
+  return(ch$calinski_harabasz)
+})
+
+# Results
+ch_df <- data.frame(
+  k        = 2:15,
+  CH_score = ch_scores
+)
+
+print(ch_df)
+
+# k optimal
+k_optimal <- ch_df$k[which.max(ch_df$CH_score)]
+cat("k optimal :", k_optimal, "\n")
+
+# Plot
+ggplot(ch_df, aes(x=k, y=CH_score)) +
+  geom_line(color="steelblue", linewidth=1) +
+  geom_point(size=3, color="steelblue") +
+  geom_vline(xintercept=k_optimal, linetype="dashed", color="red") +
+  annotate("text", x=k_optimal+0.3, y=max(ch_df$CH_score)*0.98,
+           label=paste("k =", k_optimal), color="red", hjust=0) +
+  scale_x_continuous(breaks=2:15) +
+  theme_bw() +
+  labs(title="Index Calinski-Harabasz",
+       x="Cluster number (k)", y="Calinski-Harabasz score")
+
+# Clustering 
+km_final <- kmeans(cnv_matrix, centers=6, nstart=25, iter.max=100)
+
+data_infer$cnv_clone <- NA
+data_infer$cnv_clone[names(km_final$cluster)] <- paste0("clone_", km_final$cluster)
+
+table(data_infer$cnv_clone)
+DimPlot(data_infer, group.by = "cnv_clone",reduction="umap",cols =c("#656A59FF","#F8B323FF","#46B2B5FF","#8CAA7EFF","#D36F68FF","#826276FF"))
+
+# Proportion
+meta<-data_infer@meta.data
+meta <- meta %>%
+  mutate(
+    clonotype = as.character(cnv_clone),
+    timepoint = as.character(timepoint),
+    cluster = as.character(seurat_clusters),
+    celltype = as.character(Annotation))
+
+prop <-meta %>%
+  filter(!celltype %in% c("Monocyte", "B memory")) %>%
+  mutate(timepoint = factor(timepoint, levels = c("D1", "D4", "D8", "D11", "D14")))
+
+clono_color=c("clone_1"="#656A59FF","clone_2"="#F8B323FF", "clone_3"="#46B2B5FF", "clone_4"="#8CAA7EFF","clone_5"="#D36F68FF", "clone_6"="#826276FF")
+
+ggplot(prop, aes(x = timepoint, fill = clonotype)) +
+  geom_bar(position = "fill") +
+  scale_y_continuous(labels = scales::number) +
+  scale_fill_manual(values = clono_color) +
+  facet_wrap(~ celltype, nrow = 1) +
+  theme_minimal(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(y = "Fraction", fill = "Clonotype",
+       title = "Clonal composition over time and cell type")
+```
+
+Phylogeny
+
+```{r}
+library(ape)        # phylogénie
+library(ggtree)     # visualisation arbre
+library(ggtree)
+
+
+meta <- data_infer@meta.data
+
+cnv_features <- grep("proportion_scaled_cnv_chr|proportion_scaled_loss_chr|proportion_scaled_dupli_chr",colnames(meta), value=TRUE)
+
+# Profil mean CNV per clone
+clone_profiles <- meta %>%
+  filter(!is.na(cnv_clone)) %>%
+  group_by(cnv_clone) %>%
+  filter(cnv_clone != "clone_3") %>%
+  summarise(across(all_of(cnv_features), mean, .names="{.col}"))
+
+# Matrix
+mat_clone <- clone_profiles %>% dplyr::select(-cnv_clone) %>% as.matrix()
+rownames(mat_clone) <- clone_profiles$cnv_clone
+
+# Euclidian distance 
+clone_dist <- dist(mat_clone, method="euclidean")
+
+# Neighbor-Joining
+tree_nj <- nj(clone_dist)
+
+# Root the tree on the clone with the fewest CNVs
+# (= clone the most "normal", ancestor)
+cnv_burden <- rowSums(abs(mat_clone - 0))
+root_clone  <- names(which.min(cnv_burden))
+tree_rooted <- root(tree_nj, outgroup=root_clone, resolve.root=TRUE)
+
+
+clono_color <- c(
+  "clone_1" = "#656A59FF",
+  "clone_2" = "#F8B323FF",
+  "clone_3" = "#46B2B5FF",
+  "clone_4" = "#8CAA7EFF",
+  "clone_5" = "#D36F68FF",
+  "clone_6" = "#826276FF"
+)
+
+# Clone size
+clone_size <- meta %>%
+  filter(!is.na(cnv_clone)) %>%
+  count(cnv_clone) %>%
+  rename(label=cnv_clone, size=n)
+
+# Plot
+ggtree(tree_rooted, layout="rectangular", branch.length="branch.length") %<+% clone_size +
+  geom_tiplab(aes(color=label), size=5, fontface="bold", offset=0.002) +
+  geom_tippoint(aes(color=label, size=size)) +
+  scale_color_manual(values=clono_color) +
+  scale_size_continuous(range=c(3, 10), name="Nb cells") +
+  geom_treescale(x=0, y=0, label="CNV distance") +
+  theme_tree2() +
+  theme(legend.position="right") +
+  ggtitle("Clones phylogeny") +
+  guides(color="none")+
+  coord_cartesian(clip="off") 
 ```
 
 ## XClone from the CellSNP lite results
