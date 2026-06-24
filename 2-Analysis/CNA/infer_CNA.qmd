@@ -40,6 +40,9 @@ library(RColorBrewer)
 library(scPred)
 library(cluster)
 library(clusterCrit)
+library(ape)
+library(ggtree)
+library(ggtree)
 source("functions.R")
 ```
 
@@ -616,9 +619,9 @@ infercnv_obj = infercnv::run(infercnv_obj,
 Heatmap
 
 ```{r}
-infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","run.final.infercnv_obj_ref_inter"))
+infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","infercnv_scPred_myel","run.final.infercnv_obj"))
 options(bitmapType="Xlib")
-plot_cnv(infercnv_obj, out_dir = params$output, output_filename = "infercnv_ref_internal", plot_chr_scale = FALSE)
+plot_cnv(infercnv_obj, out_dir = params$output, output_filename = "infercnv_ref_scpred_myel", plot_chr_scale = FALSE)
 ```
 
 Score
@@ -634,11 +637,16 @@ ggplot(df, aes(x = score)) +
 
 ```{r}
 data_infer<-infercnv::add_to_seurat(
-  infercnv_output_path = "~/Documents/Singlecell-R/Scripts/Plots/infercnv_p2/infercnv_no_ref_cll_myel/",
-  seurat_obj = data,
+  infercnv_output_path = "~/Documents/Singlecell-R/Scripts/Plots/infercnv_p2/infercnv_scPred_myel/",
+  seurat_obj = data_ref,
   top_n = 10
 )
+
+# Keep only our dataset 
+data_infer<-subset(data_infer, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","Macrophage","Monocyte"))
 data_infer<-run_dim_red(data_infer)
+
+
 # New columns added to Seurat metadata:
 # - proportion_cnv_altered      → % of genes with CNVs
 # - mean_cnv_score              → mean score
@@ -647,8 +655,8 @@ data_infer<-run_dim_red(data_infer)
 
 # Features plot cnv for one chrom 
 FeaturePlot(data_infer,
-            features = c("proportion_scaled_loss_chr6",
-                         "proportion_scaled_dupli_chr6"),
+            features = c("proportion_scaled_loss_chr19",
+                         "proportion_scaled_dupli_chr19"),
             ncol = 3,reduction="umap",
             cols = c("lightgrey","blue","red"))
 
@@ -668,7 +676,7 @@ meta <- data_infer@meta.data
 # Gobal score : sum of scaled cnv on all chrom (amplification and total)
 dupli_scaled_cols <- grep("proportion_scaled_dupli_chr", colnames(meta), value=TRUE)
 data_infer$dupli_cnv_score <- rowMeans(meta[, dupli_scaled_cols])
-cnv_scaled_cols <- grep("proportion_scaled_dupli_chr", colnames(meta), value=TRUE)
+cnv_scaled_cols <- grep("proportion_scaled_cnv_chr", colnames(meta), value=TRUE)
 data_infer$global_cnv_score <- rowMeans(meta[, cnv_scaled_cols])
 
 # Number of chrom with cnv 
@@ -711,20 +719,80 @@ ggplot(data_infer@meta.data,aes(x = timepoint, y = global_cnv_score, fill = time
 # WARINNG : Relatif tumor score, normalize based on the normal pop score 
 ```
 
+Nouveau test score
+
+```{r}
+# per subclusters
+subclusters <- infercnv_obj@tumor_subclusters[["subclusters"]]
+subcluster_assignments <- unlist(
+  lapply(names(subclusters), function(group){
+    sc_list <- subclusters[[group]]
+    unlist(
+      lapply(names(sc_list), function(sc){
+        cells <- names(sc_list[[sc]])
+        setNames(
+          rep(sc, length(cells)),
+          cells)
+
+      }))
+  }))
+
+cnv_mat <- infercnv_obj@expr.data
+subcluster_profiles <- sapply(
+    unique(subcluster_assignments),
+    function(sc) {
+        cells <- names(subcluster_assignments)[
+            subcluster_assignments == sc
+        ]
+        rowMeans(
+            cnv_mat[, cells, drop = FALSE])
+    })
+ref_cells <- unlist(infercnv_obj@reference_grouped_cell_indices)
+
+normal_profile <- rowMeans(cnv_mat[, ref_cells])
+
+subcluster_distance <- apply(subcluster_profiles,2,
+    function(x)
+        sqrt(sum((x - normal_profile)^2)))
+
+cell_distance <- subcluster_distance[
+    subcluster_assignments]
+
+cell_distance <- setNames(
+    as.numeric(subcluster_distance[subcluster_assignments]),
+    names(subcluster_assignments))
+
+data_infer$CNV_subcluster_score <-cell_distance[colnames(data_infer)]
+
+FeaturePlot(data_infer_sub,
+    features = "CNV_subcluster_score",
+    min.cutoff = "q05",
+    max.cutoff = "q95")
+
+data_infer$Annotation <- dplyr::recode(
+  data_infer$Annotation,
+  "B cell" = "Ref B cells",
+  "cMono" = "Ref monocyte", "ncMono" = "Ref monocyte", "Bridge"="Intermediate population", "B"="B cells", "B memory"="B cells","B intermediate"="B cells", "B naive"="B cells")
+VlnPlot(data_infer,
+    features = "CNV_subcluster_score",
+    group.by = "Annotation", pt.size = 0)
+ggplot(data_infer@meta.data,aes(x = timepoint, y = CNV_subcluster_score, fill = timepoint))+geom_boxplot() +facet_wrap(~Annotation) +theme_bw()
+```
+
 Clones based on the CNVs
 
 ```{r}
-meta <- data_infer@meta.data
+meta <- data_infer_sub@meta.data
 
 # Matrix CNV
-#cnv_features <- grep("proportion_scaled_cnv_chr|proportion_scaled_loss_chr|proportion_scaled_dupli_chr",colnames(meta), value=TRUE)
-cnv_features <- grep("proportion_scaled_cnv_chr",colnames(meta), value=TRUE)
+cnv_features <- grep("proportion_scaled_cnv_chr|proportion_scaled_loss_chr|proportion_scaled_dupli_chr",colnames(meta), value=TRUE)
+#cnv_features <- grep("proportion_scaled_cnv_chr",colnames(meta), value=TRUE)
 
 cnv_matrix <- meta[, cnv_features] %>% as.matrix()
 cnv_matrix[is.na(cnv_matrix)] <- 0
 
 # Index Calinski-Harabasz
-ch_scores <- sapply(2:15, function(k) {
+ch_scores <- sapply(2:10, function(k) {
   set.seed(42)
   km <- kmeans(cnv_matrix, centers=k, nstart=25, iter.max=100)
   
@@ -735,7 +803,7 @@ ch_scores <- sapply(2:15, function(k) {
 
 # Results
 ch_df <- data.frame(
-  k        = 2:15,
+  k        = 2:10,
   CH_score = ch_scores
 )
 
@@ -752,22 +820,22 @@ ggplot(ch_df, aes(x=k, y=CH_score)) +
   geom_vline(xintercept=k_optimal, linetype="dashed", color="red") +
   annotate("text", x=k_optimal+0.3, y=max(ch_df$CH_score)*0.98,
            label=paste("k =", k_optimal), color="red", hjust=0) +
-  scale_x_continuous(breaks=2:15) +
+  scale_x_continuous(breaks=2:10) +
   theme_bw() +
   labs(title="Index Calinski-Harabasz",
        x="Cluster number (k)", y="Calinski-Harabasz score")
 
 # Clustering 
-km_final <- kmeans(cnv_matrix, centers=6, nstart=25, iter.max=100)
+km_final <- kmeans(cnv_matrix, centers=4, nstart=25, iter.max=100)
 
-data_infer$cnv_clone <- NA
-data_infer$cnv_clone[names(km_final$cluster)] <- paste0("clone_", km_final$cluster)
+data_infer_sub$cnv_clone <- NA
+data_infer_sub$cnv_clone[names(km_final$cluster)] <- paste0("clone_", km_final$cluster)
 
-table(data_infer$cnv_clone)
-DimPlot(data_infer, group.by = "cnv_clone",reduction="umap",cols =c("#656A59FF","#F8B323FF","#46B2B5FF","#8CAA7EFF","#D36F68FF","#826276FF"))
+table(data_infer_sub$cnv_clone)
+DimPlot(data_infer_sub, group.by = "cnv_clone",reduction="umap",cols =c("#656A59FF","#F8B323FF","#46B2B5FF","#8CAA7EFF","#D36F68FF","#826276FF"))
 
 # Proportion
-meta<-data_infer@meta.data
+meta<-data_infer_sub@meta.data
 meta <- meta %>%
   mutate(
     clonotype = as.character(cnv_clone),
@@ -776,7 +844,7 @@ meta <- meta %>%
     celltype = as.character(Annotation))
 
 prop <-meta %>%
-  filter(!celltype %in% c("Monocyte", "B memory")) %>%
+  filter(!celltype %in% c( "B memory")) %>%
   mutate(timepoint = factor(timepoint, levels = c("D1", "D4", "D8", "D11", "D14")))
 
 clono_color=c("clone_1"="#656A59FF","clone_2"="#F8B323FF", "clone_3"="#46B2B5FF", "clone_4"="#8CAA7EFF","clone_5"="#D36F68FF", "clone_6"="#826276FF")
@@ -795,11 +863,6 @@ ggplot(prop, aes(x = timepoint, fill = clonotype)) +
 Phylogeny
 
 ```{r}
-library(ape)        # phylogénie
-library(ggtree)     # visualisation arbre
-library(ggtree)
-
-
 meta <- data_infer@meta.data
 
 cnv_features <- grep("proportion_scaled_cnv_chr|proportion_scaled_loss_chr|proportion_scaled_dupli_chr",colnames(meta), value=TRUE)
