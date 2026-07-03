@@ -778,3 +778,42 @@ adj_matrix <- result$adj_matrix/max(result$adj_matrix)
 final_ranked_predictions <- dget("SINCERITIES functions/final_ranked_predictions.R")
 table <- final_ranked_predictions(adj_matrix,DATA$genes,SIGN=1,saveFile = TRUE)
 ```
+
+Test SINECRITIES on one only branch (no differentiation branches) and keep just some genes (by DEG between timepoint)
+
+```{r}
+# keep only B cells cluster 0 and bridge
+data_p2<-subset(data_p2, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
+data_p2<-run_dim_red(data_p2)
+data_p2<-FindClusters(data_p2, resolution = 0.1)
+DimPlot(data_p2, reduction="umap")
+data_p2<-subset(data_p2, subset = (seurat_clusters %in% c("0","3")))
+data_p2<-subset(data_p2, subset = (Annotation %in% c("B","B intermediate","B memory","B naive","Bridge")))
+DimPlot(data_p2, reduction="umap")
+
+# features selection : DEG between timepoint
+markers<-FindAllMarkers(data_p2, group.by="timepoint", only.pos= FALSE)
+markers_sig <- subset(markers,p_val_adj < 0.05)
+genes_DE <- unique(markers_sig$gene)
+data_p2_DE <- subset(data_p2, features = genes_DE)
+head(genes_DE)
+nrow(genes_DE)
+write.csv(genes_DE,"genes_de.csv")
+
+# Data
+DATA <- GetAssayData(data_p2_DE, assay = "RNA", layer = "counts")
+DATA <- as.data.frame(t(as.matrix(DATA)))
+DATA$Time <- data_p2_DE$timepoint
+DATA$Time <- as.numeric(sub("^D", "", DATA$Time))
+rownames(DATA) <- NULL
+write.csv(DATA,"data_p2_sincerities_sub")
+
+# Sincerities 
+uploading <- dget("SINCERITIES functions/uploading.R")
+DATA <- uploading("data_p2_sincerities_sub")
+
+# SINCERITIES
+# Pb sincerities : Add sum(apply(DISTANCE_matrix, 2, function(x) length(unique(x)) <= 1))
+SINCERITIES <- dget("SINCERITIES functions/SINCERITIES.R")
+result = SINCERITIES(DATA) 
+```
