@@ -34,6 +34,7 @@ library(org.Hs.eg.db)
 library(SCENIC)
 library(ComplexHeatmap)
 library(decoupleR)
+library(forcats) 
 source("functions.R")
 ```
 
@@ -975,25 +976,6 @@ legend("bottomleft",
 ```
 
 ```{r}
-#############################################################
-# Analyse de l'évolution des activités TF à travers les timepoints
-# + calcul des deltas (variations) entre timepoints consécutifs
-# et entre D1 et D14 pour l'ensemble des TF
-#############################################################
-
-library(dplyr)
-library(tidyr)
-library(ggplot2)
-library(forcats)   # pour réordonner les facteurs dans le plot 2
-
-## -----------------------------------------------------------
-## 1. CHARGEMENT DES DONNEES
-## -----------------------------------------------------------
-# Remplace le chemin par le tien. La matrice doit avoir :
-#   - une colonne "Timepoint" (valeurs: D1, D4, D8, D11, D14)
-#   - une colonne d'ID cellule (optionnel, adapte le nom si besoin)
-#   - une colonne par TF (254 colonnes numériques)
-
 # AUC score dataframe
 df <- read.csv(params$file_step3_p2, row.names = 1, check.names=FALSE)
 df <- as.data.frame(df)
@@ -1005,31 +987,24 @@ df$CellID <- rownames(df)
 # Add timepoint
 df$timepoint <- data_p2$timepoint[
   match(df$CellID, colnames(data_p2))]
-# Ordre logique des timepoints
 tp_order <- c("D1", "D4", "D8", "D11", "D14")
 df$Timepoint <- factor(df$timepoint, levels = tp_order)
 
-# Liste des colonnes TF = tout sauf Timepoint (et un éventuel ID cellule)
-# Adapte "CellID" si ta colonne d'identifiant cellule a un autre nom
 non_tf_cols <- c("Timepoint", "CellID")
 tf_cols <- setdiff(colnames(df), non_tf_cols)
 
-## -----------------------------------------------------------
-## 2. AGREGATION : moyenne d'activité par TF et par timepoint
-##    (cellules indépendantes -> on moyenne, pas de tracking)
-## -----------------------------------------------------------
+## mean activity
+
 mean_activity <- df %>%
   group_by(Timepoint) %>%
   summarise(across(all_of(tf_cols), mean, na.rm = TRUE)) %>%
   ungroup()
 
-# Passage en format long : une ligne = (Timepoint, TF, activité moyenne)
 mean_activity_long <- mean_activity %>%
   pivot_longer(cols = all_of(tf_cols), names_to = "TF", values_to = "mean_activity")
 
-## -----------------------------------------------------------
-## 3. CALCUL DES DELTAS CONSECUTIFS (D4-D1, D8-D4, D11-D8, D14-D11)
-## -----------------------------------------------------------
+
+## Delta timepoint calculation (D4-D1, D8-D4, D11-D8, D14-D11)
 delta_consecutive <- mean_activity_long %>%
   arrange(TF, Timepoint) %>%
   group_by(TF) %>%
@@ -1044,9 +1019,8 @@ delta_consecutive <- mean_activity_long %>%
 transition_order <- c("D1->D4", "D4->D8", "D8->D11", "D11->D14")
 delta_consecutive$transition <- factor(delta_consecutive$transition, levels = transition_order)
 
-## -----------------------------------------------------------
-## 4. GRAPHIQUE 1 : évolution du delta pour des TF spécifiques
-tf_of_interest <- c("CEBPA", "SPI1", "NANOG")   # <-- à adapter
+## evolution specific TFs
+tf_of_interest <- c("CEBPA", "SPI1", "NANOG")
 
 plot_data_1 <- delta_consecutive %>%
   filter(TF %in% tf_of_interest)
@@ -1056,9 +1030,9 @@ p1 <- ggplot(plot_data_1, aes(x = transition, y = delta, color = TF, group = TF)
   geom_line(linewidth = 1) +
   geom_point(size = 2.5) +
   labs(
-    title = "Variation de l'activité des TF entre timepoints consécutifs",
-    x = "Transition entre timepoints",
-    y = "Delta d'activité (Tn - Tn-1)",
+    title = "Change in TF activity between consecutive time points",
+    x = "Transition between timepoint",
+    y = "TF activity delta (Tn - Tn-1)",
     color = "TF"
   ) +
   theme_minimal(base_size = 13) +
@@ -1067,36 +1041,36 @@ p1 <- ggplot(plot_data_1, aes(x = transition, y = delta, color = TF, group = TF)
 print(p1)
 ggsave("tf_specifiques_deltas.png", p1, width = 8, height = 5, dpi = 300)
 
-nanog_df <- df %>%
+tf <- df %>%
   dplyr::select(timepoint, SPI1)
-nanog_df$timepoint <- factor(
-  nanog_df$timepoint,
+tf$timepoint <- factor(
+  tf$timepoint,
   levels = c("D1", "D4", "D8", "D11", "D14")
 )
-ggplot(nanog_df, aes(x = timepoint, y = SPI1, fill = timepoint)) +
+ggplot(tf, aes(x = timepoint, y = SPI1, fill = timepoint)) +
   geom_violin(trim = FALSE) +
   geom_boxplot(width = 0.1, fill = "white") +
   theme_classic() +
   labs(
-    title = "NANOG TF activity across timepoints",
+    title = "SPI1 TF activity across timepoints",
     x = "Timepoint",
-    y = "NANOG activity"
+    y = "SPI1 activity"
   )
 
-nanog_df <- df %>%
+tf <- df %>%
   dplyr::select(timepoint, CEBPA)
-nanog_df$timepoint <- factor(
-  nanog_df$timepoint,
+tf$timepoint <- factor(
+  tf$timepoint,
   levels = c("D1", "D4", "D8", "D11", "D14")
 )
-ggplot(nanog_df, aes(x = timepoint, y = CEBPA, fill = timepoint)) +
+ggplot(tf, aes(x = timepoint, y = CEBPA, fill = timepoint)) +
   geom_violin(trim = FALSE) +
   geom_boxplot(width = 0.1, fill = "white") +
   theme_classic() +
   labs(
-    title = "NANOG TF activity across timepoints",
+    title = "CEBPA TF activity across timepoints",
     x = "Timepoint",
-    y = "NANOG activity"
+    y = "CEBPA activity"
   )
 
 ## Delta D1 -> D14
