@@ -33,6 +33,7 @@ library(clusterProfiler)
 library(org.Hs.eg.db)
 library(SCENIC)
 library(ComplexHeatmap)
+library(decoupleR)
 source("functions.R")
 ```
 
@@ -796,6 +797,9 @@ markers<-FindAllMarkers(data_p2, group.by="timepoint", only.pos= FALSE)
 markers_sig <- subset(markers,p_val_adj < 0.05)
 genes_DE <- unique(markers_sig$gene)
 data_p2_DE <- subset(data_p2, features = genes_DE)
+# keep only TFs
+Tf_list<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/TF_names.txt")
+tf_DE<-markers_sig[markers_sig$gene %in% Tf_list$V1, ]
 head(genes_DE)
 nrow(genes_DE)
 write.csv(genes_DE,"genes_de.csv")
@@ -816,4 +820,312 @@ DATA <- uploading("data_p2_sincerities_sub")
 # Pb sincerities : Add sum(apply(DISTANCE_matrix, 2, function(x) length(unique(x)) <= 1))
 SINCERITIES <- dget("SINCERITIES functions/SINCERITIES.R")
 result = SINCERITIES(DATA) 
+```
+
+```{r}
+# keep only B cells cluster 0 and bridge
+data_p2<-subset(data_p2, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
+data_p2<-run_dim_red(data_p2)
+data_p2<-FindClusters(data_p2, resolution = 0.1)
+DimPlot(data_p2, reduction="umap")
+data_p2<-subset(data_p2, subset = (seurat_clusters %in% c("0","3")))
+data_p2<-subset(data_p2, subset = (Annotation %in% c("B","B intermediate","B memory","B naive","Bridge")))
+DimPlot(data_p2, reduction="umap")
+
+# Filtrer et garder que les Tf, puis caluler les variation d'activité a trevers les timepoint 
+# AUC score dataframe
+auc_mtx <- read.csv(params$file_step3_p2, row.names = 1, check.names=FALSE)
+auc_mtx <- as.data.frame(auc_mtx)
+colnames(auc_mtx) <- gsub("[(+)]", "", colnames(auc_mtx))
+
+auc_mtx <- auc_mtx[colnames(data_p2),]
+auc_mtx$CellID <- rownames(auc_mtx)
+
+# Add timepoint
+auc_mtx$timepoint <- data_p2$timepoint[
+  match(auc_mtx$CellID, colnames(data_p2))]
+
+# Mean activity per tiempoint
+avg_activity <- auc_mtx %>%
+  group_by(timepoint) %>%
+  summarise(across(-CellID, mean, na.rm = TRUE))
+# Variation
+variation <- apply(avg_activity[, -1], 2, function(x) max(x) - min(x))
+variation <- sort(variation, decreasing = TRUE)
+variation_df <- data.frame(
+  TF = names(variation),
+  variation = as.numeric(variation),
+  row.names = NULL)
+TF_keep <- names(variation)[1:100]
+
+```
+
+```{r}
+# Data
+data_p2_TF <- subset(data_p2, features = TF_keep)
+DATA <- GetAssayData(data_p2_TF, assay = "RNA", layer = "counts")
+DATA <- as.data.frame(t(as.matrix(DATA)))
+DATA$Time <- data_p2_TF$timepoint
+DATA$Time <- as.numeric(sub("^D", "", DATA$Time))
+rownames(DATA) <- NULL
+write.csv(DATA,"data_p2_sincerities_TF")
+
+# Sincerities 
+uploading <- dget("SINCERITIES functions/uploading.R")
+DATA <- uploading("data_p2_sincerities_TF")
+
+# SINCERITIES
+# Pb sincerities : Add sum(apply(DISTANCE_matrix, 2, function(x) length(unique(x)) <= 1))
+SINCERITIES_PLUS <- dget("SINCERITIES functions/SINCERITIES_PLUS.R")
+result = SINCERITIES_PLUS(DATA) 
+```
+
+```{r}
+adj_matrix<-result[["adj_matrix"]]
+diag(adj_matrix) <- 0   # enlever l'auto-régulation
+
+dim(adj_matrix)
+library(tidyr)
+library(igraph)
+edges <- as.data.frame(adj_matrix) %>%
+  mutate(regulator = rownames(adj_matrix)) %>%
+  pivot_longer(
+    cols = -regulator,
+    names_to = "target",
+    values_to = "weight"
+  ) %>%
+  filter(weight > 0) %>%
+  arrange(desc(weight))
+
+head(edges)
+nrow(edges)
+
+hist(log10(edges$weight), breaks = 100,
+     main = "Distribution des poids (log10)", xlab = "log10(weight)")
+
+threshold <- quantile(edges$weight, 0.99)
+filtered <- edges %>% filter(weight >= threshold)
+nrow(filtered)
+
+top_per_target <- edges %>%
+  group_by(target) %>%
+  slice_max(weight, n = 5) %>%
+  ungroup()
+
+g <- graph_from_data_frame(filtered, directed = TRUE)
+
+vcount(g)   # nombre de gènes
+ecount(g)   # nombre d'arêtes
+
+# Identifier les hubs = régulateurs avec le plus haut out-degree (pondéré)
+hub_scores <- strength(g, mode = "out", weights = E(g)$weight)
+sort(hub_scores, decreasing = TRUE)[1:20]
+
+plot(
+  g,
+  vertex.size = 5,
+  vertex.label.cex = 0.6,
+  edge.width = E(g)$weight * 2,
+  edge.arrow.size = 0.3,
+  layout = layout_with_fr(g)
+)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(igraph)
+
+diag(adj_matrix) <- 0  # enlever l'auto-régulation
+
+edges <- as.data.frame(adj_matrix) %>%
+  mutate(regulator = rownames(adj_matrix)) %>%
+  pivot_longer(cols = -regulator, names_to = "target", values_to = "weight") %>%
+  filter(weight != 0) %>%
+  mutate(
+    sign = ifelse(weight > 0, "activation", "repression"),
+    color = ifelse(weight > 0, "forestgreen", "firebrick")
+  )
+
+top_edges <- edges %>%
+  slice_max(abs(weight), n = 100)
+
+g <- graph_from_data_frame(top_edges, directed = TRUE)
+
+# Attribuer la couleur des arêtes selon le signe
+E(g)$color <- edges$color
+E(g)$width <- abs(edges$weight) * 3   # épaisseur proportionnelle à la confiance
+
+plot(
+  g,
+  vertex.size = 6,
+  vertex.label.cex = 0.6,
+  vertex.color = "lightgrey",
+  edge.color = E(g)$color,
+  edge.width = 1.5,
+  edge.arrow.size = 0.3,
+  layout = layout_with_fr(g, weights = NA),
+  main = "GRN inféré par SINCERITIES\nVert = activation, Rouge = répression"
+)
+
+legend("bottomleft",
+       legend = c("Activation", "Répression"),
+       col = c("forestgreen", "firebrick"),
+       lty = 1, lwd = 2, bty = "n")
+```
+
+```{r}
+#############################################################
+# Analyse de l'évolution des activités TF à travers les timepoints
+# + calcul des deltas (variations) entre timepoints consécutifs
+# et entre D1 et D14 pour l'ensemble des TF
+#############################################################
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(forcats)   # pour réordonner les facteurs dans le plot 2
+
+## -----------------------------------------------------------
+## 1. CHARGEMENT DES DONNEES
+## -----------------------------------------------------------
+# Remplace le chemin par le tien. La matrice doit avoir :
+#   - une colonne "Timepoint" (valeurs: D1, D4, D8, D11, D14)
+#   - une colonne d'ID cellule (optionnel, adapte le nom si besoin)
+#   - une colonne par TF (254 colonnes numériques)
+
+# AUC score dataframe
+df <- read.csv(params$file_step3_p2, row.names = 1, check.names=FALSE)
+df <- as.data.frame(df)
+colnames(df) <- gsub("[(+)]", "", colnames(df))
+
+df <- df[colnames(data_p2),]
+df$CellID <- rownames(df)
+
+# Add timepoint
+df$timepoint <- data_p2$timepoint[
+  match(df$CellID, colnames(data_p2))]
+# Ordre logique des timepoints
+tp_order <- c("D1", "D4", "D8", "D11", "D14")
+df$Timepoint <- factor(df$timepoint, levels = tp_order)
+
+# Liste des colonnes TF = tout sauf Timepoint (et un éventuel ID cellule)
+# Adapte "CellID" si ta colonne d'identifiant cellule a un autre nom
+non_tf_cols <- c("Timepoint", "CellID")
+tf_cols <- setdiff(colnames(df), non_tf_cols)
+
+## -----------------------------------------------------------
+## 2. AGREGATION : moyenne d'activité par TF et par timepoint
+##    (cellules indépendantes -> on moyenne, pas de tracking)
+## -----------------------------------------------------------
+mean_activity <- df %>%
+  group_by(Timepoint) %>%
+  summarise(across(all_of(tf_cols), mean, na.rm = TRUE)) %>%
+  ungroup()
+
+# Passage en format long : une ligne = (Timepoint, TF, activité moyenne)
+mean_activity_long <- mean_activity %>%
+  pivot_longer(cols = all_of(tf_cols), names_to = "TF", values_to = "mean_activity")
+
+## -----------------------------------------------------------
+## 3. CALCUL DES DELTAS CONSECUTIFS (D4-D1, D8-D4, D11-D8, D14-D11)
+## -----------------------------------------------------------
+delta_consecutive <- mean_activity_long %>%
+  arrange(TF, Timepoint) %>%
+  group_by(TF) %>%
+  mutate(
+    delta = mean_activity - lag(mean_activity),
+    transition = paste0(lag(as.character(Timepoint)), "->", as.character(Timepoint))
+  ) %>%
+  filter(!is.na(delta)) %>%   # enlève la première ligne (pas de delta pour D1)
+  ungroup()
+
+# Order
+transition_order <- c("D1->D4", "D4->D8", "D8->D11", "D11->D14")
+delta_consecutive$transition <- factor(delta_consecutive$transition, levels = transition_order)
+
+## -----------------------------------------------------------
+## 4. GRAPHIQUE 1 : évolution du delta pour des TF spécifiques
+tf_of_interest <- c("CEBPA", "SPI1", "NANOG")   # <-- à adapter
+
+plot_data_1 <- delta_consecutive %>%
+  filter(TF %in% tf_of_interest)
+
+p1 <- ggplot(plot_data_1, aes(x = transition, y = delta, color = TF, group = TF)) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey40") +
+  geom_line(linewidth = 1) +
+  geom_point(size = 2.5) +
+  labs(
+    title = "Variation de l'activité des TF entre timepoints consécutifs",
+    x = "Transition entre timepoints",
+    y = "Delta d'activité (Tn - Tn-1)",
+    color = "TF"
+  ) +
+  theme_minimal(base_size = 13) +
+  theme(axis.text.x = element_text(angle = 0))
+
+print(p1)
+ggsave("tf_specifiques_deltas.png", p1, width = 8, height = 5, dpi = 300)
+
+nanog_df <- df %>%
+  dplyr::select(timepoint, SPI1)
+nanog_df$timepoint <- factor(
+  nanog_df$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+ggplot(nanog_df, aes(x = timepoint, y = SPI1, fill = timepoint)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.1, fill = "white") +
+  theme_classic() +
+  labs(
+    title = "NANOG TF activity across timepoints",
+    x = "Timepoint",
+    y = "NANOG activity"
+  )
+
+nanog_df <- df %>%
+  dplyr::select(timepoint, CEBPA)
+nanog_df$timepoint <- factor(
+  nanog_df$timepoint,
+  levels = c("D1", "D4", "D8", "D11", "D14")
+)
+ggplot(nanog_df, aes(x = timepoint, y = CEBPA, fill = timepoint)) +
+  geom_violin(trim = FALSE) +
+  geom_boxplot(width = 0.1, fill = "white") +
+  theme_classic() +
+  labs(
+    title = "NANOG TF activity across timepoints",
+    x = "Timepoint",
+    y = "NANOG activity"
+  )
+
+## Delta D1 -> D14
+delta_total <- mean_activity_long %>%
+  filter(Timepoint %in% c("D1", "D14")) %>%
+  pivot_wider(names_from = Timepoint, values_from = mean_activity) %>%
+  mutate(
+    delta_D1_D14 = D14 - D1,
+    direction = ifelse(delta_D1_D14 >= 0, "Increase", "Decrease")
+  ) %>%
+  arrange(delta_D1_D14)
+
+delta_filtered <- delta_total %>%
+  filter(abs(delta_D1_D14) > 0.005)
+
+p2 <- ggplot(delta_filtered, aes(x = TF, y = delta_D1_D14, fill = direction)) +
+  geom_col() +
+  geom_hline(yintercept = 0, color = "grey30") +
+  coord_flip() +
+  scale_fill_manual(values = c("Increase" = "#d73027", "Decrease" = "#4575b4")) +
+  labs(
+    title = "Change in TF activity between D1 and D14",
+    x = "TF",
+    y = "TFs activity delta (D14 - D1)",
+    fill = NULL
+  ) +
+  theme_minimal(base_size = 11) +
+  theme(axis.text.y = element_text(size = 10))
+print(p2)
+
+ggsave("tf_all_delta_D1_D14.png", p2, width = 8, height = 20, dpi = 300, limitsize = FALSE)
 ```
