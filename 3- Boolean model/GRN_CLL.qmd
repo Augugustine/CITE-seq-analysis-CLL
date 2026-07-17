@@ -1,0 +1,70 @@
+---
+title: "GRN CLL dataset"
+params: 
+  data: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_tpms_603samps_deseqLog10_batchcorr.tsv"
+  data_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/GSE161711_log2CPM_counts.txt"
+format: html
+editor: visual
+---
+
+## GRN CLL RNA seq bulk
+
+### **Lymph node sample**
+
+Dataset taken from the publication: Sun C, et al., 2023 doi:10.1182/bloodadvances.
+
+Bulk RNA sequencing (RNA-seq) of (1) immunomagnetically purified CD19+ cells from peripheral blood (n = 29), (2) CD19+ cells from lymph node single cell suspensions (n = 29), and (3) lymph node biopsies (n = 38). All samples were matched in 29 patients with CLL. RNA-seq of lymph node biopsies only were done in 5 patients and 4 normal controls
+
+```{r}
+data_ln<-read.table(params$data_ln,header=TRUE)
+```
+
+### **PBMC sample**
+
+Dataset from : Knisbacher, B. A., et al. 2022,<https://doi.org/10.1038/s41588-022-01140-w>
+
+603 samples of PBMC traitement naive
+
+```{r}
+library(dplyr)
+data<-read.table(params$data, sep="\t", header=TRUE)
+clinical<-read.table(params$clinical, sep="\t", header=TRUE, fill = TRUE)
+sample<-read.table(params$sample, sep="\t", header=TRUE)
+# Keep Untreated sample 
+clinical<- subset(clinical, treatment_status_at_samp=="Untreated" & prior_treatment_category=="Untreated")
+clinical$participant_id <- gsub("-", ".", clinical$participant_id)
+# Keep ID sample from data 
+samples <- unique(clinical$participant_id)
+fixed_cols <- c("Description")
+sample_cols <- intersect(colnames(data), samples)
+data <- data[, c(fixed_cols, sample_cols)]
+data <- data %>%
+  dplyr::rename(gene = Description)
+write.table(data, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix.txt", sep = "\t", quote = FALSE, col.names = NA)
+```
+
+```{r}
+data<-read.table(params$data, sep="\t", header=TRUE)
+data<-data[,-1]
+data <- data %>%
+  dplyr::rename(gene = Description)
+data$variance <- apply(data[, -1], 1, var)
+# keep gene with the higher variance
+data <- data %>%
+  group_by(gene) %>%
+  slice_max(variance, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(-variance)
+rownames(data) <-data$gene
+write.table(data, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+```
+
+```{bash}
+# ARACNe pipeline 
+for i in {1..100}
+do
+java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -e matrix.txt -o outputFolder --tfs TF_list.txt --pvalue 1E-8 --calculateThreshold --seed $i
+done
+
+java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -o outputFolder --consolidate
+```
