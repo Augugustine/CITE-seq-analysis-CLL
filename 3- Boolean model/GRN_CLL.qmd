@@ -3,6 +3,9 @@ title: "GRN CLL dataset"
 params: 
   data: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_tpms_603samps_deseqLog10_batchcorr.tsv"
   data_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/GSE161711_log2CPM_counts.txt"
+  clinical_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/SraRunTable.csv"
+  sample_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/Sample_name.txt"
+  network: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll.txt"
 format: html
 editor: visual
 ---
@@ -13,10 +16,54 @@ editor: visual
 
 Dataset taken from the publication: Sun C, et al., 2023 doi:10.1182/bloodadvances.
 
-Bulk RNA sequencing (RNA-seq) of (1) immunomagnetically purified CD19+ cells from peripheral blood (n = 29), (2) CD19+ cells from lymph node single cell suspensions (n = 29), and (3) lymph node biopsies (n = 38). All samples were matched in 29 patients with CLL. RNA-seq of lymph node biopsies only were done in 5 patients and 4 normal controls
+\(1\) bulk RNA-seq (n = 29); (2) WES (n = 14) of CD19+ tumor cells from paired PB and LN samples; (3) scRNA-seq of paired PB and LN samples (n = 5); (4) bulk RNA-seq of unsorted CLL LN samples (n = 34); and (5) bulk RNA-seq of unsorted normal LN samples (n = 4).
 
 ```{r}
+# Lymph node CLL samples
 data_ln<-read.table(params$data_ln,header=TRUE)
+clinical_ln<-read.csv(params$clinical_ln,header=TRUE)
+sample_ln<-read.table(params$sample_ln,header=F)
+colnames(sample_ln)<-c("GEO_Accession..exp.","Sample_names")
+clinical_ln<-merge(clinical_ln, sample_ln, by="GEO_Accession..exp.")
+#clinical_ln<-subset(clinical_ln, tissue == "lymph node" & diagnosis== "CLL")
+clinical_ln <- clinical_ln %>%
+  filter(grepl("LN_mix", Sample_names))
+clinical_ln<-subset(clinical_ln, tissue == "lymph node" & diagnosis != "Normal")
+
+# Filter some gene type 
+data_ln<-subset(data_ln, gene_type =="protein_coding")
+
+# Keep CLL and Lymph node mix sample  (n=34)
+data_ln <- data_ln[, c(-1,-2,-4,-5,-6,-7,-8,-9)]
+data_ln$variance <- apply(data_ln[, -1], 1, var)
+# keep gene with the higher variance
+data_ln <- data_ln %>%
+  group_by(gene_name) %>%
+  slice_max(variance, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(-variance)
+data_ln <- as.matrix(data_ln)
+data_ln <- data_ln[, grepl("LN_mix", colnames(data_ln)) | colnames(data_ln) == "gene_name"]
+data_ln <- data_ln[, grepl("CLL", colnames(data_ln)) | colnames(data_ln) == "gene_name"]
+```
+
+Gene name issus (MARCH and SEP)
+
+```{r}
+fix_gene_names <- function(x) {
+  x <- as.character(x)
+  for (i in 1:20) {
+    x <- sub(paste0("^", i, "-Mar$"), paste0("MARCH", i), x, ignore.case = TRUE)
+    x <- sub(paste0("^", i, "-Sep$"), paste0("SEPT", i), x, ignore.case = TRUE)
+  }
+  x
+}
+data_ln[, "gene_name"] <- fix_gene_names(data_ln[, "gene_name"])
+```
+
+```{r}
+data_ln <- as.matrix(data_ln)
+write.table(data_ln, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix_lymph_node.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
 ```
 
 ### **PBMC sample**
@@ -30,20 +77,10 @@ library(dplyr)
 data<-read.table(params$data, sep="\t", header=TRUE)
 clinical<-read.table(params$clinical, sep="\t", header=TRUE, fill = TRUE)
 sample<-read.table(params$sample, sep="\t", header=TRUE)
-# Keep Untreated sample 
-clinical<- subset(clinical, treatment_status_at_samp=="Untreated" & prior_treatment_category=="Untreated")
-clinical$participant_id <- gsub("-", ".", clinical$participant_id)
-# Keep ID sample from data 
-samples <- unique(clinical$participant_id)
-fixed_cols <- c("Description")
-sample_cols <- intersect(colnames(data), samples)
-data <- data[, c(fixed_cols, sample_cols)]
-data <- data %>%
-  dplyr::rename(gene = Description)
-write.table(data, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix.txt", sep = "\t", quote = FALSE, col.names = NA)
 ```
 
 ```{r}
+# Change the header and rownames format 
 data<-read.table(params$data, sep="\t", header=TRUE)
 data<-data[,-1]
 data <- data %>%
@@ -55,7 +92,10 @@ data <- data %>%
   slice_max(variance, n = 1, with_ties = FALSE) %>%
   ungroup() %>%
   select(-variance)
-rownames(data) <-data$gene
+genes <- data$gene
+data$gene <- NULL
+rownames(data) <- genes
+data <- as.matrix(data)
 write.table(data, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
 ```
 
@@ -67,4 +107,66 @@ java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -e matrix
 done
 
 java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -o outputFolder --consolidate
+```
+
+```{r}
+library(viper)
+grn<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll.txt", header=F)
+grn<-grn[-1,-4]
+write.table(grn, "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll.txt", sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
+regulon <- aracne2regulon("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll.txt", data,  format = "3col")
+
+# 
+edges <- bind_rows(
+  lapply(names(regulon), function(tf) {
+    data.frame(
+      source = tf,
+      target = names(regulon[[tf]]$tfmode),
+      sign = ifelse(regulon[[tf]]$tfmode > 0, 1L, -1L),
+      tfmode = regulon[[tf]]$tfmode,
+      likelihood = regulon[[tf]]$likelihood,
+      stringsAsFactors = FALSE)
+  }))
+
+regulon_size <- sapply(regulon, function(x) length(x$tfmode))
+hist(regulon_size)
+
+likelihoods <- unlist(lapply(regulon, function(x) x$likelihood))
+hist(likelihoods, breaks = 100)
+summary(likelihoods)
+
+edges<-edges[,c(-4,-5)]
+
+write.csv(edges, "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_CLL.csv", row.names = FALSE, quote = FALSE, col.names = TRUE)
+```
+
+Visualize the GRN network
+
+```{r}
+top_edges <- network[order(network$MI, decreasing = TRUE), ][1:200, ]
+g <- graph_from_data_frame(d = top_edges[, c("Regulator", "Target")], directed = TRUE)
+
+all_regulators <- unique(top_edges$Regulator)
+all_targets <- unique(top_edges$Target)
+
+both_nodes <- intersect(all_regulators, all_targets)
+
+E(g)$MI <- top_edges$MI
+
+V(g)$type <- case_when(
+  V(g)$name %in% both_nodes ~ "Both",
+  V(g)$name %in% all_regulators ~ "Regulator",
+  V(g)$name %in% all_targets ~ "Target",
+  TRUE ~ "Other"
+)
+
+plot<-ggraph(g, layout = "fr") +
+  geom_edge_link0(aes(edge_width = MI), alpha = 0.6, edge_colour = "grey") +
+  geom_node_point(aes(color = type), size = 5, show.legend = TRUE) +
+  geom_node_text(aes(label = name), repel = TRUE, size = 3) +
+  scale_color_manual(values = c("Regulator" = "orange", "Target" = "blue", "Both" = "purple", "Other"= "grey")) +
+  scale_edge_width(name = "MI") +
+  guides(edge_width = guide_legend(override.aes = list(linetype = 1, shape = NA))) + 
+  theme_void() + ggtitle("ARACNe GRN CLL lymph node, orange = regulators, blue = targets and purple= both")
+plot
 ```
