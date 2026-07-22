@@ -1228,3 +1228,41 @@ obj@assays <- obj@assays["RNA"]
 SaveH5Seurat(obj, filename = "Matrix/data_p3.h5Seurat", overwrite = TRUE)
 Convert("Matrix/data_p3.h5Seurat", dest = "h5ad")
 ```
+
+# Combine Patient 2 and Patient 3
+
+```{r}
+library(harmony)
+data_p2<-readRDS(params$fileP2)
+data_p3<-readRDS(params$fileP3)
+
+data_p2$patient <- "P2"
+data_p3$patient <- "P3"
+data_merged <- merge(data_p2, y = list(data_p3),
+                       add.cell.ids = c("P2", "P3"), project = "TimeCourse")
+
+data_merged[["RNA"]] <- JoinLayers(data_merged[["RNA"]])
+
+data_merged <- run_dim_red(data_merged)
+DimPlot(data_merged, group.by = "Annotation", reduction="umap")
+# Batch correction (between patient) with Harmony
+data_merged <- RunHarmony(data_merged, "patient")
+
+# no mandatory 
+data_merged <- data_merged %>% 
+    RunHarmony("patient", plot_convergence = TRUE, nclust = 50, max_iter = 10, early_stop = T)
+
+# UMAP
+data_merged <- data_merged %>%
+    RunUMAP(reduction = "harmony",  dims = 1:15)
+```
+
+```{r}
+data_myel<-subset(data_merged, subset = (Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","Macrophage", "Monocyte")))
+data_myel <- run_dim_red(data_myel)
+data_myel <- data_myel %>%
+    RunUMAP(reduction = "harmony",  dims = 1:15)
+
+# VDJ clones
+DimPlot(data_myel, reduction = "umap", group.by = "cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400","#FF004F", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
