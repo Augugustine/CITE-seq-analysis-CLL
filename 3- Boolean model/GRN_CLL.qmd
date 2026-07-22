@@ -5,7 +5,7 @@ params:
   data_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/GSE161711_log2CPM_counts.txt"
   clinical_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/SraRunTable.csv"
   sample_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/Sample_name.txt"
-  network: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll.txt"
+  network: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_ln.txt"
 format: html
 editor: visual
 ---
@@ -19,6 +19,7 @@ Dataset taken from the publication: Sun C, et al., 2023 doi:10.1182/bloodadvance
 \(1\) bulk RNA-seq (n = 29); (2) WES (n = 14) of CD19+ tumor cells from paired PB and LN samples; (3) scRNA-seq of paired PB and LN samples (n = 5); (4) bulk RNA-seq of unsorted CLL LN samples (n = 34); and (5) bulk RNA-seq of unsorted normal LN samples (n = 4).
 
 ```{r}
+library(dplyr)
 # Lymph node CLL samples
 data_ln<-read.table(params$data_ln,header=TRUE)
 clinical_ln<-read.csv(params$clinical_ln,header=TRUE)
@@ -45,11 +46,8 @@ data_ln <- data_ln %>%
 data_ln <- as.matrix(data_ln)
 data_ln <- data_ln[, grepl("LN_mix", colnames(data_ln)) | colnames(data_ln) == "gene_name"]
 data_ln <- data_ln[, grepl("CLL", colnames(data_ln)) | colnames(data_ln) == "gene_name"]
-```
 
-Gene name issus (MARCH and SEP)
-
-```{r}
+# Gene name issus (MARCH and SEP)
 fix_gene_names <- function(x) {
   x <- as.character(x)
   for (i in 1:20) {
@@ -59,11 +57,15 @@ fix_gene_names <- function(x) {
   x
 }
 data_ln[, "gene_name"] <- fix_gene_names(data_ln[, "gene_name"])
-```
-
-```{r}
 data_ln <- as.matrix(data_ln)
-write.table(data_ln, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix_lymph_node.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+#write.table(data_ln, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix_lymph_node.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+data_ln <-data.frame(data_ln)
+genes <- data_ln$gene_name
+data_ln$gene_name <- NULL
+rownames(data_ln) <- genes
+data_ln[] <- lapply(data_ln, as.numeric)
+data_ln <- as.matrix(data_ln)
 ```
 
 ### **PBMC sample**
@@ -109,12 +111,16 @@ done
 java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -o outputFolder --consolidate
 ```
 
+## GRN from ARACNe
+
 ```{r}
 library(viper)
-grn<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll.txt", header=F)
-grn<-grn[-1,-4]
-write.table(grn, "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll.txt", sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
-regulon <- aracne2regulon("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll.txt", data,  format = "3col")
+grn<-read.table(params$network, header=F)
+grn<-grn[-1,]
+grn<-subset(grn, V4 < 0.01, select=c(V1, V2, V3))
+path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll_ln.txt")
+write.table(grn, path, sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
+regulon <- aracne2regulon(path, data_ln,  format = "3col")
 
 # 
 edges <- bind_rows(
@@ -134,15 +140,18 @@ hist(regulon_size)
 likelihoods <- unlist(lapply(regulon, function(x) x$likelihood))
 hist(likelihoods, breaks = 100)
 summary(likelihoods)
+# thanks to the distrubution filter likelihood > 0.65
+edges<-subset(edges, likelihoods < 0.65, select=c(source, target, sign))
 
-edges<-edges[,c(-4,-5)]
-
-write.csv(edges, "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_CLL.csv", row.names = FALSE, quote = FALSE, col.names = TRUE)
+write.csv(edges, "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_CLL_ln.csv", row.names = FALSE, quote = FALSE, col.names = TRUE)
 ```
 
 Visualize the GRN network
 
 ```{r}
+library(igraph)
+library(ggraph)
+network<-read.table(params$network, header=T)
 top_edges <- network[order(network$MI, decreasing = TRUE), ][1:200, ]
 g <- graph_from_data_frame(d = top_edges[, c("Regulator", "Target")], directed = TRUE)
 
@@ -169,4 +178,50 @@ plot<-ggraph(g, layout = "fr") +
   guides(edge_width = guide_legend(override.aes = list(linetype = 1, shape = NA))) + 
   theme_void() + ggtitle("ARACNe GRN CLL lymph node, orange = regulators, blue = targets and purple= both")
 plot
+```
+
+```{r}
+library(igraph)
+library(ggraph)
+library(tidyverse)
+
+g <- graph_from_data_frame(edges[, c("source", "target", "sign")], directed = TRUE)
+
+E(g)$sign  <- edges$sign
+E(g)$color <- ifelse(E(g)$sign == 1, "forestgreen", "firebrick")
+
+cat("Nodes :", vcount(g), " | Edges :", ecount(g), "\n")
+
+set.seed(42)
+coords <- layout_with_drl(g)
+# if drl is not good enougth for a good visualization
+# coords <- layout_with_fr(g, niter = 200)
+
+layout_df <- create_layout(g, layout = "manual", x = coords[, 1], y = coords[, 2])
+
+p <- ggraph(layout_df) +
+  geom_edge_link(
+    aes(color = color),
+    arrow      = arrow(length = unit(1.2, "mm"), type = "closed"),
+    end_cap    = circle(0.8, "mm"),
+    alpha      = 0.15,
+    width      = 0.15
+  ) +
+  scale_edge_color_identity() +
+  geom_node_point(size = 0.6, color = "steelblue", alpha = 0.7) +
+  theme_void() +
+  labs(title = "GRN ARACNe lymph node CLL",
+       subtitle = paste0(vcount(g), " nodes, ", ecount(g), " edges | green = activation, red = repression"))
+
+print(p)
+ggsave("GRN_plot.pdf", plot = p, width = 20, height = 20, limitsize = FALSE)
+```
+
+Intersection GRN and data for BoNesis
+
+```{r}
+source("functions.R")
+data<-read_csv("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/data_binarized_tf_gene_sep.csv")
+res<-intersection_grn(data=data, grn=edges)
+length(res$common_nodes)
 ```
