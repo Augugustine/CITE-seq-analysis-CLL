@@ -36,6 +36,7 @@ library(scrapper)
 library(ggpubr)
 library(msigdbr)
 library(ggsignif)
+library(scales)
 source("functions.R")
 ```
 
@@ -113,6 +114,36 @@ full_obj$Annotation[bridge_cells] <- "Bridge"
 table(full_obj$Annotation)
 DimPlot(full_obj, group.by = "Annotation", reduction = "umap")
 #saveRDS(full_obj, file = "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2")
+```
+
+Timepoint fraction per celltype
+
+```{r}
+meta <- data_myel@meta.data
+
+df <- meta %>%
+  count(timepoint, Annotation) %>%
+  group_by(timepoint) %>%
+  mutate(Fraction = n / sum(n))
+
+cols <- c(
+  "D1"  = "#4C78A8",
+  "D4"  = "#54A24B",
+  "D8"  = "#F28E2B",
+  "D11" = "#E15759",
+  "D14" = "#B279A2")
+
+plot<-ggplot(df, aes(x = Annotation, y = Fraction, fill = timepoint)) +
+  geom_col(position = "fill") +
+  scale_y_continuous(labels = percent_format()) +
+  scale_fill_manual(values = cols) +
+  labs(x = "Cell type",
+       y = "Fraction",
+       fill = "Timepoint") +
+  theme_classic(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/timepoint_cell_merge.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
 
 Genes numbers by celltypes
@@ -1255,6 +1286,11 @@ data_merged <- data_merged %>%
 # UMAP
 data_merged <- data_merged %>%
     RunUMAP(reduction = "harmony",  dims = 1:15)
+
+
+bridge_cells <- WhichCells(data_merged, expression = Annotation == "Bridge")
+
+DimPlot(data_merged,reduction = "umap",cells.highlight = bridge_cells,cols.highlight = "red",cols = "grey85",pt.size = 0.5)
 ```
 
 ```{r}
@@ -1264,5 +1300,5 @@ data_myel <- data_myel %>%
     RunUMAP(reduction = "harmony",  dims = 1:15)
 
 # VDJ clones
-DimPlot(data_myel, reduction = "umap", group.by = "cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400","#FF004F", "grey"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+DimPlot(data_myel, reduction = "umap", group.by = "cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400","#FF004F", "#FFE000","grey","#A6DC41"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
 ```

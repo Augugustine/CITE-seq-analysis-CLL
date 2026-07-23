@@ -1,0 +1,61 @@
+---
+title: "Deconvolution"
+params: 
+  Data_bulk: "~/Documents/Singlecell-R/Scripts/Data"
+  Data_CITEseq: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_merge_p2p3.rds"
+  Output: "~/Documents/Singlecell-R/Scripts/Plots/"
+format: html
+editor: visual
+---
+
+Goal: To investigate the transdifferentiation population in various bulk datasets from CLL, Richter’s transformation (RT) and other conditions, with a view to linking this population to clinical data. To investigate using bulk data from PBMCs as well as lymph nodes.
+
+```{r}
+#| message: false
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(multideconv)
+source("functions.R")
+
+data_bulk<-readRDS(params$Data_bulk)
+data_cite<-readRDS(params$Data_CITEseq)
+```
+
+```{r}
+# Seurat object combining the two patients  
+# Calculate the top markers
+Idents(data_cite) <- "Annotation"
+markers <- FindAllMarkers(data_cite,assay = "RNA",slot = "data",only.pos = TRUE,min.pct = 0.1,logfc.threshold = 0.25)
+markers %>%
+    dplyr::filter(p_val_adj < 0.05)
+
+# Pseudobulk of my single-cell data
+pseudobulk = create_sc_pseudobulk(data_cite, cells_labels = "Annotation", sample_labels = "patient", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
+
+# Create a signature using Multideconv 
+metadata<-data_cite@meta.data
+counts_matrix <- GetAssayData(data_cite, assay = "RNA", layer = "counts")
+signatures = create_sc_signatures(counts_matrix, 
+                                  metadata, 
+                                  cells_labels = "Annotation", 
+                                  sample_labels = "patient", 
+                                  bulk_rna = pseudobulk, 
+                                  cell_markers = markers, 
+                                  name_signature = "CITE_CLL",
+                                  methods_sig = c("DWLS", "CIBERSORTx", "BSeqsc"))
+
+# Verify the signature
+benchmark = compute.benchmark(deconv_pseudo, 
+                              cells_groundtruth, 
+                              cells_extra = c("Mural.cells", "Myeloid.cells"), 
+                              corr_type = "spearman",
+                              scatter = FALSE, 
+                              plot = TRUE, 
+                              pval = 0.05, 
+                              file_name = "Deconvolution", 
+                              width = 10, 
+                              height = 15)
+
+# Deconvolution 
+```
