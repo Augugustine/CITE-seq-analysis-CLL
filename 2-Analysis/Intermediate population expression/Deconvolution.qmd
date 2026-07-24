@@ -15,40 +15,84 @@ Goal: To investigate the transdifferentiation population in various bulk dataset
 library(Seurat)
 library(ggplot2)
 library(dplyr)
-library(multideconv)
-source("functions.R")
+#library(multideconv)
+devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
+#source("functions.R")
 
+# Seurat object combining the two patients
 data_bulk<-readRDS(params$Data_bulk)
 data_cite<-readRDS(params$Data_CITEseq)
+data_cite<-subset(data_cite, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
 ```
 
+Create custom signatures based on the CITE-seq data (Patients 2 and 3) for the "intermediate population".
+
 ```{r}
-# Seurat object combining the two patients  
+# Create metacells because ~110k cells 
+data_cite$sample_time <- paste(data_cite$patient, data_cite$timepoint, sep = "_")
+metacells = create_metacells(data_cite,
+                             labels_column = "Annotation", 
+                             samples_column = "sample_time", 
+                             exclude_cells = NULL,
+                             min_cells = 50, 
+                             k = 15, 
+                             max_shared = 15, 
+                             n_workers = 1, 
+                             min_meta = 10)
+
+metacells_seurat = Seurat::CreateSeuratObject(metacells[["Counts"]], meta.data = metacells[["Metadata"]])
+
 # Calculate the top markers
 Idents(data_cite) <- "Annotation"
-markers <- FindAllMarkers(data_cite,assay = "RNA",slot = "data",only.pos = TRUE,min.pct = 0.1,logfc.threshold = 0.25)
-markers %>%
-    dplyr::filter(p_val_adj < 0.05)
+markers <- FindAllMarkers(data_cite,assay = "RNA",slot = "data", only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.8)
+# Filter significant markers
+top_markers <- markers[markers$p_val_adj < 0.05, ]
+# Split marker genes by cluster
+top_markers_list <- split(top_markers$gene, top_markers$cluster)
 
 # Pseudobulk of my single-cell data
-pseudobulk = create_sc_pseudobulk(data_cite, cells_labels = "Annotation", sample_labels = "patient", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
+pseudobulk = create_sc_pseudobulk(metacells_seurat, cells_labels = "Annotation", sample_labels = "sample_time", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
 
 # Create a signature using Multideconv 
-metadata<-data_cite@meta.data
-counts_matrix <- GetAssayData(data_cite, assay = "RNA", layer = "counts")
-signatures = create_sc_signatures(counts_matrix, 
-                                  metadata, 
+metacell_metadata<-metacells_seurat@meta.data
+signatures = create_sc_signatures(metacells[["Counts"]], 
+                                  metacell_metadata, 
                                   cells_labels = "Annotation", 
-                                  sample_labels = "patient", 
+                                  sample_labels = "sample_time", 
                                   bulk_rna = pseudobulk, 
-                                  cell_markers = markers, 
-                                  name_signature = "CITE_CLL",
-                                  methods_sig = c("DWLS", "CIBERSORTx", "BSeqsc"))
+                                  cell_markers = top_markers_list, 
+                                  name_signature = "CITE_CLL", 
+                                  credentials.mail = "sushant.parab@unito.it", 
+                                  credentials.token = "2834897837d47d520bffc8610c69b8cf",
+                                  methods_sig = c("CIBERSORTx"))
 
 # Verify the signature
+#1) deconvolution pseudobulk 
+deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
+                               normalized = FALSE,
+                               #signatures_select = c("", ""),
+                               return = TRUE, credentials.mail = "sushant.parab@unito.it", 
+                               credentials.token = "2834897837d47d520bffc8610c69b8cf",
+                               file_name = "pseudobulk")
+#2) # Counting real cell proportion 
+cells_groundtruth <- table(metacells_seurat$sample_time, metacells_seurat$Annotation)
+cells_groundtruth <- prop.table(cells_groundtruth, margin = 1)
+cells_groundtruth <- as.data.frame.matrix(cells_groundtruth)
+colnames(cells_groundtruth) <- gsub(" ", ".", colnames(cells_groundtruth))
+colnames(cells_groundtruth) <- dplyr::recode(
+  colnames(cells_groundtruth),
+  "B cell" = "B.cells",
+  "NK cell" = "NK.cells",
+  "T cell" = "T.cells",
+  "Fibroblast" = "Fibroblasts",
+  "pDC" = "Dendritic.cells",
+   "Neuroendocrine" = "Neuroendocrine.cells",
+  "Schwann" = "Schwann.cells",
+)
+
+#3) Compute deconvolution benchmark
 benchmark = compute.benchmark(deconv_pseudo, 
                               cells_groundtruth, 
-                              cells_extra = c("Mural.cells", "Myeloid.cells"), 
                               corr_type = "spearman",
                               scatter = FALSE, 
                               plot = TRUE, 
@@ -57,5 +101,21 @@ benchmark = compute.benchmark(deconv_pseudo,
                               width = 10, 
                               height = 15)
 
+```
+
+Deconvolution of CLL bulk dataset with custom signature
+
+```{r}
 # Deconvolution 
+deconv_bulk = compute.deconvolution(raw.counts = data_bulk,
+                               normalized = FALSE,
+                               #signatures_select = c("", ""),
+                               return = TRUE,
+                               file_name = "Deconvolution_bulk_CLL",  doParallel = TRUE, workers = 2)
+
+deconv_subgroups = compute.deconvolution.analysis(deconvolution = deconv_bulk,
+                                                  corr = 0.7,
+                                                  seed = 123,
+                                                  file_name = "Bulk_CLL",
+                                                  return = TRUE)
 ```
