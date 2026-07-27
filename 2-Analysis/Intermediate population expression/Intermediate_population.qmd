@@ -1302,3 +1302,54 @@ data_myel <- data_myel %>%
 # VDJ clones
 DimPlot(data_myel, reduction = "umap", group.by = "cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400","#FF004F", "#FFE000","grey","#A6DC41"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
 ```
+
+```{r}
+umap_coords <- Embeddings(data_myel, "umap")
+umap_df <- as.data.frame(umap_coords)
+colnames(umap_df)
+umap_df$cell <- rownames(umap_df)
+colnames(umap_df)
+
+x_min <- 3.5
+x_max <- 8
+y_min <- -2.5
+y_max <- 5
+
+umap_df$selected <- ifelse(
+  umap_df$umap_1 >= x_min & umap_df$umap_1 <= x_max &
+  umap_df$umap_2 >= y_min & umap_df$umap_2 <= y_max,
+  "Bridge",  
+  NA      
+)
+
+# Add "bridge" on final annotation
+umap_df <- umap_df %>%
+  mutate(
+    Annotation = ifelse(is.na(selected), data_myel$Annotation[cell], selected)
+  )
+
+data_myel$Annotation <- umap_df$Annotation[match(colnames(data_myel), umap_df$cell)]
+
+table(data_myel$Annotation)
+
+# Plot UMAP
+umap_df$Annotation <- data_myel$Annotation[match(umap_df$cell, colnames(data_myel))]
+
+plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = Annotation)) +
+  geom_point(size = 1) +
+  scale_color_manual(values = c("Bridge" = "red", "B" = "grey", "Macrophages" = "grey", "B naive" = "grey", "B memory" = "grey", "B intermediate" = "grey")) +
+  theme_minimal() +
+  ggtitle("Bridge B cells and macrophages")
+plotumap
+ggsave(paste0("bridge_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+
+
+# Add the bridge annotaion in the complete dataset
+all(data_myel@meta.data$cell == colnames(data_myel)) # TRUE
+full_obj$Annotation <- full_obj$final_annot
+bridge_cells <- rownames(data_myel@meta.data)[data_myel@meta.data$Annotation == "Bridge"]
+full_obj$Annotation[bridge_cells] <- "Bridge"
+table(full_obj$Annotation)
+DimPlot(full_obj, group.by = "Annotation", reduction = "umap")
+#saveRDS(full_obj, file = "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+```

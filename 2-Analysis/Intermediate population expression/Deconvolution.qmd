@@ -22,7 +22,8 @@ devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
 # Seurat object combining the two patients
 data_bulk<-readRDS(params$Data_bulk)
 data_cite<-readRDS(params$Data_CITEseq)
-data_cite<-subset(data_cite, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
+data_cite<-subset(data_cite, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Macrophage","Monocyte")))
+data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data_cite$Annotation)
 ```
 
 Create custom signatures based on the CITE-seq data (Patients 2 and 3) for the "intermediate population".
@@ -41,14 +42,16 @@ metacells = create_metacells(data_cite,
                              min_meta = 10)
 
 metacells_seurat = Seurat::CreateSeuratObject(metacells[["Counts"]], meta.data = metacells[["Metadata"]])
+metacells_seurat <- NormalizeData(metacells_seurat, normalization.method = "LogNormalize")
 
 # Calculate the top markers
 Idents(data_cite) <- "Annotation"
-markers <- FindAllMarkers(data_cite,assay = "RNA",slot = "data", only.pos = TRUE, min.pct = 0.1, logfc.threshold = 0.8)
+markers <- FindAllMarkers(data_cite, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
 # Filter significant markers
 top_markers <- markers[markers$p_val_adj < 0.05, ]
 # Split marker genes by cluster
 top_markers_list <- split(top_markers$gene, top_markers$cluster)
+
 
 # Pseudobulk of my single-cell data
 pseudobulk = create_sc_pseudobulk(metacells_seurat, cells_labels = "Annotation", sample_labels = "sample_time", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
@@ -70,7 +73,7 @@ signatures = create_sc_signatures(metacells[["Counts"]],
 #1) deconvolution pseudobulk 
 deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
                                normalized = FALSE,
-                               #signatures_select = c("", ""),
+                               signatures_select = c("CBSX-CITE_CLL-scRNAseq"),
                                return = TRUE, credentials.mail = "sushant.parab@unito.it", 
                                credentials.token = "2834897837d47d520bffc8610c69b8cf",
                                file_name = "pseudobulk")
@@ -78,29 +81,139 @@ deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
 cells_groundtruth <- table(metacells_seurat$sample_time, metacells_seurat$Annotation)
 cells_groundtruth <- prop.table(cells_groundtruth, margin = 1)
 cells_groundtruth <- as.data.frame.matrix(cells_groundtruth)
-colnames(cells_groundtruth) <- gsub(" ", ".", colnames(cells_groundtruth))
 colnames(cells_groundtruth) <- dplyr::recode(
   colnames(cells_groundtruth),
-  "B cell" = "B.cells",
-  "NK cell" = "NK.cells",
-  "T cell" = "T.cells",
-  "Fibroblast" = "Fibroblasts",
-  "pDC" = "Dendritic.cells",
-   "Neuroendocrine" = "Neuroendocrine.cells",
-  "Schwann" = "Schwann.cells",
+  "B cells" = "B.cells",
+  "Macrophage" = "Macrophages.cells",
+  "Monocyte" = "Monocytes",
+  "Neutrophil" = "Neutrophils",
+  "NK" = "NK.cells",
+  "CD4 T" = "CD4.cells",
+  "CD8 T" = "CD8.cells"
 )
 
 #3) Compute deconvolution benchmark
 benchmark = compute.benchmark(deconv_pseudo, 
                               cells_groundtruth, 
-                              corr_type = "spearman",
+                              corr_type = "pearson",
                               scatter = FALSE, 
                               plot = TRUE, 
                               pval = 0.05, 
                               file_name = "Deconvolution", 
                               width = 10, 
-                              height = 15)
+                              height = 5)
 
+```
+
+Optimization signature
+
+```{r}
+
+# Autre methode 
+Idents(data_cite) <- "Annotation"
+neighbours <- c("B cells", "Monocyte", "Macrophage")
+
+bridge_vs_each <- lapply(neighbours, function(ct) {
+  if (!(ct %in% levels(Idents(data_cite)))) return(NULL)
+  FindMarkers(data_cite, 
+              ident.1 = "Bridge", ident.2 = ct,
+              assay = "RNA", slot = "data",
+              only.pos = TRUE, 
+              min.pct = 0.25, 
+              logfc.threshold = 0.8,
+              min.diff.pct = 0.15)
+  })
+names(bridge_vs_each) <- neighbours
+bridge_vs_each <- Filter(Negate(is.null), bridge_vs_each)
+
+# Garder seulement les gènes significatifs contre TOUS les voisins simultanément
+# Liste des gènes significatifs pour chaque comparaison
+gene_lists <- lapply(bridge_vs_each, function(x) {
+  rownames(subset(x, p_val_adj < 0.05))
+})
+
+# Compter dans combien de comparaisons chaque gène est significatif
+gene_counts <- table(unlist(gene_lists))
+# Garder les gènes présents dans au moins 4 comparaisons
+bridge_specific <- names(gene_counts[gene_counts >= 1])
+
+length(bridge_specific)
+
+
+
+#Idents(data_cite) <- "Annotation"
+
+celltypes <- c("B cells", "Bridge", "Monocyte", "Macrophage")
+
+signature_list <- list()
+
+for (ct in celltypes) {
+
+  neighbours <- setdiff(celltypes, ct)
+
+  markers_vs_each <- lapply(neighbours, function(nb) {
+
+    FindMarkers(
+      object = data_cite,
+      ident.1 = ct,
+      ident.2 = nb,
+      assay = "RNA",
+      slot = "data",
+      only.pos = TRUE,
+      min.pct = 0.25,
+      logfc.threshold = 0.8,
+      min.diff.pct = 0.15
+    )
+
+  })
+
+  names(markers_vs_each) <- neighbours
+
+  ## Gènes significatifs pour chaque comparaison
+  gene_lists <- lapply(markers_vs_each, function(x) {
+    rownames(subset(x, p_val_adj < 0.05))
+  })
+
+  ## Nombre de comparaisons où chaque gène est significatif
+  gene_counts <- table(unlist(gene_lists))
+
+  ## Gènes significatifs contre TOUS les voisins
+  signature_list[[ct]] <- names(
+    gene_counts[gene_counts == length(neighbours)]
+  )
+
+}
+
+#Autres
+Idents(data_cite) <- "Annotation"
+celltypes <- levels(Idents(data_cite))
+top_markers_list <- list()
+
+for(ct in celltypes){
+    markers <- FindMarkers(
+        data_cite,
+        ident.1 = ct,
+        assay = "RNA",
+        slot = "data",
+        only.pos = TRUE,
+        min.pct = 0.25,
+        logfc.threshold = 0.25)
+
+    markers <- markers[markers$p_val_adj < 0.05,]
+    markers <- markers[order(markers$avg_log2FC,decreasing=TRUE),]
+    top_markers_list[[ct]] <- rownames(head(markers,50))
+
+}
+
+# Combien de gènes Bridge partage avec chaque voisin ?
+neighbours <- c("B intermediate", "B naive", "B memory", "B", "Monocyte", "Macrophage")
+
+overlap_check <- sapply(neighbours, function(ct) {
+     if (is.null(top_markers_list[[ct]])) return(NA)
+     n_overlap <- length(intersect(top_markers_list$Bridge, top_markers_list[[ct]]))
+     n_overlap / length(top_markers_list$Bridge)
+ })
+print(overlap_check)  # proportion de gènes Bridge partagés avec chaque type
 ```
 
 Deconvolution of CLL bulk dataset with custom signature
