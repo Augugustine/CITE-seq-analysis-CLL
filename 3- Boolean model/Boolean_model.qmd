@@ -33,6 +33,8 @@ library(grid)
 library(ggpubr)
 library(pROC)
 library(patchwork)
+library(decoupleR)
+library(OmnipathR)
 source("functions.R")
 ```
 
@@ -320,7 +322,18 @@ DimPlot(data_cll,reduction="umap", group.by = "TF",cols =c("CEBPA"="grey", "None
 Convert_Seurat_Anndata(data_cll, "~/Documents/Singlecell-R/Scripts/Matrix/cll_raw_macro", raw=TRUE)
 ```
 
-## 3 - Influence graph for BoNesis: DorothEA and infered GRN
+```{r}
+# Add macrostates defined bu stream2 in seurat object 
+macro_df<-read.csv("~/Documents/Singlecell-R/Scripts/Matrix/cell_annotations_macrostates.csv")
+data_cite$macrostates <- "None"
+data_cite$macrostates[macro_df$cell_id] <- macro_df$macrostates
+table(data_cite$macrostates)
+DimPlot(data_cite, group.by = "macrostates",reduction="umap")
+```
+
+## 3 - Influence graph for BoNesis: database and infered GRN
+
+### DorothEA
 
 ```{r}
 # DoRothEA 
@@ -523,4 +536,139 @@ plot<-(p1 | p2) / (p3 | p4)+
   plot_annotation(title = "Validation SCENIC, comparison with DoroTHEA",
                   theme = theme(plot.title = element_text(size = 16, face = "bold")))
 ggsave(paste0(params$Output,"score_scenic.jpeg"), plot, width = 3000, height = 2000, units = "px")
+```
+
+### GRN SCENIC
+
+```{r}
+# GRN SCENIC
+# Parameters
+NES_MIN          <- 3.0   # strength of the argument
+QVALUE_MAX       <- 0.05  # reliability of annotation (0 = directly annotated)
+ORTHO_MIN        <- 0.8   # minimal orthological identity
+TARGET_SCORE_MIN <- 0.5   # minimum target size
+
+scenic_grn <- read.csv(paste0(params$Matrix,"step_2_reg_p2.csv"), skip = 3) 
+colnames(scenic_grn) <- c("TF", "MotifID", "AUC", "NES", "MotifQvalue","OrthologousIdentity", "Annotation", "Context","TargetGenes", "RankAtMax")
+
+scenic_filt <- scenic_grn %>%
+  filter(
+    NES                 >= NES_MIN,
+    MotifQvalue         <= QVALUE_MAX,
+    OrthologousIdentity >= ORTHO_MIN)
+cat("Regulons before filtering :", nrow(scenic_grn), "\n")
+cat("Regulons after filtering  :", nrow(scenic_filt), "\n")
+
+parse_targets_with_scores <- function(tg_string) {
+  matches <- str_match_all(tg_string, "'([A-Z0-9\\-\\.]+)',\\s*([0-9\\.]+)")[[1]]
+  if (nrow(matches) == 0) return(tibble(target = character(), score = numeric()))
+  tibble(
+    target = matches[, 2],
+    score  = as.numeric(matches[, 3])
+  )
+}
+
+scenic_edges <- scenic_filt %>%
+  dplyr::select(TF, TargetGenes) %>%
+  rowwise() %>%
+  mutate(targets = list(parse_targets_with_scores(TargetGenes))) %>%
+  unnest(targets) %>%
+  dplyr::select(source = TF, target, score) %>%
+  group_by(source, target) %>%
+  summarise(score = max(score), .groups = "drop") %>%
+  filter(score >= TARGET_SCORE_MIN)
+
+cat("Edges after targets filtering:", nrow(scenic_edges), "\n")
+
+scenic_edges$sign <- "+1"
+
+write_csv(scenic, paste0(params$Matrix,"grn_bonesis.csv"))
+```
+
+Cross with data boolean model
+
+```{r}
+data_bin<-read.csv("~/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/data_binarized_tf_gene_sep.csv", row.names="macrostate")
+```
+
+### CollecTRI reduction
+
+Reduce the size of the Influence graph based on CollecTRI, as its size is causing BoNesis to crash
+
+Selection of TF based on the literature and DEG on the TF activity between macrostates
+
+```{r}
+important_tfs = c(
+  # B-cell/CLL identity
+    "PAX5","EBF1","IKZF1","IKZF3","BCL6","BACH2","TBX21", "ETV6",
+    # Myeloid identity
+    "SPI1","CEBPA","CEBPB","CEBPD","RUNX1","KLF4","MAFB","CYBB",
+    # Inflammatory signaling
+    "STAT1","STAT3","STAT5A","STAT6","NFKB1","RELA","IRF1","IRF5","IRF8",
+    # Immediate early genes
+    "FOS","JUN","ATF3", "NANOG",
+    # Proliferation
+    "MYC","TP53","FOXO1","FOXO3",
+    # Transdifferenciation 
+    "IRF4")
+
+# Differential TF activity
+# Seurat objet 
+data_p2<-readRDS(params$file_p2)
+Idents(data_p2) <- data_p2$final_annot
+data_p2<-subset(data_p2, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage")))
+# Macrostates annotation 
+annot <- read.csv("~/Documents/Singlecell-R/Scripts/Matrix/cell_annotations_macrostates.csv")
+data_p2$macrostates <- "None"
+idx <- match(colnames(data_p2), annot$cell_id)
+data_p2$macrostates[!is.na(idx)] <- annot$macrostate[idx[!is.na(idx)]]
+# AUC score dataframe
+auc_mtx <- read.csv(params$file_step3_p2, row.names = 1, check.names=FALSE)
+auc_mtx <- t(auc_mtx)
+auc_mtx <- as.data.frame(auc_mtx)
+rownames(auc_mtx) <- gsub("[(+)]", "", rownames(auc_mtx))
+auc_mtx[] <- lapply(auc_mtx, as.numeric)
+auc_mtx <- as.matrix(auc_mtx)
+
+data_p2[['TF']] <- CreateAssayObject(data = auc_mtx)
+DefaultAssay(data_p2) <- 'RNA'
+
+Idents(data_p2) <- data_p2$macrostates
+data_macrostates<-subset(data_p2, subset = (macrostates %in% c("S0","S3","S2","S11")))
+markers_tf <- FindAllMarkers(data_macrostates,assay = "TF",slot = "data", test.use = "wilcox",logfc.threshold = 0,min.pct = 0)
+markers_tf <- subset(markers_tf, p_val_adj < 0.05)
+
+deg_tfs<-unique(markers_tf$gene)
+
+# Union 
+tfs<-union(important_tfs, deg_tfs)
+
+# Reduce CollecTRI
+collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/CollecTRI_regulons.csv",sep=",", header=TRUE)
+collectri_filter<-subset(collectri, source %in% tfs,select=c("source","target","weight"))
+collectri_filter <- collectri_filter %>%
+  dplyr::rename(sign = weight)
+collectri_filter$sign <- ifelse(collectri_filter$sign == 1, "+1", "-1")
+write.table(collectri_filter, file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/Collectri.csv", sep = ",", quote = FALSE, row.names = FALSE, col.names = TRUE)
+```
+
+### GRN CLL
+
+```{r}
+source("functions.R")
+data<-read_csv("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/data_binarized_tf_gene_sep.csv")
+edges<-read_csv("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_CLL_ln.csv")
+res<-intersection_grn(data=data, grn=edges)
+length(res$common_nodes)
+```
+
+### GRN CLL + CollecTRI
+
+```{r}
+collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/CollecTRI_regulons.csv",sep=",", header=TRUE)
+collectri_filter<-subset(collectri,select=c("source","target","weight"))
+collectri_filter <- collectri_filter %>%
+  dplyr::rename(sign = weight)
+grn_cll <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_CLL_ln.csv",sep=",", header=TRUE)
+
 ```
