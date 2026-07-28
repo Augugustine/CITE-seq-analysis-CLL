@@ -1,8 +1,8 @@
 ---
 title: "Deconvolution"
 params: 
-  Data_bulk: "~/Documents/Singlecell-R/Scripts/Data"
-  Data_CITEseq: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_merge_p2p3.rds"
+  Data_bulk: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_counts_full.tsv"
+  Data_CITEseq: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds"
   Output: "~/Documents/Singlecell-R/Scripts/Plots/"
 format: html
 editor: visual
@@ -19,11 +19,11 @@ library(dplyr)
 devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
 #source("functions.R")
 
-# Seurat object combining the two patients
-data_bulk<-readRDS(params$Data_bulk)
+# CITE seq data patients 2 and 3 merged --> for the Intermediate population signatures 
 data_cite<-readRDS(params$Data_CITEseq)
-data_cite<-subset(data_cite, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Macrophage","Monocyte")))
+data_cite<-subset(data_cite, subset = Annotation != "Erythroblast")
 data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data_cite$Annotation)
+data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("CD4 T", "CD8 T", "T"), "T cells", data_cite$Annotation)
 ```
 
 Create custom signatures based on the CITE-seq data (Patients 2 and 3) for the "intermediate population".
@@ -45,14 +45,46 @@ metacells_seurat = Seurat::CreateSeuratObject(metacells[["Counts"]], meta.data =
 metacells_seurat <- NormalizeData(metacells_seurat, normalization.method = "LogNormalize")
 
 # Calculate the top markers
-Idents(data_cite) <- "Annotation"
-markers <- FindAllMarkers(data_cite, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+Idents(metacells_seurat) <- "Annotation"
+markers <- FindAllMarkers(metacells_seurat, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
 # Filter significant markers
 top_markers <- markers[markers$p_val_adj < 0.05, ]
+best_markers <- top_markers %>%
+  group_by(cluster) %>%
+  slice_head(n = 40) %>%
+  ungroup()
 # Split marker genes by cluster
 top_markers_list <- split(top_markers$gene, top_markers$cluster)
 
+# Evaluate/Checking specificity of the signatures 
+fc_col <- intersect(c("avg_log2FC", "logFC", "avg_logFC"), names(top_markers))[1]
 
+markers_scored <- top_markers %>%
+  mutate(
+    fc = .data[[fc_col]],
+    specificity = (pct.1 - pct.2) * pmax(fc, 0),
+    expr_diff = pct.1 - pct.2,
+    support = pct.1 * fc,
+    robust = ifelse(p_val_adj < 0.05 & pct.1 > 0.25, TRUE, FALSE)
+  ) %>%
+  arrange(cluster, desc(specificity), desc(fc), desc(expr_diff))
+
+best_markers <- markers_scored %>%
+  group_by(cluster) %>%
+  slice_head(n = 40) %>%
+  ungroup()
+# Split marker genes by cluster
+top_markers_list <- split(best_markers$gene, best_markers$cluster)
+
+
+DotPlot(object = metacells_seurat,
+    features = unique(best_markers$gene),
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+```{r}
 # Pseudobulk of my single-cell data
 pseudobulk = create_sc_pseudobulk(metacells_seurat, cells_labels = "Annotation", sample_labels = "sample_time", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
 
@@ -67,16 +99,17 @@ signatures = create_sc_signatures(metacells[["Counts"]],
                                   name_signature = "CITE_CLL", 
                                   credentials.mail = "sushant.parab@unito.it", 
                                   credentials.token = "2834897837d47d520bffc8610c69b8cf",
-                                  methods_sig = c("CIBERSORTx"))
+                                  methods_sig = c("BSeqsc"))
 
 # Verify the signature
 #1) deconvolution pseudobulk 
 deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
                                normalized = FALSE,
-                               signatures_select = c("CBSX-CITE_CLL-scRNAseq"),
+                               signatures_select = c("BSeqSC-CITE_CLL-scRNAseq"),
                                return = TRUE, credentials.mail = "sushant.parab@unito.it", 
                                credentials.token = "2834897837d47d520bffc8610c69b8cf",
                                file_name = "pseudobulk")
+
 #2) # Counting real cell proportion 
 cells_groundtruth <- table(metacells_seurat$sample_time, metacells_seurat$Annotation)
 cells_groundtruth <- prop.table(cells_groundtruth, margin = 1)
@@ -88,8 +121,9 @@ colnames(cells_groundtruth) <- dplyr::recode(
   "Monocyte" = "Monocytes",
   "Neutrophil" = "Neutrophils",
   "NK" = "NK.cells",
-  "CD4 T" = "CD4.cells",
-  "CD8 T" = "CD8.cells"
+  "T cells" = "T.cells",
+  "CD4 T" = "CD4.T",
+  "CD8 T" = "CD8.T"
 )
 
 #3) Compute deconvolution benchmark
@@ -102,7 +136,6 @@ benchmark = compute.benchmark(deconv_pseudo,
                               file_name = "Deconvolution", 
                               width = 10, 
                               height = 5)
-
 ```
 
 Optimization signature
@@ -219,16 +252,49 @@ print(overlap_check)  # proportion de gènes Bridge partagés avec chaque type
 Deconvolution of CLL bulk dataset with custom signature
 
 ```{r}
+# Bulk Data for the deconvolution 
+data_bulk<-read.table(params$Data_bulk, header=T)
+data_bulk<-data_bulk[,-1]
+cols_to_remove <- c("CRC.0007","CRC.0011","CRC.0028", "CRC.0033", "DFCI.5053", "JB.0010", "GCLL.0136")
+data_bulk <- data_bulk[, !colnames(data_bulk) %in% cols_to_remove]
+data_bulk$variance <- apply(data_bulk[, -1], 1, var)
+# keep gene with the higher variance
+data_bulk <- data_bulk %>%
+  group_by(Description) %>%
+  slice_max(variance, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(-variance)
+data_bulk <-data.frame(data_bulk)
+genes <- data_bulk$Description
+data_bulk$Description <- NULL
+rownames(data_bulk) <- genes
+data_bulk[] <- lapply(data_bulk, as.numeric)
+data_bulk <- as.matrix(data_bulk)
+```
+
+```{r}
 # Deconvolution 
 deconv_bulk = compute.deconvolution(raw.counts = data_bulk,
-                               normalized = FALSE,
-                               #signatures_select = c("", ""),
-                               return = TRUE,
-                               file_name = "Deconvolution_bulk_CLL",  doParallel = TRUE, workers = 2)
+                               normalized = TRUE, 
+                               methods = c("Epidish","DWLS", "CBSX"),
+                               signatures_select = c("CBSX-CITE_CLL-scRNAseq"),
+                               return = TRUE, credentials.mail = "marcelo.hurtado@inserm.fr",
+                               credentials.token = "b72981d4d0554bcfffc37472ccd8588d",
+                               file_name = "Deconvolution_bulk_CLL")
 
 deconv_subgroups = compute.deconvolution.analysis(deconvolution = deconv_bulk,
                                                   corr = 0.7,
                                                   seed = 123,
                                                   file_name = "Bulk_CLL",
                                                   return = TRUE)
+
+cor( deconv_bulk$DWLS_CBSX.CITE_CLL.scRNAseq_Bridge,deconv_bulk$Epidish_CBSX.CITE_CLL.scRNAseq_Bridge,use = "complete.obs")
+```
+
+```{r}
+# Heatmap proportion 
+pheatmap(t(prop_matrix), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE)
+# Heatmap z-score proportion 
+mat_z <- t(scale(t(prop_matrix)))
+pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE)
 ```
