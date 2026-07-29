@@ -2,6 +2,7 @@
 title: "Deconvolution"
 params: 
   Data_bulk: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_counts_full.tsv"
+  Clinical: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.nwx2hb.tsv"
   Data_CITEseq: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds"
   Output: "~/Documents/Singlecell-R/Scripts/Plots/"
 format: html
@@ -21,12 +22,12 @@ devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
 
 # CITE seq data patients 2 and 3 merged --> for the Intermediate population signatures 
 data_cite<-readRDS(params$Data_CITEseq)
-data_cite<-subset(data_cite, subset = Annotation != "Erythroblast")
+#data_cite<-subset(data_cite, subset = Annotation != "Erythroblast")
 data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data_cite$Annotation)
 data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("CD4 T", "CD8 T", "T"), "T cells", data_cite$Annotation)
 ```
 
-Create custom signatures based on the CITE-seq data (Patients 2 and 3) for the "intermediate population".
+## 1) Create custom signatures based on the CITE-seq data (Patients 2 and 3) for the "intermediate population".
 
 ```{r}
 # Create metacells because ~110k cells 
@@ -49,10 +50,6 @@ Idents(metacells_seurat) <- "Annotation"
 markers <- FindAllMarkers(metacells_seurat, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
 # Filter significant markers
 top_markers <- markers[markers$p_val_adj < 0.05, ]
-best_markers <- top_markers %>%
-  group_by(cluster) %>%
-  slice_head(n = 40) %>%
-  ungroup()
 # Split marker genes by cluster
 top_markers_list <- split(top_markers$gene, top_markers$cluster)
 
@@ -83,6 +80,8 @@ DotPlot(object = metacells_seurat,
   RotatedAxis()+labs(y = NULL, x = "Genes") +
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
 ```
+
+Validate signatures
 
 ```{r}
 # Pseudobulk of my single-cell data
@@ -249,7 +248,11 @@ overlap_check <- sapply(neighbours, function(ct) {
 print(overlap_check)  # proportion de gènes Bridge partagés avec chaque type
 ```
 
-Deconvolution of CLL bulk dataset with custom signature
+## 2) Deconvolution of CLL bulk dataset with custom signature
+
+#### PBMC: Dataset CLL-map (Knisbacher, B. A., et al. 2022)
+
+708 samples + clinical data
 
 ```{r}
 # Bulk Data for the deconvolution 
@@ -270,6 +273,15 @@ data_bulk$Description <- NULL
 rownames(data_bulk) <- genes
 data_bulk[] <- lapply(data_bulk, as.numeric)
 data_bulk <- as.matrix(data_bulk)
+
+# Clinical data 
+clinical<-read.table(params$Clinical, sep="\t", header=TRUE, fill = TRUE)
+clinical$participant_id<-gsub("-", ".", clinical$participant_id)
+
+id<-intersect(colnames(data_bulk),clinical$participant_id)
+
+clinical<-subset(clinical, participant_id %in% id)
+data_bulk <- data_bulk[, colnames(data_bulk) %in% id]
 ```
 
 ```{r}
@@ -277,7 +289,7 @@ data_bulk <- as.matrix(data_bulk)
 deconv_bulk = compute.deconvolution(raw.counts = data_bulk,
                                normalized = TRUE, 
                                methods = c("Epidish","DWLS", "CBSX"),
-                               signatures_select = c("CBSX-CITE_CLL-scRNAseq"),
+                               signatures_select = c("BSeqSC-CITE_CLL-scRNAseq"),
                                return = TRUE, credentials.mail = "marcelo.hurtado@inserm.fr",
                                credentials.token = "b72981d4d0554bcfffc37472ccd8588d",
                                file_name = "Deconvolution_bulk_CLL")
@@ -288,13 +300,25 @@ deconv_subgroups = compute.deconvolution.analysis(deconvolution = deconv_bulk,
                                                   file_name = "Bulk_CLL",
                                                   return = TRUE)
 
-cor( deconv_bulk$DWLS_CBSX.CITE_CLL.scRNAseq_Bridge,deconv_bulk$Epidish_CBSX.CITE_CLL.scRNAseq_Bridge,use = "complete.obs")
+deconv_cite<-deconv_bulk[,colnames(deconv_bulk) %in% c("DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL.scRNAseq_Bridge", "Epidish_BSeqSC.CITE_CLL.scRNAseq_Bridge","DeconRNASeq_BSeqSC.CITE_CLL.scRNAseq_Bridge")]
+correlation_bridge<-cor(deconv_cite,use = "complete.obs")
+colnames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL.scRNAseq_", ".", colnames(correlation_bridge))
+rownames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL.scRNAseq_", ".", rownames(correlation_bridge))
 ```
 
 ```{r}
 # Heatmap proportion 
-pheatmap(t(prop_matrix), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE)
+pheatmap(t(deconv_bulk), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE, annotation_col = annotation)
 # Heatmap z-score proportion 
-mat_z <- t(scale(t(prop_matrix)))
-pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE)
+mat_z <- t(scale(t(deconv_bulk)))
+pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE, annotation_col = annotation)
+
+
+# Without B cells pop 
+deconv_bcells<-deconv_bulk[, !colnames(deconv_bulk) %in% c("DWLS_BSeqSC.CITE_CLL.scRNAseq_B.cells","CBSX_BSeqSC.CITE_CLL.scRNAseq_B.cells", "Epidish_BSeqSC.CITE_CLL.scRNAseq_B.cells","DeconRNASeq_BSeqSC.CITE_CLL.scRNAseq_B.cells")]
+# Heatmap z-score proportion 
+mat_z <- t(scale(t(deconv_bcells)))
+rownames(clinical) <- clinical$participant_id
+annotation <- clinical[colnames(t(mat_z)), c("IGL_expression", "vital_status", "tumor_molecular_subtype", "cll_epitype","IGHV_mut","treatment_status_at_samp")]
+pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE, annotation_col = annotation)
 ```
