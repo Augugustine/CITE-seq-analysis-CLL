@@ -652,6 +652,19 @@ collectri_filter$sign <- ifelse(collectri_filter$sign == 1, "+1", "-1")
 write.table(collectri_filter, file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/Collectri.csv", sep = ",", quote = FALSE, row.names = FALSE, col.names = TRUE)
 ```
 
+Reduction by the number of resources as a confidence score
+
+```{r}
+library(stringr)
+collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/CollecTRI_regulons.csv",sep=",", header=TRUE)
+collectri$nb_resources<-str_count(collectri$resources, fixed(";"))
+collectri<-subset(collectri, nb_resources>1, select=c("source","target","weight"))
+collectri <- collectri %>%
+  dplyr::rename(sign = weight)
+collectri$sign <- ifelse(collectri$sign == 1, "+1", "-1")
+write.table(collectri, file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/Collectri_reduced_bis.csv", sep = ",", quote = FALSE, row.names = FALSE, col.names = TRUE)
+```
+
 ### GRN CLL
 
 ```{r}
@@ -662,13 +675,12 @@ res<-intersection_grn(data=data, grn=edges)
 length(res$common_nodes)
 ```
 
-### GRN CLL + CollecTRI
+### TRRUST v2
 
 ```{r}
-collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/CollecTRI_regulons.csv",sep=",", header=TRUE)
-collectri_filter<-subset(collectri,select=c("source","target","weight"))
-collectri_filter <- collectri_filter %>%
-  dplyr::rename(sign = weight)
-grn_cll <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_CLL_ln.csv",sep=",", header=TRUE)
-
+trrust <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/trrust_rawdata.human.tsv",sep="\t", header=F)
+trrust <- trrust[,-4]
+colnames(trrust)<- c("source","target","sign")
+trrust$sign<-ifelse(trrust$sign=="Repression", "-1","+1")
+write.table(trrust, file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/TRRUST.csv", sep = ",", quote = FALSE, row.names = FALSE, col.names = TRUE)
 ```
