@@ -321,4 +321,40 @@ mat_z <- t(scale(t(deconv_bcells)))
 rownames(clinical) <- clinical$participant_id
 annotation <- clinical[colnames(t(mat_z)), c("IGL_expression", "vital_status", "tumor_molecular_subtype", "cll_epitype","IGHV_mut","treatment_status_at_samp")]
 pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE, annotation_col = annotation)
+
+
+# Comparison clinical data 
+# Fusion clinical data and deconv results 
+data<-merge()
+# Mean 3 deconv methods 
+
+# treated and untreated, alive and dead, mutation, rai (cancer stage)
+comparisons <- list(c("Treated", "Untreated"))
+plot<-ggplot(data, aes(x = treatment_status_at_samp, y = Bridge)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test", size=6) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18),
+legend.text = element_text(size = 18) ) + xlab("Treatment status") + ylab("Intermediate population deconvolution")
+plot
+
+# Survival curve
+library(survival)
+library(survminer)
+
+# Définir OS_event, status = 1 décès/événement, 0 censuré --> OS_event
+
+# Kaplan-Meirl curve (Are the survival curves for the two groups significantly different? test log-rank)
+clinical$Bridge_group <- ifelse(clinical$Bridge_mean >= median(clinical$Bridge_mean_bin),"High","Low")
+surv_obj <- Surv(time = clinical$death_days_from_samp,event = clinical$OS_event)
+fit <- survfit(surv_obj ~ Bridge_group, data = clinical)
+
+ggsurvplot(fit, data = clinical,
+    pval = TRUE,
+    risk.table = TRUE,
+    conf.int = TRUE,
+    palette = c("#2E9FDF", "#E7B800"))
+
+# Cox model (Is the proportion of Intermediate population associated with the risk of death?)
+cox <- coxph(Surv(death_days_from_samp, OS_event) ~ Bridge_mean, data = clinical)
+
+summary(cox)
+cox <- coxph(Surv(death_days_from_samp, OS_event) ~
+        Bridge_mean , data = clinical)
 ```
