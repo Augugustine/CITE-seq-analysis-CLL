@@ -16,7 +16,10 @@ Goal: To investigate the transdifferentiation population in various bulk dataset
 library(Seurat)
 library(ggplot2)
 library(dplyr)
-#library(multideconv)
+library(survival)
+library(survminer)
+library(ggpubr)
+library(splines)
 devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
 #source("functions.R")
 
@@ -137,117 +140,6 @@ benchmark = compute.benchmark(deconv_pseudo,
                               height = 5)
 ```
 
-Optimization signature
-
-```{r}
-
-# Autre methode 
-Idents(data_cite) <- "Annotation"
-neighbours <- c("B cells", "Monocyte", "Macrophage")
-
-bridge_vs_each <- lapply(neighbours, function(ct) {
-  if (!(ct %in% levels(Idents(data_cite)))) return(NULL)
-  FindMarkers(data_cite, 
-              ident.1 = "Bridge", ident.2 = ct,
-              assay = "RNA", slot = "data",
-              only.pos = TRUE, 
-              min.pct = 0.25, 
-              logfc.threshold = 0.8,
-              min.diff.pct = 0.15)
-  })
-names(bridge_vs_each) <- neighbours
-bridge_vs_each <- Filter(Negate(is.null), bridge_vs_each)
-
-# Garder seulement les gènes significatifs contre TOUS les voisins simultanément
-# Liste des gènes significatifs pour chaque comparaison
-gene_lists <- lapply(bridge_vs_each, function(x) {
-  rownames(subset(x, p_val_adj < 0.05))
-})
-
-# Compter dans combien de comparaisons chaque gène est significatif
-gene_counts <- table(unlist(gene_lists))
-# Garder les gènes présents dans au moins 4 comparaisons
-bridge_specific <- names(gene_counts[gene_counts >= 1])
-
-length(bridge_specific)
-
-
-
-#Idents(data_cite) <- "Annotation"
-
-celltypes <- c("B cells", "Bridge", "Monocyte", "Macrophage")
-
-signature_list <- list()
-
-for (ct in celltypes) {
-
-  neighbours <- setdiff(celltypes, ct)
-
-  markers_vs_each <- lapply(neighbours, function(nb) {
-
-    FindMarkers(
-      object = data_cite,
-      ident.1 = ct,
-      ident.2 = nb,
-      assay = "RNA",
-      slot = "data",
-      only.pos = TRUE,
-      min.pct = 0.25,
-      logfc.threshold = 0.8,
-      min.diff.pct = 0.15
-    )
-
-  })
-
-  names(markers_vs_each) <- neighbours
-
-  ## Gènes significatifs pour chaque comparaison
-  gene_lists <- lapply(markers_vs_each, function(x) {
-    rownames(subset(x, p_val_adj < 0.05))
-  })
-
-  ## Nombre de comparaisons où chaque gène est significatif
-  gene_counts <- table(unlist(gene_lists))
-
-  ## Gènes significatifs contre TOUS les voisins
-  signature_list[[ct]] <- names(
-    gene_counts[gene_counts == length(neighbours)]
-  )
-
-}
-
-#Autres
-Idents(data_cite) <- "Annotation"
-celltypes <- levels(Idents(data_cite))
-top_markers_list <- list()
-
-for(ct in celltypes){
-    markers <- FindMarkers(
-        data_cite,
-        ident.1 = ct,
-        assay = "RNA",
-        slot = "data",
-        only.pos = TRUE,
-        min.pct = 0.25,
-        logfc.threshold = 0.25)
-
-    markers <- markers[markers$p_val_adj < 0.05,]
-    markers <- markers[order(markers$avg_log2FC,decreasing=TRUE),]
-    top_markers_list[[ct]] <- rownames(head(markers,50))
-
-}
-
-# Combien de gènes Bridge partage avec chaque voisin ?
-neighbours <- c("B intermediate", "B naive", "B memory", "B", "Monocyte", "Macrophage")
-
-overlap_check <- sapply(neighbours, function(ct) {
-     if (is.null(top_markers_list[[ct]])) return(NA)
-     n_overlap <- length(intersect(top_markers_list$Bridge, top_markers_list[[ct]]))
-     n_overlap / length(top_markers_list$Bridge)
- })
-print(overlap_check)  # proportion de gènes Bridge partagés avec chaque type
-```
-
 ## 2) Deconvolution of CLL bulk dataset with custom signature
 
 #### PBMC: Dataset CLL-map (Knisbacher, B. A., et al. 2022)
@@ -325,36 +217,79 @@ pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FAL
 
 # Comparison clinical data 
 # Fusion clinical data and deconv results 
-data<-merge()
+deconv_bulk$participant_id<-rownames(deconv_bulk)
+data<-merge(clinical, deconv_bulk, by="participant_id")
 # Mean 3 deconv methods 
-
+data$Bridge_mean<-rowMeans(data[, c("DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL.scRNAseq_Bridge", "Epidish_BSeqSC.CITE_CLL.scRNAseq_Bridge")])
+  
 # treated and untreated, alive and dead, mutation, rai (cancer stage)
 comparisons <- list(c("Treated", "Untreated"))
-plot<-ggplot(data, aes(x = treatment_status_at_samp, y = Bridge)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test", size=6) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18),
+plot<-ggplot(data, aes(x = treatment_status_at_samp, y = Bridge_mean)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test", size=6) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18),
 legend.text = element_text(size = 18) ) + xlab("Treatment status") + ylab("Intermediate population deconvolution")
 plot
 
 # Survival curve
-library(survival)
-library(survminer)
-
-# Définir OS_event, status = 1 décès/événement, 0 censuré --> OS_event
+# Define OS_event, where status = 1 for death/event, 0 for censored 
+data$OS_event <- ifelse(data$vital_status == "alive","0","1")
 
 # Kaplan-Meirl curve (Are the survival curves for the two groups significantly different? test log-rank)
-clinical$Bridge_group <- ifelse(clinical$Bridge_mean >= median(clinical$Bridge_mean_bin),"High","Low")
-surv_obj <- Surv(time = clinical$death_days_from_samp,event = clinical$OS_event)
-fit <- survfit(surv_obj ~ Bridge_group, data = clinical)
+data$Bridge_group <- ifelse(data$Bridge_mean >= median(data$Bridge_mean),"High","Low")
+data$Bridge_group <- ifelse(data$DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge >= median(data$DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge),"High","Low")
 
-ggsurvplot(fit, data = clinical,
+surv_obj <- Surv(time = data$os_days,event = data$os)
+fit <- survfit(surv_obj ~ Bridge_group, data = data)
+ggsurvplot(fit, data = data,
     pval = TRUE,
     risk.table = TRUE,
     conf.int = TRUE,
     palette = c("#2E9FDF", "#E7B800"))
 
 # Cox model (Is the proportion of Intermediate population associated with the risk of death?)
-cox <- coxph(Surv(death_days_from_samp, OS_event) ~ Bridge_mean, data = clinical)
-
+cox <- coxph(Surv(os_days, os) ~ Bridge_mean, data = data)
 summary(cox)
-cox <- coxph(Surv(death_days_from_samp, OS_event) ~
-        Bridge_mean , data = clinical)
+ggforest(cox, data = data)
+cox.zph(cox)
+plot(cox.zph(cox))
+
+cox_spline <- coxph(
+  Surv(os_days, os) ~ ns(Bridge_mean, df = 3),
+  data = data)
+```
+
+```{r}
+data2$Bridge_group <- ifelse(data2$Bridge_mean >= median(data2$Bridge_mean),"High","Low")
+
+data2$death_days_from_samp<-as.numeric(data2$death_days_from_samp)
+data2$OS_event<-as.numeric(data2$OS_event)
+surv_obj <- Surv(time = data2$os_days,event = data2$os)
+fit <- survfit(surv_obj ~ Bridge_group, data = data2)
+ggsurvplot(fit, data = data2,
+    pval = TRUE,
+    risk.table = TRUE,
+    conf.int = TRUE,
+    palette = c("#2E9FDF", "#E7B800"))
+
+
+q <- quantile(data$Bridge_mean, c(1/3, 2/3), na.rm = TRUE)
+
+data2 <- subset(
+  data,
+  Bridge_mean <= q[1] | Bridge_mean >= q[2]
+)
+
+data2$Bridge_group <- ifelse(
+  data2$Bridge_mean <= q[1],
+  "Low",
+  "High"
+)
+
+fit <- survfit(Surv(os_days, os) ~ Bridge_group, data = data2)
+
+ggsurvplot(
+  fit,
+  data = data2,
+  risk.table = TRUE,
+  pval = TRUE,
+  conf.int = TRUE
+)
 ```
