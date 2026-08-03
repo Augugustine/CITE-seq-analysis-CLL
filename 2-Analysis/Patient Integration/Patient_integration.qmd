@@ -1,27 +1,131 @@
 ---
-title: "Patient Integration"
-params: 
-  patient: "P2"
-  patientbis: "P3"
-  fileP2: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2"
-  fileP3: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3"
+title: "Integration patients"
 format: html
 editor: visual
 ---
 
-## Sample Integration
-
-Integrate the 2 and 3 patients
+## Integrate patients P2 and P3
 
 ```{r}
-#| message: false
-library(SeuratObject)
-library(Seurat)
-```
-
-You can add options to executable code like this
-
-```{r}
+library(harmony)
 data_p2<-readRDS(params$fileP2)
 data_p3<-readRDS(params$fileP3)
+
+data_p2$patient <- "P2"
+data_p3$patient <- "P3"
+data_merged <- merge(data_p2, y = list(data_p3),
+                       add.cell.ids = c("P2", "P3"), project = "TimeCourse")
+
+data_merged[["RNA"]] <- JoinLayers(data_merged[["RNA"]])
+
+data_merged <- run_dim_red(data_merged)
+DimPlot(data_merged, group.by = "Annotation", reduction="umap")
+# Batch correction (between patient) with Harmony
+data_merged <- RunHarmony(data_merged, "patient")
+
+# no mandatory 
+data_merged <- data_merged %>% 
+    RunHarmony("patient", plot_convergence = TRUE, nclust = 50, max_iter = 10, early_stop = T)
+
+# UMAP
+data_merged <- data_merged %>%
+    RunUMAP(reduction = "harmony",  dims = 1:15)
+
+
+bridge_cells <- WhichCells(data_merged, expression = Annotation == "Bridge")
+
+DimPlot(data_merged,reduction = "umap",cells.highlight = bridge_cells,cols.highlight = "red",cols = "grey85",pt.size = 0.5)
+```
+
+V(D)J clones
+
+```{r}
+data_myel<-subset(data_merged, subset = (Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","Macrophage", "Monocyte")))
+data_myel <- run_dim_red(data_myel)
+data_myel <- data_myel %>%
+    RunUMAP(reduction = "harmony",  dims = 1:15)
+
+# VDJ clones
+DimPlot(data_myel, reduction = "umap", group.by = "cdr3_L",cols=c("black","#12A8F5", "#E58B00", "#6A0DAD","#006400","#FF004F", "#FFE000","grey","#A6DC41"), na.value = "lightblue") + ggtitle("Clonotypes CDR3 (main CDR3) on light chain") + theme(plot.title = element_text(size = 15, hjust = 0.5))
+```
+
+New bridge annotation
+
+```{r}
+umap_coords <- Embeddings(data_myel, "umap")
+umap_df <- as.data.frame(umap_coords)
+colnames(umap_df)
+umap_df$cell <- rownames(umap_df)
+colnames(umap_df)
+
+x_min <- 3.5
+x_max <- 8
+y_min <- -2.5
+y_max <- 5
+
+umap_df$selected <- ifelse(
+  umap_df$umap_1 >= x_min & umap_df$umap_1 <= x_max &
+  umap_df$umap_2 >= y_min & umap_df$umap_2 <= y_max,
+  "Bridge",  
+  NA      
+)
+
+# Add "bridge" on final annotation
+umap_df <- umap_df %>%
+  mutate(
+    Annotation = ifelse(is.na(selected), data_myel$Annotation[cell], selected)
+  )
+
+data_myel$Annotation <- umap_df$Annotation[match(colnames(data_myel), umap_df$cell)]
+
+table(data_myel$Annotation)
+
+# Plot UMAP
+umap_df$Annotation <- data_myel$Annotation[match(umap_df$cell, colnames(data_myel))]
+
+plotumap<-ggplot(umap_df, aes(x = umap_1, y = umap_2, color = Annotation)) +
+  geom_point(size = 1) +
+  scale_color_manual(values = c("Bridge" = "red", "B" = "grey", "Macrophages" = "grey", "B naive" = "grey", "B memory" = "grey", "B intermediate" = "grey")) +
+  theme_minimal() +
+  ggtitle("Bridge B cells and macrophages")
+plotumap
+ggsave(paste0("bridge_umap_", params$patient, ".jpeg"), plotumap, width = 3000, height = 2000, units = "px")
+
+
+# Add the bridge annotaion in the complete dataset
+all(data_myel@meta.data$cell == colnames(data_myel)) # TRUE
+full_obj$Annotation <- full_obj$final_annot
+bridge_cells <- rownames(data_myel@meta.data)[data_myel@meta.data$Annotation == "Bridge"]
+full_obj$Annotation[bridge_cells] <- "Bridge"
+table(full_obj$Annotation)
+DimPlot(full_obj, group.by = "Annotation", reduction = "umap")
+#saveRDS(full_obj, file = "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+```
+
+Metacells
+
+```{r}
+data_cite<-readRDS(params$Data_CITEseq)
+data_cite<-subset(data_cite, subset = (Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","Macrophage","Monocyte")))
+data_cite$sample_time <- paste(data_cite$patient, data_cite$timepoint, sep = "_")
+
+metacells = create_metacells(data_cite,
+                             labels_column = "Annotation", 
+                             samples_column = "sample_time", 
+                             exclude_cells = NULL,
+                             min_cells = 10, 
+                             k = 15, 
+                             max_shared = 2, 
+                             n_workers = 1, 
+                             min_meta = 10)
+
+metacells_seurat = Seurat::CreateSeuratObject(metacells[["Counts"]], meta.data = metacells[["Metadata"]])
+metacells_seurat$patient <- ifelse(grepl("^P2", metacells_seurat$sample_time), "P2", "P3")
+
+#UMAP
+metacells_seurat <- metacells_seurat %>% 
+    RunHarmony("patient", plot_convergence = TRUE, nclust = 50, max_iter = 10, early_stop = T)
+metacells_seurat <- metacells_seurat %>%
+    RunUMAP(reduction = "harmony",  dims = 1:10)
+DimPlot(metacells_seurat, reduction="umap", group.by="Annotation")
 ```
