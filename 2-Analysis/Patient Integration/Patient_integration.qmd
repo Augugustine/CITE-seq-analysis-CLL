@@ -1,13 +1,29 @@
 ---
 title: "Integration patients"
+params:
+  fileP2: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+  fileP3: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3.rds"
+  Data_CITEseq: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds"
 format: html
 editor: visual
 ---
 
 ## Integrate patients P2 and P3
 
+### Libraries 
+
 ```{r}
 library(harmony)
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(hdWGCNA)
+devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
+```
+
+###  Integration
+
+```{r}
 data_p2<-readRDS(params$fileP2)
 data_p3<-readRDS(params$fileP3)
 
@@ -37,7 +53,7 @@ bridge_cells <- WhichCells(data_merged, expression = Annotation == "Bridge")
 DimPlot(data_merged,reduction = "umap",cells.highlight = bridge_cells,cols.highlight = "red",cols = "grey85",pt.size = 0.5)
 ```
 
-V(D)J clones
+### V(D)J clones
 
 ```{r}
 data_myel<-subset(data_merged, subset = (Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","Macrophage", "Monocyte")))
@@ -102,7 +118,9 @@ DimPlot(full_obj, group.by = "Annotation", reduction = "umap")
 #saveRDS(full_obj, file = "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
 ```
 
-Metacells
+### Metacells
+
+Goal: reduce the object size
 
 ```{r}
 data_cite<-readRDS(params$Data_CITEseq)
@@ -114,7 +132,7 @@ metacells = create_metacells(data_cite,
                              samples_column = "sample_time", 
                              exclude_cells = NULL,
                              min_cells = 10, 
-                             k = 15, 
+                             k = 10, 
                              max_shared = 2, 
                              n_workers = 1, 
                              min_meta = 10)
@@ -126,6 +144,42 @@ metacells_seurat$patient <- ifelse(grepl("^P2", metacells_seurat$sample_time), "
 metacells_seurat <- metacells_seurat %>% 
     RunHarmony("patient", plot_convergence = TRUE, nclust = 50, max_iter = 10, early_stop = T)
 metacells_seurat <- metacells_seurat %>%
-    RunUMAP(reduction = "harmony",  dims = 1:10)
+    RunUMAP(reduction = "harmony",  dims = 1:15)
 DimPlot(metacells_seurat, reduction="umap", group.by="Annotation")
+```
+
+```{r}
+data_cite <- NormalizeData(data_cite)
+data_cite <- FindVariableFeatures(data_cite, selection.method = "vst", nfeatures = 2000)
+all.genes <- rownames(data_cite)
+data_cite <- ScaleData(data_cite, features = all.genes)
+data_cite <- RunPCA(data_cite, features = VariableFeatures(object = data_cite))
+data_cite <- FindNeighbors(data_cite, dims = 1:10)
+data_cite <- RunUMAP(data_cite, dims = 1:10)
+
+data_cite <- SetupForWGCNA(
+  data_cite,
+  gene_select = "fraction", # the gene selection approach
+  fraction = 0.05, # fraction of cells that a gene needs to be expressed in order to be included
+  wgcna_name = "metacells" # the name of the hdWGCNA experiment
+)
+
+metacells<-MetacellsByGroups(
+  data_cite,
+  group.by = c("sample_time"),
+  ident.group = "sample_time",
+  k = 15,
+  reduction = "pca",
+  dims = NULL,
+  assay = NULL,
+  slot = "counts",
+  layer = "counts",
+  mode = "average",
+  cells.use = NULL,
+  min_cells = 100,
+  max_shared = 15,
+  target_metacells = 50000,
+  max_iter = 5000,
+  verbose = FALSE,
+  wgcna_name = NULL)
 ```
