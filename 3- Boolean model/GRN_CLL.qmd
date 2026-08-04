@@ -5,7 +5,7 @@ params:
   data_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/GSE161711_log2CPM_counts.txt"
   clinical_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/SraRunTable.csv"
   sample_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/Sample_name.txt"
-  network: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_ln.txt"
+  network: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll_ln.txt"
 format: html
 editor: visual
 ---
@@ -118,7 +118,7 @@ library(viper)
 grn<-read.table(params$network, header=F)
 grn<-grn[-1,]
 grn<-subset(grn, V4 < 0.01, select=c(V1, V2, V3))
-path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_cll_ln.txt")
+path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_for_viper.txt")
 write.table(grn, path, sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
 regulon <- aracne2regulon(path, data_ln,  format = "3col")
 
@@ -144,6 +144,76 @@ summary(likelihoods)
 edges<-subset(edges, likelihoods < 0.65, select=c(source, target, sign))
 
 write.csv(edges, "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_CLL_ln.csv", row.names = FALSE, quote = FALSE, col.names = TRUE)
+```
+
+```{r}
+library(ggplot2)
+
+grn<-read.table(params$network, header=T)
+
+# Distribution of p-values
+ggplot(grn, aes(x = pvalue)) +
+  geom_histogram(bins = 50, color = "black", fill = "steelblue") +
+  labs(title = "Distribution of p-values", x = "p-value",y = "Count") + theme_classic()
+
+# Distribution of MI
+ggplot(grn, aes(x = MI)) +
+  geom_histogram(bins = 50, color = "black", fill = "tomato") +
+  labs( title = "Distribution of Mutual Information", x = "Mutual Information", y = "Count") +
+  theme_classic()
+
+grn<-subset(grn, MI < 0.9 & pvalue < 0.01, select=c(Regulator, Target, MI))
+
+path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_for_viper.txt")
+write.table(grn, path, sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
+
+regulon <- aracne2regulon(path, data_ln,  format = "3col")
+
+# 
+edges <- bind_rows(
+  lapply(names(regulon), function(tf) {
+    data.frame(
+      source = tf,
+      target = names(regulon[[tf]]$tfmode),
+      sign = ifelse(regulon[[tf]]$tfmode > 0, 1L, -1L),
+      tfmode = regulon[[tf]]$tfmode,
+      likelihood = regulon[[tf]]$likelihood,
+      stringsAsFactors = FALSE)
+  }))
+
+regulon_size <- sapply(regulon, function(x) length(x$tfmode))
+hist(regulon_size)
+
+likelihoods <- unlist(lapply(regulon, function(x) x$likelihood))
+hist(likelihoods, breaks = 100)
+summary(likelihoods)
+
+tfmode <- unlist(lapply(regulon, function(x) x$tfmode))
+# Negative values
+hist(tfmode[tfmode < 0], breaks = 100,main = "Distribution of negative tfmode values", xlab = "tfmode", col = "tomato", border = "white")
+# Positive values
+hist(tfmode[tfmode > 0],breaks = 100, main = "Distribution of positive tfmode values",xlab = "tfmode",col = "steelblue",border = "white")
+
+edges<-subset(edges, tfmode > 0.8 | tfmode < -0.6)
+```
+
+Intersection with CollecTRI
+
+```{r}
+library(dplyr)
+
+collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/CollecTRI_regulons.csv",sep=",", header=TRUE)
+
+grn <-subset(grn, select=c("Regulator","Target"))
+grn <- grn %>%
+  dplyr::rename(source= Regulator, target=Target)
+collectri<-subset(collectri, select=c("source","target","weight"))
+collectri <- collectri %>%
+  dplyr::rename(sign = weight)
+
+interactions_common <- inner_join(
+  collectri,
+  grn, by = c("source", "target"))
 ```
 
 Visualize the GRN network

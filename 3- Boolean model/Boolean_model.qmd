@@ -595,63 +595,6 @@ data_bin<-read.csv("~/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bones
 
 Reduce the size of the Influence graph based on CollecTRI, as its size is causing BoNesis to crash
 
-Selection of TF based on the literature and DEG on the TF activity between macrostates
-
-```{r}
-important_tfs = c(
-  # B-cell/CLL identity
-    "PAX5","EBF1","IKZF1","IKZF3","BCL6","BACH2","TBX21", "ETV6",
-    # Myeloid identity
-    "SPI1","CEBPA","CEBPB","CEBPD","RUNX1","KLF4","MAFB","CYBB",
-    # Inflammatory signaling
-    "STAT1","STAT3","STAT5A","STAT6","NFKB1","RELA","IRF1","IRF5","IRF8",
-    # Immediate early genes
-    "FOS","JUN","ATF3", "NANOG",
-    # Proliferation
-    "MYC","TP53","FOXO1","FOXO3",
-    # Transdifferenciation 
-    "IRF4")
-
-# Differential TF activity
-# Seurat objet 
-data_p2<-readRDS(params$file_p2)
-Idents(data_p2) <- data_p2$final_annot
-data_p2<-subset(data_p2, subset = (final_annot %in% c("B","B intermediate","B memory","B naive","Macrophage")))
-# Macrostates annotation 
-annot <- read.csv("~/Documents/Singlecell-R/Scripts/Matrix/cell_annotations_macrostates.csv")
-data_p2$macrostates <- "None"
-idx <- match(colnames(data_p2), annot$cell_id)
-data_p2$macrostates[!is.na(idx)] <- annot$macrostate[idx[!is.na(idx)]]
-# AUC score dataframe
-auc_mtx <- read.csv(params$file_step3_p2, row.names = 1, check.names=FALSE)
-auc_mtx <- t(auc_mtx)
-auc_mtx <- as.data.frame(auc_mtx)
-rownames(auc_mtx) <- gsub("[(+)]", "", rownames(auc_mtx))
-auc_mtx[] <- lapply(auc_mtx, as.numeric)
-auc_mtx <- as.matrix(auc_mtx)
-
-data_p2[['TF']] <- CreateAssayObject(data = auc_mtx)
-DefaultAssay(data_p2) <- 'RNA'
-
-Idents(data_p2) <- data_p2$macrostates
-data_macrostates<-subset(data_p2, subset = (macrostates %in% c("S0","S3","S2","S11")))
-markers_tf <- FindAllMarkers(data_macrostates,assay = "TF",slot = "data", test.use = "wilcox",logfc.threshold = 0,min.pct = 0)
-markers_tf <- subset(markers_tf, p_val_adj < 0.05)
-
-deg_tfs<-unique(markers_tf$gene)
-
-# Union 
-tfs<-union(important_tfs, deg_tfs)
-
-# Reduce CollecTRI
-collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/CollecTRI_regulons.csv",sep=",", header=TRUE)
-collectri_filter<-subset(collectri, source %in% tfs,select=c("source","target","weight"))
-collectri_filter <- collectri_filter %>%
-  dplyr::rename(sign = weight)
-collectri_filter$sign <- ifelse(collectri_filter$sign == 1, "+1", "-1")
-write.table(collectri_filter, file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/Collectri.csv", sep = ",", quote = FALSE, row.names = FALSE, col.names = TRUE)
-```
-
 Reduction by the number of resources as a confidence score
 
 ```{r}
