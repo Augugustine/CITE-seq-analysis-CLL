@@ -20,6 +20,7 @@ library(survival)
 library(survminer)
 library(ggpubr)
 library(splines)
+library(starTracer)
 devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
 #source("functions.R")
 
@@ -31,6 +32,8 @@ data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("CD4 T", "CD8 T", "T"),
 ```
 
 ## 1) Create custom signatures based on the CITE-seq data (Patients 2 and 3) for the "intermediate population".
+
+Metacells
 
 ```{r}
 # Create metacells because ~110k cells 
@@ -47,10 +50,12 @@ metacells = create_metacells(data_cite,
 
 metacells_seurat = Seurat::CreateSeuratObject(metacells[["Counts"]], meta.data = metacells[["Metadata"]])
 metacells_seurat <- NormalizeData(metacells_seurat, normalization.method = "LogNormalize")
+```
 
+```{r}
 # Calculate the top markers
-Idents(metacells_seurat) <- "Annotation"
-markers <- FindAllMarkers(metacells_seurat, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+Idents(data_cite) <- "Annotation"
+markers <- FindAllMarkers(data_cite, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
 # Filter significant markers
 top_markers <- markers[markers$p_val_adj < 0.05, ]
 # Split marker genes by cluster
@@ -77,14 +82,78 @@ best_markers <- markers_scored %>%
 top_markers_list <- split(best_markers$gene, best_markers$cluster)
 
 
-DotPlot(object = metacells_seurat,
+DotPlot(object = data_cite,
     features = unique(best_markers$gene),
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+markers_B <- FindMarkers(metacells_seurat, ident.1 = "Bridge" , ident.2 = "B cells" , assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+markers_B <- markers_B[markers_B$p_val_adj < 0.05, ]
+markers_B$diff<-markers_B$pct.1-markers_B$pct.2
+markers_B_diff <- markers_B[markers_B$diff > 0.3, ]
+markers_B_diff$gene<-rownames(markers_B_diff)
+
+
+markers_macro <- FindMarkers(metacells_seurat, ident.1 = "Bridge" , ident.2 = "Macrophage" , assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+markers_macro <- markers_macro[markers_macro$p_val_adj < 0.05, ]
+markers_macro$diff<-markers_macro$pct.1-markers_macro$pct.2
+markers_macro_diff <- markers_macro[markers_macro$diff > 0.3, ]
+markers_macro_diff$gene<-rownames(markers_macro_diff)
+
+# Intersect and union
+inter<-intersect(markers_macro_diff$gene, markers_B_diff$gene)
+union<-union(markers_macro_diff$gene, markers_B_diff$gene)
+markers_test<-unique(best_markers$gene)
+markers_test<-union(markers_test, union)
+```
+
+Markers selection (starTracer)
+
+```{r}
+DefaultAssay(data_cite) <- "RNA"
+Idents(data_cite) <- data_cite$Annotation
+data_cite <- subset(data_cite, subset = Annotation %in% c("B cells","T cells","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
+data_cite <- FindVariableFeatures(data_cite, selection.method = "vst", nfeatures = 2000)
+
+res <- searchMarker(
+  x = data_cite, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 20,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = Annotation)
+
+markers<-res[["exprs.markers"]]
+markers<-as.data.frame(markers)
+markers_genes<-rownames(markers)
+
+# Split marker genes by cluster
+top_markers_df <- res$para_frame[res$para_frame$gene %in% res$genes.markers, ]
+nrow(top_markers_df)
+length(res$genes.markers)
+# List by cluster
+markers_gene <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
+str(markers_gene)
+sapply(markers_gene, length)
+
+# Plots
+DotPlot(object = data_cite,
+    features = markers_genes,
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+DotPlot(object = metacells_seurat,
+    features = markers_genes,
     group.by = "Annotation") +
   RotatedAxis()+labs(y = NULL, x = "Genes") +
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
 ```
 
-Validate signatures
+Signatures
 
 ```{r}
 # Pseudobulk of my single-cell data
@@ -97,10 +166,10 @@ signatures = create_sc_signatures(metacells[["Counts"]],
                                   cells_labels = "Annotation", 
                                   sample_labels = "sample_time", 
                                   bulk_rna = pseudobulk, 
-                                  cell_markers = top_markers_list, 
+                                  cell_markers = markers_gene, 
                                   name_signature = "CITE_CLL", 
-                                  credentials.mail = "sushant.parab@unito.it", 
-                                  credentials.token = "2834897837d47d520bffc8610c69b8cf",
+                                  credentials.mail = "augustine.blanc-boekholt@inserm.fr", 
+                                  credentials.token = "614b135494faade1a53c2ebc62b55829",
                                   methods_sig = c("BSeqsc"))
 
 # Verify the signature
@@ -108,8 +177,9 @@ signatures = create_sc_signatures(metacells[["Counts"]],
 deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
                                normalized = FALSE,
                                signatures_select = c("BSeqSC-CITE_CLL-scRNAseq"),
-                               return = TRUE, credentials.mail = "sushant.parab@unito.it", 
-                               credentials.token = "2834897837d47d520bffc8610c69b8cf",
+                               return = TRUE, 
+                               credentials.mail = "augustine.blanc-boekholt@inserm.fr",
+                               credentials.token = "614b135494faade1a53c2ebc62b55829",
                                file_name = "pseudobulk")
 
 #2) # Counting real cell proportion 
