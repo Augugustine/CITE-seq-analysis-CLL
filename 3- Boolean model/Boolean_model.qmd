@@ -1,8 +1,8 @@
 ---
 title: "Boolean model"
 params: 
-  patient: "P2"
-  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+  patient: "P3"
+  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P3.rds"
   Matrix: "~/Documents/Singlecell-R/Scripts/Matrix/"
   Output: "~/Documents/Singlecell-R/Scripts/Plots/"
 format: html
@@ -56,8 +56,10 @@ CLL cells + myeloid cells
 ```{r}
 data<-subset(data_patient, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
 data<-run_dim_red(data)
-data$timepoint <- factor(data$timepoint, levels = c("D1", "D4", "D8", "D11", "D14"))
+```
 
+```{r}
+data$timepoint <- factor(data$timepoint, levels = c("D1", "D4", "D8", "D11", "D14"))
 plot<-DimPlot(data, group.by = "Annotation", reduction="umap")
 plot1<-DimPlot(data, group.by = "timepoint", reduction="umap")
 p<-plot+plot1
@@ -271,43 +273,29 @@ dev.off()
 
 ## 2- Macrostates definition
 
-Based on : Initial states are D1 and intermediate B cells in the different CLL clusters (clusters 0 and 1). Terminal states are D14 and naive B cells for clusters 1, D14 and B intermediate in cluster 2, and all the bridge (no timepoint selection)
+Based on : STREAM2 trajectory on python (script Stream2_macrostates)
 
-Constraints/Trajectory : I1 –\> T1, I1 –\> T3, I2 –\>T2, I2-\>T3
-
-```{r}
-data$macrostates <- ifelse(
-  data$seurat_clusters == "0" & data$timepoint == "D1" & data$Annotation == "B intermediate",
-  "I1",
-  ifelse(
-    data$Annotation == "Bridge",
-    "T1", 
-    ifelse(
-      data$seurat_clusters == "2" & data$timepoint == "D14" & data$Annotation == "B intermediate",
-      "T3",
-      ifelse(
-        data$seurat_clusters == "1" & data$timepoint == "D1" & data$Annotation == "B intermediate",
-        "I2",
-        ifelse(
-        data$seurat_clusters == "1" & data$timepoint == "D14" & data$Annotation == "B naive",
-        "T2", "None")))))
-
-Idents(data) <- data$macrostates
-cells_red  <- WhichCells(data, idents = c("I1","I2"))
-cells_blue <- WhichCells(data, idents = c("T1","T2","T3"))
-cells_grey <- setdiff(colnames(data), c(cells_red, cells_blue))
-plot<-DimPlot(data,reduction = "umap",cells.highlight = list(Initial = cells_red, Terminal = cells_blue),cols.highlight = c("Initial" = "darkblue", "Terminal" = "red"), sizes.highlight = 0.1, pt.size = 0.01) + ggtitle("Macrostates based on the timepoint, cluster and cell type")
-ggsave("~/Documents/Singlecell-R/Scripts/Plots/macrostate.jpeg", plot, width = 3000, height = 2000, units = "px")
-```
+1)  Export the data to AnnData using the subset of CLL B cells and myeloid cells
 
 ```{r}
-data_cll<-subset(data, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge")))
+data_cll<-subset(data, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
 data_cll<-run_dim_red(data_cll)
-Convert_Seurat_Anndata(data_cll, "~/Documents/Singlecell-R/Scripts/Matrix/cll_raw_macro", raw=TRUE)
+Convert_Seurat_Anndata(data_cll, "~/Documents/Singlecell-R/Scripts/Matrix/cll_raw_macro_p3", raw=TRUE)
 ```
 
 ```{r}
-data_cll<-subset(data_p2, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
+# Add macrostates defined by stream2 in seurat object 
+macro_df<-read.csv("~/Documents/Singlecell-R/Scripts/Matrix/cell_annotations_macrostates.csv")
+data_cite$macrostates <- "None"
+data_cite$macrostates[macro_df$cell_id] <- macro_df$macrostates
+table(data_cite$macrostates)
+DimPlot(data_cite, group.by = "macrostates",reduction="umap")
+```
+
+Look at the activity of some TFs in the trajectory in STREAM2
+
+```{r}
+data_cll<-subset(data, subset = (Annotation %in% c("B intermediate", "B naive", "B memory", "B", "Bridge","Monocyte","Macrophage")))
 data_cll<-run_dim_red(data_cll)
 data_cll<-FindClusters(data_cll,resolution = 0.1)
 DimPlot(data_cll,reduction="umap")
@@ -320,15 +308,6 @@ data_cll<-run_dim_red(data_cll)
 DimPlot(data_cll,reduction="umap")
 DimPlot(data_cll,reduction="umap", group.by = "TF",cols =c("CEBPA"="grey", "None"="grey", "NANOG"="blue","NANOG+CEBPA"="darkgreen"))
 Convert_Seurat_Anndata(data_cll, "~/Documents/Singlecell-R/Scripts/Matrix/cll_raw_macro", raw=TRUE)
-```
-
-```{r}
-# Add macrostates defined bu stream2 in seurat object 
-macro_df<-read.csv("~/Documents/Singlecell-R/Scripts/Matrix/cell_annotations_macrostates.csv")
-data_cite$macrostates <- "None"
-data_cite$macrostates[macro_df$cell_id] <- macro_df$macrostates
-table(data_cite$macrostates)
-DimPlot(data_cite, group.by = "macrostates",reduction="umap")
 ```
 
 ## 3 - Influence graph for BoNesis: database and infered GRN
@@ -602,10 +581,11 @@ library(stringr)
 collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/CollecTRI_regulons.csv",sep=",", header=TRUE)
 collectri$nb_resources<-str_count(collectri$resources, fixed(";"))
 collectri<-subset(collectri, nb_resources>1, select=c("source","target","weight"))
+collectri<-subset(collectri, nb_resources>=3 & sign_decision!= "default activation")
 collectri <- collectri %>%
   dplyr::rename(sign = weight)
 collectri$sign <- ifelse(collectri$sign == 1, "+1", "-1")
-write.table(collectri, file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/Collectri_reduced_bis.csv", sep = ",", quote = FALSE, row.names = FALSE, col.names = TRUE)
+write.table(collectri, file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/Collectri_reduced_ressources2.csv", sep = ",", quote = FALSE, row.names = FALSE, col.names = TRUE)
 ```
 
 ### GRN CLL
