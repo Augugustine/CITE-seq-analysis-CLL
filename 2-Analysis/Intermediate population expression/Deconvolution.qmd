@@ -36,6 +36,7 @@ data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("CD4 T", "CD8 T", "T"),
 Metacells
 
 ```{r}
+data_cite <- subset(data_cite, subset = Annotation %in% c("B intermediate","B naive", "B memory","CD4 T","CD8 T","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
 # Create metacells because ~110k cells 
 data_cite$sample_time <- paste(data_cite$patient, data_cite$timepoint, sep = "_")
 metacells = create_metacells(data_cite,
@@ -51,6 +52,8 @@ metacells = create_metacells(data_cite,
 metacells_seurat = Seurat::CreateSeuratObject(metacells[["Counts"]], meta.data = metacells[["Metadata"]])
 metacells_seurat <- NormalizeData(metacells_seurat, normalization.method = "LogNormalize")
 ```
+
+Markers Seurat (wilcoxon test)
 
 ```{r}
 # Calculate the top markers
@@ -114,6 +117,7 @@ Markers selection (starTracer)
 DefaultAssay(data_cite) <- "RNA"
 Idents(data_cite) <- data_cite$Annotation
 data_cite <- subset(data_cite, subset = Annotation %in% c("B cells","T cells","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
+data_cite <- subset(data_cite, subset = Annotation %in% c("B intermediate","B naive", "B memory","CD4 T","CD8 T","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
 data_cite <- FindVariableFeatures(data_cite, selection.method = "vst", nfeatures = 2000)
 
 res <- searchMarker(
@@ -175,7 +179,7 @@ signatures = create_sc_signatures(metacells[["Counts"]],
 # Verify the signature
 #1) deconvolution pseudobulk 
 deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
-                               normalized = FALSE,
+                               normalized = FALSE, methods = c("Epidish", "DeconRNASeq", "DWLS","CBSX"),
                                signatures_select = c("BSeqSC-CITE_CLL-scRNAseq"),
                                return = TRUE, 
                                credentials.mail = "augustine.blanc-boekholt@inserm.fr",
@@ -201,7 +205,7 @@ colnames(cells_groundtruth) <- dplyr::recode(
 #3) Compute deconvolution benchmark
 benchmark = compute.benchmark(deconv_pseudo, 
                               cells_groundtruth, 
-                              corr_type = "pearson",
+                              corr_type = "spearman",
                               scatter = FALSE, 
                               plot = TRUE, 
                               pval = 0.05, 
