@@ -607,3 +607,59 @@ colnames(trrust)<- c("source","target","sign")
 trrust$sign<-ifelse(trrust$sign=="Repression", "-1","+1")
 write.table(trrust, file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/TRRUST.csv", sep = ",", quote = FALSE, row.names = FALSE, col.names = TRUE)
 ```
+
+Comparison between DorothEA and CollecTRI filtered
+
+```{r}
+# Network database
+load("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/dorothea_hs.rda")
+net_doro <- dorothea_hs
+net_doro <- subset(net_doro, confidence=="A")
+net_collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_p2/Collectri_reduced_ressources2.csv",sep=",", header=TRUE)
+
+targets <- c('CEBPA', 'SPI1')
+
+# Display of incoming interactions on these two nodes, for each network
+sub_doro <- net_doro %>%
+  filter(target %in% targets) %>%
+  select(tf, target, mor) %>%
+  arrange(target, tf)
+
+sub_ct <- net_collectri %>%
+  filter(target %in% targets) %>%
+  select(source, target, sign) %>%
+  arrange(target, source)
+
+cat("=== DoRothEA-A ===\n")
+print(sub_doro, n = Inf)
+
+cat("\n=== CollecTRI ===\n")
+print(sub_ct, n = Inf)
+
+# Comparison of edges (source-target pairs), regardless of sign
+key_doro <- sub_doro %>% mutate(key = paste(tf, target, sep = "->")) %>% pull(key)
+key_ct   <- sub_ct   %>% mutate(key = paste(source, target, sep = "->")) %>% pull(key)
+
+cat("\nOnly in DoRothEA :\n")
+print(setdiff(key_doro, key_ct))
+
+cat("\nOnly in CollecTRI :\n")
+print(setdiff(key_ct, key_doro))
+
+cat("\nCommon edges (check that the ‘mor’ symbol matches) :\n")
+common <- intersect(key_doro, key_ct)
+print(common)
+
+# For shared edges, explicitly compare the sign 
+sub_doro <- sub_doro %>%
+  rename(source = tf) 
+comparaison_signe <- inner_join(
+  sub_doro %>% rename(mor_doro = mor),
+  sub_ct   %>% rename(mor_ct = sign),
+  by = c("source", "target")
+) %>%
+  mutate(signe_different = mor_doro != mor_ct)
+
+cat("\nComparison of signs on common edges :\n")
+print(comparaison_signe, n = Inf)
+```
