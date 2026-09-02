@@ -4,6 +4,7 @@ params:
   Data_bulk: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_counts_full.tsv"
   Clinical: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.nwx2hb.tsv"
   Data_CITEseq: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds"
+  Data_patient: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
   Output: "~/Documents/Singlecell-R/Scripts/Plots/"
 format: html
 editor: visual
@@ -214,7 +215,172 @@ benchmark = compute.benchmark(deconv_pseudo,
                               height = 5)
 ```
 
-## 2) Deconvolution of CLL bulk dataset with custom signature
+## 2) Custom signature only in patient 2
+
+```{r}
+data<-readRDS(params$Data_patient)
+data$Annotation<-ifelse(data$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data$Annotation)
+data$Annotation<-ifelse(data$Annotation %in% c("CD4 T", "CD8 T", "T"), "T cells", data$Annotation)
+```
+
+markers seurat
+
+```{r}
+# Calculate the top markers
+Idents(data) <- "Annotation"
+markers <- FindAllMarkers(data, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+# Filter significant markers
+top_markers <- markers[markers$p_val_adj < 0.05, ]
+# Split marker genes by cluster
+top_markers_list <- split(top_markers$gene, top_markers$cluster)
+
+# Evaluate/Checking specificity of the signatures 
+fc_col <- intersect(c("avg_log2FC", "logFC", "avg_logFC"), names(top_markers))[1]
+
+markers_scored <- top_markers %>%
+  mutate(
+    fc = .data[[fc_col]],
+    specificity = (pct.1 - pct.2) * pmax(fc, 0),
+    expr_diff = pct.1 - pct.2,
+    support = pct.1 * fc,
+    robust = ifelse(p_val_adj < 0.05 & pct.1 > 0.25, TRUE, FALSE)
+  ) %>%
+  arrange(cluster, desc(specificity), desc(fc), desc(expr_diff))
+
+best_markers <- markers_scored %>%
+  group_by(cluster) %>%
+  slice_head(n = 40) %>%
+  ungroup()
+# Split marker genes by cluster
+top_markers_list <- split(best_markers$gene, best_markers$cluster)
+
+
+DotPlot(object = data,
+    features = unique(best_markers$gene),
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+markers_B <- FindMarkers(data, ident.1 = "Bridge" , ident.2 = "B cells" , assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+markers_B <- markers_B[markers_B$p_val_adj < 0.05, ]
+markers_B$diff<-markers_B$pct.1-markers_B$pct.2
+markers_B_diff <- markers_B[markers_B$diff > 0.3, ]
+markers_B_diff$gene<-rownames(markers_B_diff)
+
+
+markers_macro <- FindMarkers(data, ident.1 = "Bridge" , ident.2 = "Macrophage" , assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+markers_macro <- markers_macro[markers_macro$p_val_adj < 0.05, ]
+markers_macro$diff<-markers_macro$pct.1-markers_macro$pct.2
+markers_macro_diff <- markers_macro[markers_macro$diff > 0.3, ]
+markers_macro_diff$gene<-rownames(markers_macro_diff)
+
+# Intersect and union
+inter<-intersect(markers_macro_diff$gene, markers_B_diff$gene)
+union<-union(markers_macro_diff$gene, markers_B_diff$gene)
+markers_test<-unique(best_markers$gene)
+markers_test<-union(markers_test, union)
+```
+
+markers startracer
+
+```{r}
+DefaultAssay(data) <- "RNA"
+Idents(data) <- data$Annotation
+data <- subset(data, subset = Annotation %in% c("B cells","T cells","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
+data <- FindVariableFeatures(data, selection.method = "vst", nfeatures = 2000)
+
+res <- searchMarker(
+  x = data, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 20,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = Annotation)
+
+markers<-res[["exprs.markers"]]
+markers<-as.data.frame(markers)
+markers_genes<-rownames(markers)
+
+# Split marker genes by cluster
+top_markers_df <- res$para_frame[res$para_frame$gene %in% res$genes.markers, ]
+nrow(top_markers_df)
+length(res$genes.markers)
+# List by cluster
+markers_gene <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
+str(markers_gene)
+sapply(markers_gene, length)
+
+# Plots
+DotPlot(object = data,
+    features = markers_genes,
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+Signatures deconv
+
+```{r}
+# Pseudobulk of my single-cell data
+pseudobulk = create_sc_pseudobulk(data, cells_labels = "Annotation", sample_labels = "timepoint", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
+
+# Create a signature using Multideconv 
+data_metadata<-data@meta.data
+counts <- data@assays[["RNA"]]@layers[["counts"]]
+rownames(counts) <- rownames(data[["RNA"]])
+colnames(counts) <- colnames(data)
+signatures = create_sc_signatures(counts, 
+                                  data_metadata, 
+                                  cells_labels = "Annotation", 
+                                  sample_labels = "timepoint", 
+                                  bulk_rna = pseudobulk, 
+                                  cell_markers = markers_gene, 
+                                  name_signature = "CITE_CLL_p2", 
+                                  credentials.mail = "augustine.blanc-boekholt@inserm.fr", 
+                                  credentials.token = "614b135494faade1a53c2ebc62b55829",
+                                  methods_sig = c("DWLS"))
+
+# Verify the signature
+#1) deconvolution pseudobulk 
+deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
+                               normalized = FALSE, methods = c("Epidish", "DeconRNASeq", "DWLS","CBSX"),
+                               signatures_select = c("DWLS-CITE_CLL_p2-scRNAseq"),
+                               return = TRUE, 
+                               credentials.mail = "augustine.blanc-boekholt@inserm.fr",
+                               credentials.token = "614b135494faade1a53c2ebc62b55829",
+                               file_name = "pseudobulk")
+
+#2) # Counting real cell proportion 
+cells_groundtruth <- table(data$timepoint, data$Annotation)
+cells_groundtruth <- prop.table(cells_groundtruth, margin = 1)
+cells_groundtruth <- as.data.frame.matrix(cells_groundtruth)
+colnames(cells_groundtruth) <- dplyr::recode(
+  colnames(cells_groundtruth),
+  "B cells" = "B.cells",
+  "Macrophage" = "Macrophages.cells",
+  "Monocyte" = "Monocytes",
+  "Neutrophil" = "Neutrophils",
+  "NK" = "NK.cells",
+  "T cells" = "T.cells",
+  "CD4 T" = "CD4.T",
+  "CD8 T" = "CD8.T"
+)
+
+#3) Compute deconvolution benchmark
+benchmark = compute.benchmark(deconv_pseudo, 
+                              cells_groundtruth, 
+                              corr_type = "pearson",
+                              scatter = FALSE, 
+                              plot = TRUE, 
+                              pval = 0.05, 
+                              file_name = "Deconvolution", 
+                              width = 10, 
+                              height = 5)
+```
+
+## 3) Deconvolution of CLL bulk dataset with custom signature
 
 #### PBMC: Dataset CLL-map (Knisbacher, B. A., et al. 2022)
 
