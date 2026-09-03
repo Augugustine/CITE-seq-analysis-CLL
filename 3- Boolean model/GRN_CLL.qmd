@@ -1,7 +1,8 @@
 ---
 title: "GRN CLL dataset"
 params: 
-  data: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_tpms_603samps_deseqLog10_batchcorr.tsv"
+  data_pbmc: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_tpms_full.tsv"
+  clinical_pbmc: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.tsv"
   data_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/GSE161711_log2CPM_counts.txt"
   clinical_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/SraRunTable.csv"
   sample_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/Sample_name.txt"
@@ -72,37 +73,28 @@ data_ln <- as.matrix(data_ln)
 
 Dataset from : Knisbacher, B. A., et al. 2022,<https://doi.org/10.1038/s41588-022-01140-w>
 
-603 samples of PBMC traitement naive
+669 samples of PBMC traitement naive
 
 ```{r}
 library(dplyr)
-data<-read.table(params$data, sep="\t", header=TRUE)
-clinical<-read.table(params$clinical, sep="\t", header=TRUE, fill = TRUE)
-sample<-read.table(params$sample, sep="\t", header=TRUE)
-```
-
-```{r}
-# Change the header and rownames format 
-data<-read.table(params$data, sep="\t", header=TRUE)
+data<-read.table(params$data_pbmc, sep="\t", header=TRUE)
+# Remove the redundant samples and the treated samples
+remove_1<-c("CRC.0007", "CRC.0011", "CRC.0028", "CRC.0033", "DFCI.5053", "JB.0010", "GCLL.0136")
+clinical<-read.table(params$clinical_pbmc, sep="\t", header=TRUE, fill = TRUE)
+remove<-subset(clinical, treatment_status_at_samp =="Treated", select = "participant_id")
+remove<-gsub("-", ".", remove$participant_id)
+list <- unique(c(remove, remove_1))
+data <- data[, !colnames(data) %in% list]
 data<-data[,-1]
 data <- data %>%
   dplyr::rename(gene = Description)
-data$variance <- apply(data[, -1], 1, var)
-# keep gene with the higher variance
-data <- data %>%
-  group_by(gene) %>%
-  slice_max(variance, n = 1, with_ties = FALSE) %>%
-  ungroup() %>%
-  select(-variance)
-genes <- data$gene
-data$gene <- NULL
-rownames(data) <- genes
-data <- as.matrix(data)
-write.table(data, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+write.table(data, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix_pbmc.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
 ```
 
 ```{bash}
 # ARACNe pipeline 
+java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -e matrix_pbmc.txt  -o outputFolder --tfs TF_list.txt --pvalue 1E-8 --seed 1 --calculateThreshold
+
 for i in {1..100}
 do
 java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -e matrix.txt -o outputFolder --tfs TF_list.txt --pvalue 1E-8 --calculateThreshold --seed $i
@@ -294,4 +286,78 @@ source("functions.R")
 data<-read_csv("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/data_binarized_tf_gene_sep.csv")
 res<-intersection_grn(data=data, grn=edges)
 length(res$common_nodes)
+```
+
+## GRN from GRNBoost2
+
+Run grnboost2.py, output: grn_grnboost2.tsv
+
+```{r}
+grn<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/grn_grnboost2.tsv", header=T)
+```
+
+```{r}
+library(dplyr)
+
+# Intersection CollecTRI and GRN (GRNBoost2)
+collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/CollecTRI_regulons.csv",sep=",", header=TRUE)
+
+grn <-subset(grn, select=c("TF","target"))
+grn <- grn %>%
+  dplyr::rename(source= TF)
+collectri<-subset(collectri, select=c("source","target","weight"))
+collectri <- collectri %>%
+  dplyr::rename(sign = weight)
+
+interactions_common <- inner_join(
+  collectri,
+  grn, by = c("source", "target"))
+
+# Intersection GRN (ARACNe) and GRN (GRNBoost2)
+grn_grnboost2 <-subset(grn, select=c("TF","target"))
+grn_grnboost2 <- grn_grnboost2 %>%
+  dplyr::rename(source= TF)
+
+grn_aracne <-subset(edges, select=c("source","target","sign"))
+
+interactions_common <- inner_join(
+  grn_aracne,
+  grn_grnboost2, by = c("source", "target"))
+```
+
+```{r}
+library(igraph)
+library(ggraph)
+library(tidyverse)
+
+g <- graph_from_data_frame(interactions_common[, c("source", "target", "sign")], directed = TRUE)
+
+E(g)$sign  <- interactions_common$sign
+E(g)$color <- ifelse(E(g)$sign == 1, "forestgreen", "firebrick")
+
+cat("Nodes :", vcount(g), " | Edges :", ecount(g), "\n")
+
+set.seed(42)
+coords <- layout_with_drl(g)
+# if drl is not good enougth for a good visualization
+# coords <- layout_with_fr(g, niter = 200)
+
+layout_df <- create_layout(g, layout = "manual", x = coords[, 1], y = coords[, 2])
+
+p <- ggraph(layout_df) +
+  geom_edge_link(
+    aes(color = color),
+    arrow      = arrow(length = unit(1.2, "mm"), type = "closed"),
+    end_cap    = circle(0.8, "mm"),
+    alpha      = 0.15,
+    width      = 0.15
+  ) +
+  scale_edge_color_identity() +
+  geom_node_point(size = 0.6, color = "steelblue", alpha = 0.7) +
+  theme_void() +
+  labs(title = "GRN ARACNe lymph node CLL",
+       subtitle = paste0(vcount(g), " nodes, ", ecount(g), " edges | green = activation, red = repression"))
+
+print(p)
+ggsave("GRN_plot.pdf", plot = p, width = 20, height = 20, limitsize = FALSE)
 ```
