@@ -533,3 +533,277 @@ ggsurvplot(
   conf.int = TRUE
 )
 ```
+
+## Enrichment with AUCell
+
+```{r}
+DefaultAssay(data_cite) <- "RNA"
+Idents(data_cite) <- data_cite$Annotation
+data_cite <- subset(data_cite, subset = Annotation %in% c("B cells","T cells","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
+```
+
+Seurat
+
+```{r}
+# Calculate the top markers
+Idents(data_cite) <- "Annotation"
+markers <- FindAllMarkers(data_cite, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+# Filter significant markers
+top_markers <- markers[markers$p_val_adj < 0.05, ]
+# Split marker genes by cluster
+top_markers_list <- split(top_markers$gene, top_markers$cluster)
+
+# Evaluate/Checking specificity of the signatures 
+fc_col <- intersect(c("avg_log2FC", "logFC", "avg_logFC"), names(top_markers))[1]
+
+markers_scored <- top_markers %>%
+  mutate(
+    fc = .data[[fc_col]],
+    specificity = (pct.1 - pct.2) * pmax(fc, 0),
+    expr_diff = pct.1 - pct.2,
+    support = pct.1 * fc,
+    robust = ifelse(p_val_adj < 0.05 & pct.1 > 0.25, TRUE, FALSE)
+  ) %>%
+  arrange(cluster, desc(specificity), desc(fc), desc(expr_diff))
+
+best_markers <- markers_scored %>%
+  group_by(cluster) %>%
+  slice_head(n = 40) %>%
+  ungroup()
+# Split marker genes by cluster
+top_markers_list <- split(best_markers$gene, best_markers$cluster)
+
+
+DotPlot(object = data_cite,
+    features = unique(best_markers$gene),
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+```{r}
+geneSets<-top_markers_list[["Bridge"]]
+counts <- GetAssayData(data_cite, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_cite.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+data_cite <- AddMetaData(data_cite, metadata = AUC)
+
+data<-subset(data_cite, subset=Annotation %in% c("B cells", "Bridge", "Macrophage"))
+
+#Violin plot
+comparisons <- list(
+  c("B cells", "Bridge"),
+  c("Bridge", "Macrophage"),
+  c("B cells", "Macrophage"))
+plot<-ggplot(data@meta.data, aes(x = Annotation, y = geneSet, fill = Annotation)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test") + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.01, color = "red", linetype = "dashed", size = 0.5) +
+  xlab("Cell type") + ylab("AUC (signature transdifferenciation)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/phago_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+StarTracer
+
+```{r}
+ 
+data_cite <- FindVariableFeatures(data_cite, selection.method = "vst", nfeatures = 2000)
+
+res <- searchMarker(
+  x = data_cite, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 20,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = Annotation)
+
+markers<-res[["exprs.markers"]]
+markers<-as.data.frame(markers)
+markers_genes<-rownames(markers)
+
+# Split marker genes by cluster
+top_markers_df <- res$para_frame[res$para_frame$gene %in% res$genes.markers, ]
+nrow(top_markers_df)
+length(res$genes.markers)
+# List by cluster
+markers_gene <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
+str(markers_gene)
+sapply(markers_gene, length)
+
+# Plots
+DotPlot(object = data_cite,
+    features = markers_genes,
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+```{r}
+geneSets<-markers_gene[["Bridge"]]
+counts <- GetAssayData(data_cite, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_cite.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+data_cite <- AddMetaData(data_cite, metadata = AUC)
+
+data<-subset(data_cite, subset=Annotation %in% c("B cells", "Bridge", "Macrophage"))
+
+#Violin plot
+comparisons <- list(
+  c("B cells", "Bridge"),
+  c("Bridge", "Macrophage"),
+  c("B cells", "Macrophage"))
+plot<-ggplot(data@meta.data, aes(x = Annotation, y = geneSet, fill = Annotation)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test") + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.01, color = "red", linetype = "dashed", size = 0.5) +
+  xlab("Cell type") + ylab("AUC (signature transdifferenciation)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/phago_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+```
+
+# Deconvolution MeDuSA
+
+Trajectory with slinghot
+
+```{r}
+library(MeDuSA)
+library(Seurat)
+library(dplyr)
+library(slingshot)
+library(ggplot2)
+library(harmony)
+source("functions.R")
+
+# Trajectory with Slingshot
+
+data = readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+Idents(data) <- data$Annotation
+
+#Pseudotime Slinghsot
+# Remove clusters that are not connect to the main trajectory.    
+scdata = data[,!Idents(data) %in% c('CD8 T','CD4 T','T','NK','DC','Neutrophil','Platelet','Erythroblast','Monocyte')] # Monocytes ??
+#remove(data)
+scdata <- run_dim_red(scdata)
+scdata <- scdata %>%
+  RunUMAP(reduction = "harmony",  dims = 1:15)
+
+# Annotate cell trajectory using the slingshot
+umap = as.data.frame(Embeddings(scdata,'umap'))
+scdata$celltype_time <- paste(scdata$Annotation, scdata$timepoint, sep = "_")
+Idents(scdata) <- scdata$celltype_time
+umap$ct = as.vector(Idents(scdata))
+
+#scdata <-FindClusters(scdata,resolution = 2)
+sds = getLineages(umap[,1:2], umap$ct, start.clus = 'B intermediate_D1', end.clus = 'Macrophage_D14') # or D1 B naive ?? # faire un clustring et utiliser le numero du cluster
+#sds = getLineages(umap[,1:2], umap$ct, end.clus = 'Macrophage') # or D1 B naive ?? # faire un clustring et utiliser le numero du cluster
+sds = getCurves(sds)
+path = as.data.frame(sds@metadata$curves$Lineage1$s)
+pseudo_time = sds@metadata$curves$Lineage1$lambda
+pseudo_time = pseudo_time/max(pseudo_time)
+
+# Add the cell-type and cell-state trajectory into the meta data. 
+scdata$cell_type = scdata$Annotation
+scdata$cell_trajectory = pseudo_time[colnames(scdata)]
+
+# Visualize the cell-state trajectory
+colors = c("#9e0142", "#d53e4f", "#f46d43", "#fdae61", "#fee08b", "#ffffbf", "#e6f598", "#abdda4", "#66c2a5", "#3288bd", "#5e4fa2")
+colors = colors[seq(length(colors),1,-1)]
+p1 = ggplot(umap,aes(x=umap_1,y=umap_2))+
+  geom_point(aes(col=pseudo_time),size=0.5)+
+  xlab('PATH-1')+
+  ylab('PATH-2')+
+  theme(legend.position = 'right',
+        legend.justification = "left",
+        panel.border = element_blank(), axis.line = element_line(size = 0.8))+
+  #annotate('text',x=-2,y=-9,label='GMPs',size=5)+
+  scale_color_gradientn(colours = colors,name='Pseudotime',labels = scales::number_format(accuracy = 0.1))
+p1
+ggsave("/home/ablanc/work/NetBIO2/Trajcetory/trjactory_slingshot.jpeg", p1, width = 1500, height = 2000, units = "px")
+```
+
+Validate deconvolution
+
+```{r}
+devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
+
+#scdata = readRDS("/home/ablanc/work/NetBIO2/Data/CLL_Seurat_merge_p2p3.rds")
+Idents(data) <- data$Annotation
+# Remove clusters that are not connect to the main trajectory.    
+scdata = data[,!Idents(data) %in% c('CD8 T','CD4 T','T','NK','DC','Neutrophil','Platelet','Erythroblast','Monocyte')] # Monocytes ??
+
+scdata <- run_dim_red(scdata)
+scdata <- scdata %>%
+  RunUMAP(reduction = "harmony",  dims = 1:15)
+scdata$sample_time <- paste(scdata$patient, scdata$timepoint, sep = "_")
+
+bulk = create_sc_pseudobulk(scdata, cells_labels = "Annotation", sample_labels = "sample_time", normalized = FALSE, file_name = "Pseudobulk_deconvolution") # pseudobulk 
+# separate timepoint and patient so 5x2=10 pseudobulks samples
+
+bulk = sweep(bulk,2,colSums(bulk),'/')*1e+4
+scdata@assays[["RNA"]]@layers[["counts"]] = sweep(scdata@assays[["RNA"]]@layers[["counts"]],2,colSums(scdata@assays[["RNA"]]@layers[["counts"]]),'/')*1e+4
+
+MeDuSA_obj = MeDuSA(bulk, scdata, markerGene = NULL, span = 0.35, select.ct = "B intermediate",
+		  resolution = 50, smooth = TRUE, fractional = TRUE)	
+```
+
+```{r}
+# Estimate cell-state abundance from the scRNA-seq data 
+pseudotime = scdata$cell_trajectory
+sampleID = scdata$sample_time
+pseudotime = pseudotime[names(sampleID)]
+abundance_expect = sapply(unique(sampleID),function(id){
+  pseudotime_temp = sort(pseudotime[which(sampleID == id)])
+  pseudotime_temp = pseudotime_temp
+  count_temp = hist(pseudotime_temp,breaks = seq(0,1,(1/40)))$counts
+  abundance_temp  =  count_temp/sum(count_temp)
+  return(abundance_temp)
+})
+rownames(abundance_expect) = paste0('bin',seq(1,nrow(abundance_expect)))
+abundance_expect = abundance_expect[, colnames(abundance_expect) %in% colnames(bulk)]
+
+# Compare the cell-state abundance estimated from bulk data to that from scRNA-seq data
+abundance_estimate = MeDuSA_obj@Estimation$cell_state_abundance
+state = MeDuSA_obj@Estimation$TimeBin
+rownames(abundance_estimate) = state
+rownames(abundance_expect) = state
+
+commonId = intersect(colnames(abundance_expect),colnames(abundance_estimate))
+abundance_expect = abundance_expect[,commonId]
+abundance_estimate = abundance_estimate[,commonId]
+dat = data.frame('MeDuSA' = c(abundance_estimate),'Slingshot' = c(abundance_expect))
+p2 = ggplot(dat,aes(x=Slingshot,y=MeDuSA))+
+  geom_point(col='#feb24c')+
+  geom_smooth(method = 'lm',col='black',se=F)+
+  xlab('scRNA-seq (slingshot)')
+ylab('MeDuSA')
+print(p2)
+
+cor_global <- cor(dat$Slingshot,dat$MeDuSA,method = "spearman")
+cor_global
+```
