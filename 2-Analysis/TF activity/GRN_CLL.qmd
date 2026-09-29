@@ -1,0 +1,427 @@
+---
+title: "GRN CLL dataset"
+params: 
+  data_pbmc: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_tpms_full.tsv"
+  clinical_pbmc: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.tsv"
+  data_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/GSE161711_log2CPM_counts.txt"
+  clinical_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/SraRunTable.csv"
+  sample_ln: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/Sample_name.txt"
+  network: "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_pbmc_bulk.txt"
+format: html
+editor: visual
+---
+
+## GRN CLL RNA seq bulk
+
+### **Lymph node sample**
+
+Dataset taken from the publication: Sun C, et al., 2023 doi:10.1182/bloodadvances.
+
+\(1\) bulk RNA-seq (n = 29); (2) WES (n = 14) of CD19+ tumor cells from paired PB and LN samples; (3) scRNA-seq of paired PB and LN samples (n = 5); (4) bulk RNA-seq of unsorted CLL LN samples (n = 34); and (5) bulk RNA-seq of unsorted normal LN samples (n = 4).
+
+```{r}
+library(dplyr)
+# Lymph node CLL samples
+data_ln<-read.table(params$data_ln,header=TRUE)
+clinical_ln<-read.csv(params$clinical_ln,header=TRUE)
+sample_ln<-read.table(params$sample_ln,header=F)
+colnames(sample_ln)<-c("GEO_Accession..exp.","Sample_names")
+clinical_ln<-merge(clinical_ln, sample_ln, by="GEO_Accession..exp.")
+#clinical_ln<-subset(clinical_ln, tissue == "lymph node" & diagnosis== "CLL")
+clinical_ln <- clinical_ln %>%
+  filter(grepl("LN_mix", Sample_names))
+clinical_ln<-subset(clinical_ln, tissue == "lymph node" & diagnosis != "Normal")
+
+# Filter some gene type 
+data_ln<-subset(data_ln, gene_type =="protein_coding")
+
+# Keep CLL and Lymph node mix sample  (n=34)
+data_ln <- data_ln[, c(-1,-2,-4,-5,-6,-7,-8,-9)]
+data_ln$variance <- apply(data_ln[, -1], 1, var)
+# keep gene with the higher variance
+data_ln <- data_ln %>%
+  group_by(gene_name) %>%
+  slice_max(variance, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(-variance)
+data_ln <- as.matrix(data_ln)
+data_ln <- data_ln[, grepl("LN_mix", colnames(data_ln)) | colnames(data_ln) == "gene_name"]
+data_ln <- data_ln[, grepl("CLL", colnames(data_ln)) | colnames(data_ln) == "gene_name"]
+
+# Gene name issus (MARCH and SEP)
+fix_gene_names <- function(x) {
+  x <- as.character(x)
+  for (i in 1:20) {
+    x <- sub(paste0("^", i, "-Mar$"), paste0("MARCH", i), x, ignore.case = TRUE)
+    x <- sub(paste0("^", i, "-Sep$"), paste0("SEPT", i), x, ignore.case = TRUE)
+  }
+  x
+}
+data_ln[, "gene_name"] <- fix_gene_names(data_ln[, "gene_name"])
+data_ln <- as.matrix(data_ln)
+#write.table(data_ln, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix_lymph_node.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+
+data_ln <-data.frame(data_ln)
+genes <- data_ln$gene_name
+data_ln$gene_name <- NULL
+rownames(data_ln) <- genes
+data_ln[] <- lapply(data_ln, as.numeric)
+data_ln <- as.matrix(data_ln)
+```
+
+### **PBMC sample**
+
+Dataset from : Knisbacher, B. A., et al. 2022,<https://doi.org/10.1038/s41588-022-01140-w>
+
+669 samples of PBMC traitement naive
+
+```{r}
+library(dplyr)
+data<-read.table(params$data_pbmc, sep="\t", header=TRUE)
+
+# Remove the redundant samples and the treated samples
+remove_1<-c("CRC.0007", "CRC.0011", "CRC.0028", "CRC.0033", "DFCI.5053", "JB.0010", "GCLL.0136")
+clinical<-read.table(params$clinical_pbmc, sep="\t", header=TRUE, fill = TRUE)
+remove<-subset(clinical, treatment_status_at_samp =="Treated", select = "participant_id")
+remove<-gsub("-", ".", remove$participant_id)
+list <- unique(c(remove, remove_1))
+data <- data[, !colnames(data) %in% list]
+data<-data[,-1]
+data <- data %>%
+  dplyr::rename(gene = Description)
+
+# Filter the genes (beggining 57k genes)
+# Remove gene with 0 for all samples
+data <- data[rowSums(data[, sapply(data, is.numeric)] != 0) > 0, ]
+# Remove duplicated gene names 
+sum(duplicated(data$gene))
+data <- aggregate(
+    data[, -which(names(data) == "gene")],
+    by = list(gene = data$gene),
+    FUN = max)
+rownames(data) <- data$gene
+# Variance
+data <- data[, sapply(data, is.numeric)]
+gene_var <- apply(data, 1, var)
+threshold_var <- quantile(gene_var, 0.10, na.rm = TRUE)
+data <- data[gene_var > threshold_var, ]
+
+# Expresssion: retain genes expressed at a TPM > 1 in at least 30% of the samples
+min_pct <- 0.30
+min_samples <- ceiling(ncol(data) * min_pct)
+data <- data[rowSums(data > 1) >= min_samples, ]
+
+data$gene<-rownames(data)
+data <- data %>%
+  relocate(gene, .before = 1)
+write.table(data, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix_pbmc.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+```
+
+```{r}
+
+# Seuil d'expression
+tpm_threshold <- 0.1
+
+# Pourcentage minimal d'échantillons
+min_fraction <- 0.20
+
+# Nombre minimal d'échantillons
+min_samples <- ceiling(ncol(data) * min_fraction)
+
+# Gènes exprimés > 0.1 TPM dans >= 20% des samples
+keep <- rowSums(data > tpm_threshold, na.rm = TRUE) >= min_samples
+
+table(keep)
+
+expr_filt <- data[keep, ]
+
+dim(expr_filt)
+
+
+# Varaince
+# ------------------------------------------------------------
+# 5. Vérifier la variance
+# ------------------------------------------------------------
+
+gene_var <- apply(data, 1, var)
+
+summary(gene_var)
+
+hist(
+    gene_var,
+    breaks = 100,
+    main = "Variance des gènes",
+    xlab = "Variance"
+)
+```
+
+```{bash}
+# ARACNe pipeline 
+java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -e matrix_pbmc.txt  -o outputFolder --tfs TF_list.txt --pvalue 1E-8 --seed 1 --calculateThreshold
+
+for i in {1..100}
+do
+java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -e matrix.txt -o outputFolder --tfs TF_list.txt --pvalue 1E-8 --calculateThreshold --seed $i
+done
+
+java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -o outputFolder --consolidate
+```
+
+## GRN from ARACNe
+
+```{r}
+library(viper)
+grn<-read.table(params$network, header=F)
+grn<-grn[-1,]
+grn<-subset(grn, V4 < 0.01, select=c(V1, V2, V3))
+path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_for_viper.txt")
+write.table(grn, path, sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
+regulon <- aracne2regulon(path, data_ln,  format = "3col")
+
+# 
+edges <- bind_rows(
+  lapply(names(regulon), function(tf) {
+    data.frame(
+      source = tf,
+      target = names(regulon[[tf]]$tfmode),
+      sign = ifelse(regulon[[tf]]$tfmode > 0, 1L, -1L),
+      tfmode = regulon[[tf]]$tfmode,
+      likelihood = regulon[[tf]]$likelihood,
+      stringsAsFactors = FALSE)
+  }))
+
+regulon_size <- sapply(regulon, function(x) length(x$tfmode))
+hist(regulon_size)
+
+likelihoods <- unlist(lapply(regulon, function(x) x$likelihood))
+hist(likelihoods, breaks = 100)
+summary(likelihoods)
+# thanks to the distrubution filter likelihood > 0.65
+edges<-subset(edges, likelihoods < 0.65, select=c(source, target, sign))
+
+write.csv(edges, "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_CLL_ln.csv", row.names = FALSE, quote = FALSE, col.names = TRUE)
+```
+
+```{r}
+library(ggplot2)
+
+grn<-read.table(params$network, header=T)
+
+# Distribution of p-values
+ggplot(grn, aes(x = pvalue)) +
+  geom_histogram(bins = 50, color = "black", fill = "steelblue") +
+  labs(title = "Distribution of p-values", x = "p-value",y = "Count") + theme_classic()
+
+# Distribution of MI
+ggplot(grn, aes(x = MI)) +
+  geom_histogram(bins = 50, color = "black", fill = "tomato") +
+  labs( title = "Distribution of Mutual Information", x = "Mutual Information", y = "Count") +
+  theme_classic()
+
+grn<-subset(grn, MI < 0.9 & pvalue < 0.01, select=c(Regulator, Target, MI))
+
+path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_for_viper.txt")
+write.table(grn, path, sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
+
+regulon <- aracne2regulon(path, data_ln,  format = "3col")
+
+# 
+edges <- bind_rows(
+  lapply(names(regulon), function(tf) {
+    data.frame(
+      source = tf,
+      target = names(regulon[[tf]]$tfmode),
+      sign = ifelse(regulon[[tf]]$tfmode > 0, 1L, -1L),
+      tfmode = regulon[[tf]]$tfmode,
+      likelihood = regulon[[tf]]$likelihood,
+      stringsAsFactors = FALSE)
+  }))
+
+regulon_size <- sapply(regulon, function(x) length(x$tfmode))
+hist(regulon_size)
+
+likelihoods <- unlist(lapply(regulon, function(x) x$likelihood))
+hist(likelihoods, breaks = 100)
+summary(likelihoods)
+
+tfmode <- unlist(lapply(regulon, function(x) x$tfmode))
+# Negative values
+hist(tfmode[tfmode < 0], breaks = 100,main = "Distribution of negative tfmode values", xlab = "tfmode", col = "tomato", border = "white")
+# Positive values
+hist(tfmode[tfmode > 0],breaks = 100, main = "Distribution of positive tfmode values",xlab = "tfmode",col = "steelblue",border = "white")
+
+edges<-subset(edges, tfmode > 0.8 | tfmode < -0.6)
+```
+
+Intersection with CollecTRI
+
+```{r}
+library(dplyr)
+
+collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/CollecTRI_regulons.csv",sep=",", header=TRUE)
+
+grn <-subset(grn, select=c("Regulator","Target"))
+grn <- grn %>%
+  dplyr::rename(source= Regulator, target=Target)
+collectri<-subset(collectri, select=c("source","target","weight"))
+collectri <- collectri %>%
+  dplyr::rename(sign = weight)
+
+interactions_common <- inner_join(
+  collectri,
+  grn, by = c("source", "target"))
+```
+
+Visualize the GRN network
+
+```{r}
+library(igraph)
+library(ggraph)
+network<-read.table(params$network, header=T)
+top_edges <- network[order(network$MI, decreasing = TRUE), ][1:200, ]
+g <- graph_from_data_frame(d = top_edges[, c("Regulator", "Target")], directed = TRUE)
+
+all_regulators <- unique(top_edges$Regulator)
+all_targets <- unique(top_edges$Target)
+
+both_nodes <- intersect(all_regulators, all_targets)
+
+E(g)$MI <- top_edges$MI
+
+V(g)$type <- case_when(
+  V(g)$name %in% both_nodes ~ "Both",
+  V(g)$name %in% all_regulators ~ "Regulator",
+  V(g)$name %in% all_targets ~ "Target",
+  TRUE ~ "Other"
+)
+
+plot<-ggraph(g, layout = "fr") +
+  geom_edge_link0(aes(edge_width = MI), alpha = 0.6, edge_colour = "grey") +
+  geom_node_point(aes(color = type), size = 5, show.legend = TRUE) +
+  geom_node_text(aes(label = name), repel = TRUE, size = 3) +
+  scale_color_manual(values = c("Regulator" = "orange", "Target" = "blue", "Both" = "purple", "Other"= "grey")) +
+  scale_edge_width(name = "MI") +
+  guides(edge_width = guide_legend(override.aes = list(linetype = 1, shape = NA))) + 
+  theme_void() + ggtitle("ARACNe GRN CLL lymph node, orange = regulators, blue = targets and purple= both")
+plot
+```
+
+```{r}
+library(igraph)
+library(ggraph)
+library(tidyverse)
+
+g <- graph_from_data_frame(edges[, c("source", "target", "sign")], directed = TRUE)
+
+E(g)$sign  <- edges$sign
+E(g)$color <- ifelse(E(g)$sign == 1, "forestgreen", "firebrick")
+
+cat("Nodes :", vcount(g), " | Edges :", ecount(g), "\n")
+
+set.seed(42)
+coords <- layout_with_drl(g)
+# if drl is not good enougth for a good visualization
+# coords <- layout_with_fr(g, niter = 200)
+
+layout_df <- create_layout(g, layout = "manual", x = coords[, 1], y = coords[, 2])
+
+p <- ggraph(layout_df) +
+  geom_edge_link(
+    aes(color = color),
+    arrow      = arrow(length = unit(1.2, "mm"), type = "closed"),
+    end_cap    = circle(0.8, "mm"),
+    alpha      = 0.15,
+    width      = 0.15
+  ) +
+  scale_edge_color_identity() +
+  geom_node_point(size = 0.6, color = "steelblue", alpha = 0.7) +
+  theme_void() +
+  labs(title = "GRN ARACNe lymph node CLL",
+       subtitle = paste0(vcount(g), " nodes, ", ecount(g), " edges | green = activation, red = repression"))
+
+print(p)
+ggsave("GRN_plot.pdf", plot = p, width = 20, height = 20, limitsize = FALSE)
+```
+
+Intersection GRN and data for BoNesis
+
+```{r}
+source("functions.R")
+data<-read_csv("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Boolean_model_BoNesis/Bonesis_test/data_binarized_tf_gene_sep.csv")
+res<-intersection_grn(data=data, grn=edges)
+length(res$common_nodes)
+```
+
+## GRN from GRNBoost2
+
+Run grnboost2.py, output: grn_grnboost2.tsv
+
+```{r}
+grn<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/grn_grnboost2.tsv", header=T)
+```
+
+```{r}
+library(dplyr)
+
+# Intersection CollecTRI and GRN (GRNBoost2)
+collectri <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/CollecTRI_regulons.csv",sep=",", header=TRUE)
+
+grn <-subset(grn, select=c("TF","target"))
+grn <- grn %>%
+  dplyr::rename(source= TF)
+collectri<-subset(collectri, select=c("source","target","weight"))
+collectri <- collectri %>%
+  dplyr::rename(sign = weight)
+
+interactions_common <- inner_join(
+  collectri,
+  grn, by = c("source", "target"))
+
+# Intersection GRN (ARACNe) and GRN (GRNBoost2)
+grn_grnboost2 <-subset(grn, select=c("TF","target"))
+grn_grnboost2 <- grn_grnboost2 %>%
+  dplyr::rename(source= TF)
+
+grn_aracne <-subset(edges, select=c("source","target","sign"))
+
+interactions_common <- inner_join(
+  grn_aracne,
+  grn_grnboost2, by = c("source", "target"))
+```
+
+```{r}
+library(igraph)
+library(ggraph)
+library(tidyverse)
+
+g <- graph_from_data_frame(interactions_common[, c("source", "target", "sign")], directed = TRUE)
+
+E(g)$sign  <- interactions_common$sign
+E(g)$color <- ifelse(E(g)$sign == 1, "forestgreen", "firebrick")
+
+cat("Nodes :", vcount(g), " | Edges :", ecount(g), "\n")
+
+set.seed(42)
+coords <- layout_with_drl(g)
+# if drl is not good enougth for a good visualization
+# coords <- layout_with_fr(g, niter = 200)
+
+layout_df <- create_layout(g, layout = "manual", x = coords[, 1], y = coords[, 2])
+
+p <- ggraph(layout_df) +
+  geom_edge_link(
+    aes(color = color),
+    arrow      = arrow(length = unit(1.2, "mm"), type = "closed"),
+    end_cap    = circle(0.8, "mm"),
+    alpha      = 0.15,
+    width      = 0.15
+  ) +
+  scale_edge_color_identity() +
+  geom_node_point(size = 0.6, color = "steelblue", alpha = 0.7) +
+  theme_void() +
+  labs(title = "GRN ARACNe lymph node CLL",
+       subtitle = paste0(vcount(g), " nodes, ", ecount(g), " edges | green = activation, red = repression"))
+
+print(p)
+ggsave("GRN_plot.pdf", plot = p, width = 20, height = 20, limitsize = FALSE)
+```
