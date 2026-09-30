@@ -808,7 +808,7 @@ cor_global <- cor(dat$Slingshot,dat$MeDuSA,method = "spearman")
 cor_global
 ```
 
-# TF activity of CEBPA 
+# TF activity of CEBPA
 
 ```{r}
 library(viper)
@@ -819,63 +819,26 @@ library(limma)
 library(ggplot2)
 library(ggrepel)
 
-
 grn<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_pbmc_bulk.txt", header=F)
 grn<-grn[-1,]
 grn<-subset(grn, select=c(V1, V2, V3))
 path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_for_viper.txt")
 write.table(grn, path, sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
+
 data_bulk<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/matrix_pbmc.txt", header=T,row.names = 1)
+
 data_bulk <- as.matrix(data_bulk)
-regulon <- aracne2regulon(path, data_bulk,  format = "3col")
 
+path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_pbmc_bulk.txt")
+# Sign/ coorelation between genes expression and activity
+regulon <- aracne2regulon(path, data_bulk,  format = "adj")
+
+# TF activity
 tf_activity <- viper(
-    data_bulk,
+    bulk,
     regulon,
-    method = "none",
+    method = "scale",
     minsize = 5)
-```
-
-```{r}
-# Comparison clinical data 
-# Fusion clinical data and deconv results 
-deconv_bulk$participant_id<-rownames(deconv_bulk)
-data<-merge(clinical, deconv_bulk, by="participant_id")
-# Mean 3 deconv methods 
-data$Bridge_mean<-rowMeans(data[, c("DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL.scRNAseq_Bridge", "Epidish_BSeqSC.CITE_CLL.scRNAseq_Bridge")])
-  
-# treated and untreated, alive and dead, mutation, rai (cancer stage)
-comparisons <- list(c("Treated", "Untreated"))
-plot<-ggplot(data, aes(x = treatment_status_at_samp, y = Bridge_mean)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test", size=6) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18),
-legend.text = element_text(size = 18) ) + xlab("Treatment status") + ylab("Intermediate population deconvolution")
-plot
-
-# Survival curve
-# Define OS_event, where status = 1 for death/event, 0 for censored 
-data$OS_event <- ifelse(data$vital_status == "alive","0","1")
-
-# Kaplan-Meirl curve (Are the survival curves for the two groups significantly different? test log-rank)
-data$Bridge_group <- ifelse(data$Bridge_mean >= median(data$Bridge_mean),"High","Low")
-data$Bridge_group <- ifelse(data$DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge >= median(data$DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge),"High","Low")
-
-surv_obj <- Surv(time = data$os_days,event = data$os)
-fit <- survfit(surv_obj ~ Bridge_group, data = data)
-ggsurvplot(fit, data = data,
-    pval = TRUE,
-    risk.table = TRUE,
-    conf.int = TRUE,
-    palette = c("#2E9FDF", "#E7B800"))
-
-# Cox model (Is the proportion of Intermediate population associated with the risk of death?)
-cox <- coxph(Surv(os_days, os) ~ Bridge_mean, data = data)
-summary(cox)
-ggforest(cox, data = data)
-cox.zph(cox)
-plot(cox.zph(cox))
-
-cox_spline <- coxph(
-  Surv(os_days, os) ~ ns(Bridge_mean, df = 3),
-  data = data)
 ```
 
 ```{r}
@@ -886,40 +849,45 @@ library(survminer)
 library(splines)
 library(dplyr)
 
-# Activité de CEBPA : un score par échantillon
+# CEBPA activity : score per samples
 cebpa <- data.frame(sample_id = colnames(tf_activity),
                     CEBPA = as.numeric(tf_activity["CEBPA", ]))
-
-clin <- read.table("~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.tsv", header = TRUE, sep = "\t")  
-clin <- read.delim("~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.tsv", header = TRUE, sep = "\t",
-                   quote = "", comment.char = "",
-                   fill = TRUE, check.names = FALSE,
-                   stringsAsFactors = FALSE, na.strings = c("", "NA", "N/A"))
+ 
+clin <- read.delim("~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.tsv", header = TRUE, sep = "\t",quote = "", comment.char = "",fill = TRUE, check.names = FALSE, stringsAsFactors = FALSE, na.strings = c("", "NA", "N/A"))
 clin$participant_id<-gsub("-", ".", clin$participant_id)
 
 dim(clin)
 str(clin)
 
-# Vérifier que les IDs correspondent
-mean(cebpa$sample_id %in% clin$participant_id)   # idéalement proche de 1
+# Same IDs
+mean(cebpa$sample_id %in% clin$participant_id)
 
 data <- merge(clin, cebpa, by.x = "participant_id", by.y = "sample_id")
 dim(data)
 
-comparisons <- list(c("Treated", "Untreated"))
+# Box plot comparing 2 conditions
+comparisons <- list(c("Untreated", "Treated"))
 
 p1 <- ggplot(data, aes(x = treatment_status_at_samp, y = CEBPA)) +
   geom_violin(trim = FALSE, alpha = 0.6) +
   geom_boxplot(width = 0.1, outlier.shape = NA) +
   stat_compare_means(comparisons = comparisons, method = "wilcox.test", size = 6) +
   theme_classic() +
-  xlab("Treatment status") + ylab("CEBPA activity (NES)")
+  xlab("Tumor molecular subtype") + ylab("CEBPA activity")
 p1
 
+
+# Survival curve
 data$OS_event <- ifelse(data$vital_status == "alive", 0, 1)
 
+# median for thresolh 
 data$CEBPA_group <- ifelse(data$CEBPA >= median(data$CEBPA, na.rm = TRUE), "High", "Low")
 data$CEBPA_group <- factor(data$CEBPA_group, levels = c("Low", "High"))
+
+# 0 for thresolh 
+data$CEBPA_group <- ifelse(data$CEBPA >= 1, "High", "Low")
+data$CEBPA_group <- factor(data$CEBPA_group, levels = c("Low", "High"))
+
 
 fit <- survfit(Surv(os_days, OS_event) ~ CEBPA_group, data = data)
 
@@ -928,18 +896,10 @@ ggsurvplot(fit, data = data,
            palette = c("#2E9FDF", "#E7B800"),
            xlab = "Time (days)", legend.title = "CEBPA activity")
 
-
-
-
-# Comparaisons deux à deux avec correction
-pairwise.wilcox.test(data$CEBPA, data$rai, p.adjust.method = "BH")
 ```
 
 ```{r}
-library(survival)
-library(survminer)
-
-# Terciles d'activité de CEBPA
+# Terciles
 q <- quantile(data$CEBPA, probs = c(1/3, 2/3), na.rm = TRUE)
 
 data$CEBPA_tert <- cut(data$CEBPA,
@@ -948,13 +908,12 @@ data$CEBPA_tert <- cut(data$CEBPA,
                        include.lowest = TRUE)
 data$CEBPA_tert <- factor(data$CEBPA_tert, levels = c("Low", "Mid", "High"))
 
-# Événement : 1 = décès, 0 = censuré
+# Events
 data$OS_event <- ifelse(data$vital_status == "alive", 0, 1)
 
-# Vérification
 table(data$CEBPA_tert, useNA = "ifany")
 
-# Kaplan-Meier avec les terciles
+# Kaplan-Meier with terciles
 fit <- survfit(Surv(os_days, OS_event) ~ CEBPA_tert, data = data)
 
 ggsurvplot(fit, data = data,
@@ -973,32 +932,119 @@ termplot(fit_cox, se = TRUE, col.res = "black")
 ```
 
 ```{r}
+data_bulk<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_tpms_full.tsv", header=T,row.names = 1)
+
+data_bulk <- as.matrix(data_bulk)
+# Remove the redundant samples and the treated samples
+remove_1<-c("CRC.0007", "CRC.0011", "CRC.0028", "CRC.0033", "DFCI.5053", "JB.0010", "GCLL.0136")
+list <- unique(c(remove_1))
+data_bulk <- data_bulk[, !colnames(data_bulk) %in% list]
+data_bulk <- data_bulk %>%
+  dplyr::rename(gene = Description)
+
+# Filter the genes (beggining 57k genes)
+# Remove gene with 0 for all samples
+# Remove duplicated gene names 
+sum(duplicated(data_bulk$gene))
+data_bulk <- aggregate(
+    data_bulk[, -which(names(data_bulk) == "gene")],
+    by = list(gene = data_bulk$gene),
+    FUN = max)
+rownames(data_bulk) <- data_bulk$gene
+
+bulk <- bulk %>%
+     relocate(gene, .before = 1)
+bulk<-bulk[,-1]
+```
+
+```{r}
+library(survival)
 library(survminer)
+library(ggplot2)
+
+# CEBPA and PAX5 extraction
+tf_sub <- data.frame(
+    sample_id = colnames(tf_activity),
+    CEBPA     = as.numeric(tf_activity["CEBPA", ]),
+    PAX5      = as.numeric(tf_activity["PAX5", ])
+)
+
+# Clinical data
+clin <- read.delim(
+    "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.tsv", 
+    header = TRUE, 
+    sep = "\t", 
+    quote = "", 
+    comment.char = "", 
+    fill = TRUE, 
+    check.names = FALSE, 
+    stringsAsFactors = FALSE, 
+    na.strings = c("", "NA", "N/A")
+)
+
+clin$participant_id <- gsub("-", ".", clin$participant_id)
+
+# Data merging
+data <- merge(clin, tf_sub, by.x = "participant_id", by.y = "sample_id")
+
+data$OS_event <- ifelse(data$vital_status == "alive", 0, 1)
+data$os_days  <- as.numeric(data$os_days)
+
+# filtering NA
+data_clean <- data[!is.na(data$os_days) & !is.na(data$OS_event) & !is.na(data$CEBPA) & !is.na(data$PAX5), ]
+
+# Transdifferenciation score(CEBPA High & PAX5 Low)
+med_cebpa <- median(data_clean$CEBPA, na.rm = TRUE)
+med_pax5  <- median(data_clean$PAX5, na.rm = TRUE)
+
+data_clean$transdiff_score <- ifelse(
+    data_clean$CEBPA > med_cebpa & data_clean$PAX5 < med_pax5, 
+    "Transdifferentiated (CEBPA High / PAX5 Low)", 
+    "Classic B-cell"
+)
+
+data_clean$transdiff_score <- factor(
+    data_clean$transdiff_score, 
+    levels = c("Classic B-cell", "Transdifferentiated (CEBPA High / PAX5 Low)")
+)
+
+table(data_clean$transdiff_score)
+
+#Kaplan-Meier
+fit_trans <- survfit(Surv(os_days, OS_event) ~ transdiff_score, data = data_clean)
+
+# Plot
+ggsurvplot(
+    fit_trans, 
+    data = data_clean, 
+    pval = TRUE,
+    risk.table = TRUE,
+    legend.title = "Cellular Profile",
+    legend.labs = c("CEBPA down + PAX5 up", "CEBPA up + PAX5 down"),
+    palette = c("#2E9FDF", "#E7B800"),
+    xlab = "Time (days)",
+    title = "Impact of PAX5 and CEBPA activity Profile on Overall Survival"
+)
+
 library(survival)
 
-# 1. Recherche du seuil optimal
-res_cut <- surv_cutpoint(
-  data,
-  time = "os_days",
-  event = "OS_event",
-  variables = "CEBPA"
+#TF activity index
+data_clean$transdiff_index <- data_clean$CEBPA - data_clean$PAX5
+
+# Cox model with Spline 
+fit_cox <- coxph(
+  Surv(os_days, OS_event) ~ pspline(transdiff_index, df = 4), 
+  data = data_clean
 )
 
-summary(res_cut) # Affiche la valeur de coupe retenue
-
-# 2. Catégorisation des données selon ce seuil
-res_cat <- surv_categorize(res_cut)
-
-# 3. Kaplan-Meier sur les 2 groupes (Low vs High)
-fit_opt <- survfit(Surv(os_days, OS_event) ~ CEBPA, data = res_cat)
-
-ggsurvplot(
-  fit_opt, 
-  data = res_cat,
-  pval = TRUE,
-  risk.table = TRUE,
-  palette = c("#2E9FDF", "#E7B800"),
-  legend.title = "CEBPA Activity",
-  legend.labs = c("Low", "High")
+# Log-Hazard
+termplot(
+  fit_cox, 
+  se = TRUE, 
+  col.term = "#D55E00", 
+  col.se = "#2E9FDF", 
+  xlab = "Transdifferentiation Index (CEBPA - PAX5)", 
+  ylab = "Log Hazard Ratio"
 )
+abline(h = 0, lty = 2, col = "gray")
 ```
