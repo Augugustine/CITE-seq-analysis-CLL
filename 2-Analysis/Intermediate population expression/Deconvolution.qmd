@@ -39,7 +39,6 @@ Metacells
 ```{r}
 data_cite <- subset(data_cite, subset = Annotation %in% c("B intermediate","B naive", "B memory","CD4 T","CD8 T","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
 # Create metacells because ~110k cells 
-data_cite$sample_time <- paste(data_cite$patient, data_cite$timepoint, sep = "_")
 metacells = create_metacells(data_cite,
                              labels_column = "Annotation", 
                              samples_column = "sample_time", 
@@ -117,8 +116,8 @@ Markers selection (starTracer)
 ```{r}
 DefaultAssay(data_cite) <- "RNA"
 Idents(data_cite) <- data_cite$Annotation
-data_cite <- subset(data_cite, subset = Annotation %in% c("B cells","T cells","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
-data_cite <- subset(data_cite, subset = Annotation %in% c("B intermediate","B naive", "B memory","CD4 T","CD8 T","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
+data_cite <- subset(data_cite, subset = Annotation %in% c("B cells","T cells","NK","Neutrophil","Monocyte","DC","Macrophage","Bridge"))
+
 data_cite <- FindVariableFeatures(data_cite, selection.method = "vst", nfeatures = 2000)
 
 res <- searchMarker(
@@ -126,7 +125,7 @@ res <- searchMarker(
   thresh.1 = 0.5,
   thresh.2 = NULL,
   method = "pos", 
-  num = 20,
+  num = 60,
   gene.use = NULL,
   meta.data = NULL,
   ident.use = Annotation)
@@ -172,7 +171,7 @@ signatures = create_sc_signatures(metacells[["Counts"]],
                                   sample_labels = "sample_time", 
                                   bulk_rna = pseudobulk, 
                                   cell_markers = markers_gene, 
-                                  name_signature = "CITE_CLL", 
+                                  name_signature = "CITE_CLL_subset", 
                                   credentials.mail = "augustine.blanc-boekholt@inserm.fr", 
                                   credentials.token = "614b135494faade1a53c2ebc62b55829",
                                   methods_sig = c("BSeqsc"))
@@ -181,7 +180,7 @@ signatures = create_sc_signatures(metacells[["Counts"]],
 #1) deconvolution pseudobulk 
 deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
                                normalized = FALSE, methods = c("Epidish", "DeconRNASeq", "DWLS","CBSX"),
-                               signatures_select = c("BSeqSC-CITE_CLL-scRNAseq"),
+                               signatures_select = c("BSeqSC-CITE_CLL_subset-scRNAseq"),
                                return = TRUE, 
                                credentials.mail = "augustine.blanc-boekholt@inserm.fr",
                                credentials.token = "614b135494faade1a53c2ebc62b55829",
@@ -206,8 +205,8 @@ colnames(cells_groundtruth) <- dplyr::recode(
 #3) Compute deconvolution benchmark
 benchmark = compute.benchmark(deconv_pseudo, 
                               cells_groundtruth, 
-                              corr_type = "spearman",
-                              scatter = FALSE, 
+                              corr_type = "pearson",
+                              scatter = TRUE, 
                               plot = TRUE, 
                               pval = 0.05, 
                               file_name = "Deconvolution", 
@@ -215,86 +214,44 @@ benchmark = compute.benchmark(deconv_pseudo,
                               height = 5)
 ```
 
-## 2) Custom signature only in patient 2
+## 2) Create custom signature combination 2 methods
 
 ```{r}
-data<-readRDS(params$Data_patient)
-data$Annotation<-ifelse(data$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data$Annotation)
-data$Annotation<-ifelse(data$Annotation %in% c("CD4 T", "CD8 T", "T"), "T cells", data$Annotation)
-```
-
-markers seurat
-
-```{r}
-# Calculate the top markers
-Idents(data) <- "Annotation"
-markers <- FindAllMarkers(data, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
-# Filter significant markers
-top_markers <- markers[markers$p_val_adj < 0.05, ]
-# Split marker genes by cluster
-top_markers_list <- split(top_markers$gene, top_markers$cluster)
-
-# Evaluate/Checking specificity of the signatures 
-fc_col <- intersect(c("avg_log2FC", "logFC", "avg_logFC"), names(top_markers))[1]
-
-markers_scored <- top_markers %>%
-  mutate(
-    fc = .data[[fc_col]],
-    specificity = (pct.1 - pct.2) * pmax(fc, 0),
-    expr_diff = pct.1 - pct.2,
-    support = pct.1 * fc,
-    robust = ifelse(p_val_adj < 0.05 & pct.1 > 0.25, TRUE, FALSE)
-  ) %>%
-  arrange(cluster, desc(specificity), desc(fc), desc(expr_diff))
-
-best_markers <- markers_scored %>%
-  group_by(cluster) %>%
-  slice_head(n = 40) %>%
-  ungroup()
-# Split marker genes by cluster
-top_markers_list <- split(best_markers$gene, best_markers$cluster)
-
-
-DotPlot(object = data,
-    features = unique(best_markers$gene),
-    group.by = "Annotation") +
-  RotatedAxis()+labs(y = NULL, x = "Genes") +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
-
-markers_B <- FindMarkers(data, ident.1 = "Bridge" , ident.2 = "B cells" , assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
-markers_B <- markers_B[markers_B$p_val_adj < 0.05, ]
-markers_B$diff<-markers_B$pct.1-markers_B$pct.2
-markers_B_diff <- markers_B[markers_B$diff > 0.3, ]
-markers_B_diff$gene<-rownames(markers_B_diff)
-
-
-markers_macro <- FindMarkers(data, ident.1 = "Bridge" , ident.2 = "Macrophage" , assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
-markers_macro <- markers_macro[markers_macro$p_val_adj < 0.05, ]
-markers_macro$diff<-markers_macro$pct.1-markers_macro$pct.2
-markers_macro_diff <- markers_macro[markers_macro$diff > 0.3, ]
-markers_macro_diff$gene<-rownames(markers_macro_diff)
-
-# Intersect and union
-inter<-intersect(markers_macro_diff$gene, markers_B_diff$gene)
-union<-union(markers_macro_diff$gene, markers_B_diff$gene)
-markers_test<-unique(best_markers$gene)
-markers_test<-union(markers_test, union)
-```
-
-markers startracer
-
-```{r}
-DefaultAssay(data) <- "RNA"
-Idents(data) <- data$Annotation
-data <- subset(data, subset = Annotation %in% c("B cells","T cells","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
-data <- FindVariableFeatures(data, selection.method = "vst", nfeatures = 2000)
+## starTracer for bridge pop 
+data_B <- FindVariableFeatures(data_B, selection.method = "vst", nfeatures = 2000)
 
 res <- searchMarker(
-  x = data, #the input seurat object
+  x = data_B, #the input seurat object
   thresh.1 = 0.5,
   thresh.2 = NULL,
   method = "pos", 
-  num = 20,
+  num = 40,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = Annotation)
+
+markers<-res[["exprs.markers"]]
+markers<-as.data.frame(markers)
+markers_genes<-rownames(markers)
+
+# Split marker genes by cluster
+top_markers_df <- res$para_frame[res$para_frame$gene %in% res$genes.markers, ]
+nrow(top_markers_df)
+length(res$genes.markers)
+# List by cluster
+markers_gene_B <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
+str(markers_gene)
+sapply(markers_gene_B, length)
+
+
+data_T <- FindVariableFeatures(data_T, selection.method = "vst", nfeatures = 2000)
+
+res <- searchMarker(
+  x = data_T, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 40,
   gene.use = NULL,
   meta.data = NULL,
   ident.use = Annotation)
@@ -312,72 +269,18 @@ markers_gene <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
 str(markers_gene)
 sapply(markers_gene, length)
 
-# Plots
-DotPlot(object = data,
-    features = markers_genes,
-    group.by = "Annotation") +
-  RotatedAxis()+labs(y = NULL, x = "Genes") +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
-```
 
-Signatures deconv
 
-```{r}
-# Pseudobulk of my single-cell data
-pseudobulk = create_sc_pseudobulk(data, cells_labels = "Annotation", sample_labels = "timepoint", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
+# Final list 
+final_list <- markers_gene_B[1:4]
+used_genes <- unlist(final_list)
 
-# Create a signature using Multideconv 
-data_metadata<-data@meta.data
-counts <- data@assays[["RNA"]]@layers[["counts"]]
-rownames(counts) <- rownames(data[["RNA"]])
-colnames(counts) <- colnames(data)
-signatures = create_sc_signatures(counts, 
-                                  data_metadata, 
-                                  cells_labels = "Annotation", 
-                                  sample_labels = "timepoint", 
-                                  bulk_rna = pseudobulk, 
-                                  cell_markers = markers_gene, 
-                                  name_signature = "CITE_CLL_p2", 
-                                  credentials.mail = "augustine.blanc-boekholt@inserm.fr", 
-                                  credentials.token = "614b135494faade1a53c2ebc62b55829",
-                                  methods_sig = c("DWLS"))
-
-# Verify the signature
-#1) deconvolution pseudobulk 
-deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
-                               normalized = FALSE, methods = c("Epidish", "DeconRNASeq", "DWLS","CBSX"),
-                               signatures_select = c("DWLS-CITE_CLL_p2-scRNAseq"),
-                               return = TRUE, 
-                               credentials.mail = "augustine.blanc-boekholt@inserm.fr",
-                               credentials.token = "614b135494faade1a53c2ebc62b55829",
-                               file_name = "pseudobulk")
-
-#2) # Counting real cell proportion 
-cells_groundtruth <- table(data$timepoint, data$Annotation)
-cells_groundtruth <- prop.table(cells_groundtruth, margin = 1)
-cells_groundtruth <- as.data.frame.matrix(cells_groundtruth)
-colnames(cells_groundtruth) <- dplyr::recode(
-  colnames(cells_groundtruth),
-  "B cells" = "B.cells",
-  "Macrophage" = "Macrophages.cells",
-  "Monocyte" = "Monocytes",
-  "Neutrophil" = "Neutrophils",
-  "NK" = "NK.cells",
-  "T cells" = "T.cells",
-  "CD4 T" = "CD4.T",
-  "CD8 T" = "CD8.T"
-)
-
-#3) Compute deconvolution benchmark
-benchmark = compute.benchmark(deconv_pseudo, 
-                              cells_groundtruth, 
-                              corr_type = "pearson",
-                              scatter = FALSE, 
-                              plot = TRUE, 
-                              pval = 0.05, 
-                              file_name = "Deconvolution", 
-                              width = 10, 
-                              height = 5)
+for (cell_type in names(markers_gene)) {
+     unique_genes <- setdiff(markers_gene[[cell_type]], used_genes)
+     final_list[[cell_type]] <- unique_genes
+     used_genes <- c(used_genes, unique_genes)
+}
+final_list <-final_list[-8]
 ```
 
 ## 3) Deconvolution of CLL bulk dataset with custom signature
@@ -532,6 +435,19 @@ ggsurvplot(
   pval = TRUE,
   conf.int = TRUE
 )
+```
+
+#### Deconvolution LN CD19+
+
+```{r}
+data_matrix <- read.delim("~/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/GSE161711_log2CPM_counts.txt", row.names = 1, header = TRUE)
+
+head(data_matrix[, 1:5])
+summary(as.vector(data_matrix[, 1]))
+
+
+# Revenir aux CPM linéaires
+cpm_matrix <- (2^data_matrix) - 1
 ```
 
 ## Enrichment with AUCell
@@ -708,6 +624,7 @@ Idents(data) <- data$Annotation
 #Pseudotime Slinghsot
 # Remove clusters that are not connect to the main trajectory.    
 scdata = data[,!Idents(data) %in% c('CD8 T','CD4 T','T','NK','DC','Neutrophil','Platelet','Erythroblast','Monocyte')] # Monocytes ??
+scdata$sample_time <- paste(scdata$patient, scdata$timepoint, sep = "_")
 #remove(data)
 scdata <- run_dim_red(scdata)
 scdata <- scdata %>%
@@ -830,7 +747,7 @@ data_bulk<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Mat
 data_bulk <- as.matrix(data_bulk)
 
 path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_pbmc_bulk.txt")
-# Sign/ coorelation between genes expression and activity
+# Sign/ corelation between genes expression and activity
 regulon <- aracne2regulon(path, data_bulk,  format = "adj")
 
 # TF activity
@@ -1047,4 +964,76 @@ termplot(
   ylab = "Log Hazard Ratio"
 )
 abline(h = 0, lty = 2, col = "gray")
+```
+
+# Verification CD19+ Bridge 
+
+```{r}
+data = readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+Idents(data) <- data$Annotation
+
+# Remove clusters that are not connect to the main trajectory.    
+scdata = data[,!Idents(data) %in% c('CD8 T','CD4 T','T','NK','DC','Neutrophil','Platelet','Erythroblast','Monocyte')] # Monocytes ??
+#remove(data)
+scdata <- run_dim_red(scdata)
+scdata <- scdata %>%
+  RunUMAP(reduction = "harmony",  dims = 1:15)
+
+# Check the CD19+ on the bridge pop
+VlnPlot(scdata, pt.size=0, features = "CD19.1", assay = "ADT",group.by = "Annotation")
+
+# Percentage of CD19+ cells in the bridge 
+adt <- FetchData(
+  scdata,
+  vars = "CD19.1",
+  assay = "ADT",
+  layer = "data")
+
+adt$Annotation <- scdata$Annotation
+bridge <- adt %>%
+  filter(Annotation == "Bridge")
+
+pct_cd19 <- mean(bridge$adt_CD19.1 > 1) * 100
+pct_cd19
+
+# CD19+ across pseudotime
+cd19 <- FetchData(scdata,vars = "CD19.1",assay = "ADT",layer = "data")
+
+# Pseudotime and celltype annotation
+cd19$Pseudotime <- scdata$cell_trajectory
+cd19$Annotation <- scdata$Annotation
+cd19_bridge <- cd19 %>%
+  filter(Annotation == "Bridge",!is.na(Pseudotime) )
+
+# Visualisation
+ggplot(cd19_bridge, aes(x = Pseudotime, y = adt_CD19.1)) +
+  geom_point(alpha = 0.3, size = 0.8) +
+  geom_smooth(method = "loess", se = TRUE, color = "#D55E00") +
+  labs(
+    x = "Pseudotime (Slinshot)",
+    y = "CD19 protein abundance",
+    title = "CD19 protein abundance along pseudotime in Intermediate population") +
+  theme_classic()
+
+ggplot(cd19_bridge, aes(x = Pseudotime, y = adt_CD19.1)) +
+  geom_point(alpha = 0.3, size = 0.8) +
+  geom_smooth(method = "loess", se = TRUE, color = "#D55E00") +
+  labs(x = "Pseudotime (Slingshot)",
+    y = "CD19 protein abundance",
+    title = "CD19 protein abundance along pseudotime in Intermediate population") +
+  theme_classic() +
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15),
+    axis.text.x = element_text(size = 13),
+    axis.text.y = element_text(size = 13))
+```
+
+Test
+
+```{r}
+# Deconv on B and bridge and macro
+data<-subset(data, subset= Annotation)
+# Deconv on B and Bridge 
+
 ```
