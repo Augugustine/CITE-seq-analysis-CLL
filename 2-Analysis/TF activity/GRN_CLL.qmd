@@ -117,44 +117,6 @@ data <- data %>%
 write.table(data, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix_pbmc.txt", sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
 ```
 
-```{r}
-
-# Seuil d'expression
-tpm_threshold <- 0.1
-
-# Pourcentage minimal d'échantillons
-min_fraction <- 0.20
-
-# Nombre minimal d'échantillons
-min_samples <- ceiling(ncol(data) * min_fraction)
-
-# Gènes exprimés > 0.1 TPM dans >= 20% des samples
-keep <- rowSums(data > tpm_threshold, na.rm = TRUE) >= min_samples
-
-table(keep)
-
-expr_filt <- data[keep, ]
-
-dim(expr_filt)
-
-
-# Varaince
-# ------------------------------------------------------------
-# 5. Vérifier la variance
-# ------------------------------------------------------------
-
-gene_var <- apply(data, 1, var)
-
-summary(gene_var)
-
-hist(
-    gene_var,
-    breaks = 100,
-    main = "Variance des gènes",
-    xlab = "Variance"
-)
-```
-
 ```{bash}
 # ARACNe pipeline 
 java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -e matrix_pbmc.txt  -o outputFolder --tfs TF_list.txt --pvalue 1E-8 --seed 1 --calculateThreshold
@@ -164,6 +126,17 @@ do
 java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -e matrix.txt -o outputFolder --tfs TF_list.txt --pvalue 1E-8 --calculateThreshold --seed $i
 done
 
+java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -o outputFolder --consolidate
+```
+
+```{bash}
+# Aracne for big cohort, parallelisation of the jobs 
+java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -e matrix_pbmc.txt  -o outputFolder --tfs TF_list.txt --pvalue 1E-8 --seed 1 --calculateThreshold
+
+java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar \
+  -e matrix_pbmc.txt -o outputFolder --tfs TF_list.txt \
+  --pvalue 1E-8 --seed $SLURM_ARRAY_TASK_ID
+  
 java -Xmx5G -jar /home/ablanc/work/scie-panc/ARACNe-AP/dist/aracne.jar -o outputFolder --consolidate
 ```
 
@@ -424,4 +397,49 @@ p <- ggraph(layout_df) +
 
 print(p)
 ggsave("GRN_plot.pdf", plot = p, width = 20, height = 20, limitsize = FALSE)
+```
+
+## GRN CLL PBMC corhort pySCENIC
+
+```{r}
+library(dplyr)
+data<-read.table(params$data_pbmc, sep="\t", header=TRUE)
+
+# Remove the redundant samples and the treated samples
+remove_1<-c("CRC.0007", "CRC.0011", "CRC.0028", "CRC.0033", "DFCI.5053", "JB.0010", "GCLL.0136")
+clinical<-read.table(params$clinical_pbmc, sep="\t", header=TRUE, fill = TRUE)
+remove<-subset(clinical, treatment_status_at_samp =="Treated", select = "participant_id")
+remove<-gsub("-", ".", remove$participant_id)
+list <- unique(c(remove, remove_1))
+data <- data[, !colnames(data) %in% list]
+data<-data[,-1]
+data <- data %>%
+  dplyr::rename(gene = Description)
+
+# Filter the genes (beggining 57k genes)
+# Remove gene with 0 for all samples
+data <- data[rowSums(data[, sapply(data, is.numeric)] != 0) > 0, ]
+# Remove duplicated gene names 
+sum(duplicated(data$gene))
+data <- aggregate(
+    data[, -which(names(data) == "gene")],
+    by = list(gene = data$gene),
+    FUN = max)
+rownames(data) <- data$gene
+
+# Expresssion: retain genes expressed at a TPM > 1 in at least 30% of the samples
+min_pct <- 0.30
+min_samples <- ceiling(ncol(data) * min_pct)
+data <- data[rowSums(data > 1) >= min_samples, ]
+
+data$gene<-rownames(data)
+data <- data %>%
+  relocate(gene, .before = 1)
+
+# 
+data<-data[,-1]
+data<-t(data)
+
+
+write.csv(data, file = "~/Documents/Singlecell-R/Scripts/Matrix/matrix_pbmc_sc.csv", quote = FALSE, row.names = TRUE, col.names = TRUE)
 ```
