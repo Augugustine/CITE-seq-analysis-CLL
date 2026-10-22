@@ -1,0 +1,1168 @@
+---
+title: "Deconvolution"
+params: 
+  Data_bulk: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_counts_full.tsv"
+  Clinical: "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.nwx2hb.tsv"
+  Data_CITEseq: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds"
+  Data_patient: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+  Output: "~/Documents/Singlecell-R/Scripts/Plots/"
+format: html
+editor: visual
+---
+
+Goal: To investigate the transdifferentiation population in various bulk datasets from CLL, Richter’s transformation (RT) and other conditions, with a view to linking this population to clinical data. To investigate using bulk data from PBMCs as well as lymph nodes.
+
+```{r}
+#| message: false
+library(Seurat)
+library(ggplot2)
+library(dplyr)
+library(survival)
+library(survminer)
+library(ggpubr)
+library(splines)
+library(starTracer)
+devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
+#source("functions.R")
+
+# CITE seq data patients 2 and 3 merged --> for the Intermediate population signatures 
+data_cite<-readRDS(params$Data_CITEseq)
+#data_cite<-subset(data_cite, subset = Annotation != "Erythroblast")
+data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data_cite$Annotation)
+data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("CD4 T", "CD8 T", "T"), "T cells", data_cite$Annotation)
+```
+
+## 1) Create custom signatures based on the CITE-seq data (Patients 2 and 3) for the "intermediate population".
+
+Metacells
+
+```{r}
+data_cite <- subset(data_cite, subset = Annotation %in% c("B intermediate","B naive", "B memory","CD4 T","CD8 T","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
+# Create metacells because ~110k cells 
+metacells = create_metacells(data_cite,
+                             labels_column = "Annotation", 
+                             samples_column = "sample_time", 
+                             exclude_cells = NULL,
+                             min_cells = 50, 
+                             k = 15, 
+                             max_shared = 15, 
+                             n_workers = 1, 
+                             min_meta = 10)
+
+metacells_seurat = Seurat::CreateSeuratObject(metacells[["Counts"]], meta.data = metacells[["Metadata"]])
+metacells_seurat <- NormalizeData(metacells_seurat, normalization.method = "LogNormalize")
+```
+
+Markers Seurat (wilcoxon test)
+
+```{r}
+# Calculate the top markers
+Idents(data_cite) <- "Annotation"
+markers <- FindAllMarkers(data_cite, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+# Filter significant markers
+top_markers <- markers[markers$p_val_adj < 0.05, ]
+# Split marker genes by cluster
+top_markers_list <- split(top_markers$gene, top_markers$cluster)
+
+# Evaluate/Checking specificity of the signatures 
+fc_col <- intersect(c("avg_log2FC", "logFC", "avg_logFC"), names(top_markers))[1]
+
+markers_scored <- top_markers %>%
+  mutate(
+    fc = .data[[fc_col]],
+    specificity = (pct.1 - pct.2) * pmax(fc, 0),
+    expr_diff = pct.1 - pct.2,
+    support = pct.1 * fc,
+    robust = ifelse(p_val_adj < 0.05 & pct.1 > 0.25, TRUE, FALSE)
+  ) %>%
+  arrange(cluster, desc(specificity), desc(fc), desc(expr_diff))
+
+best_markers <- markers_scored %>%
+  group_by(cluster) %>%
+  slice_head(n = 40) %>%
+  ungroup()
+# Split marker genes by cluster
+top_markers_list <- split(best_markers$gene, best_markers$cluster)
+
+
+DotPlot(object = data_cite,
+    features = unique(best_markers$gene),
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+markers_B <- FindMarkers(metacells_seurat, ident.1 = "Bridge" , ident.2 = "B cells" , assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+markers_B <- markers_B[markers_B$p_val_adj < 0.05, ]
+markers_B$diff<-markers_B$pct.1-markers_B$pct.2
+markers_B_diff <- markers_B[markers_B$diff > 0.3, ]
+markers_B_diff$gene<-rownames(markers_B_diff)
+
+
+markers_macro <- FindMarkers(metacells_seurat, ident.1 = "Bridge" , ident.2 = "Macrophage" , assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+markers_macro <- markers_macro[markers_macro$p_val_adj < 0.05, ]
+markers_macro$diff<-markers_macro$pct.1-markers_macro$pct.2
+markers_macro_diff <- markers_macro[markers_macro$diff > 0.3, ]
+markers_macro_diff$gene<-rownames(markers_macro_diff)
+
+# Intersect and union
+inter<-intersect(markers_macro_diff$gene, markers_B_diff$gene)
+union<-union(markers_macro_diff$gene, markers_B_diff$gene)
+markers_test<-unique(best_markers$gene)
+markers_test<-union(markers_test, union)
+```
+
+Markers selection (starTracer)
+
+```{r}
+DefaultAssay(data_cite) <- "RNA"
+Idents(data_cite) <- data_cite$Annotation
+data_cite <- subset(data_cite, subset = Annotation %in% c("B cells","T cells","NK","Neutrophil","Monocyte","DC","Macrophage","Bridge"))
+
+data_cite <- FindVariableFeatures(data_cite, selection.method = "vst", nfeatures = 2000)
+
+res <- searchMarker(
+  x = data_cite, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 60,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = Annotation)
+
+markers<-res[["exprs.markers"]]
+markers<-as.data.frame(markers)
+markers_genes<-rownames(markers)
+
+# Split marker genes by cluster
+top_markers_df <- res$para_frame[res$para_frame$gene %in% res$genes.markers, ]
+nrow(top_markers_df)
+length(res$genes.markers)
+# List by cluster
+markers_gene <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
+str(markers_gene)
+sapply(markers_gene, length)
+
+# Plots
+DotPlot(object = data_cite,
+    features = markers_genes,
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+DotPlot(object = metacells_seurat,
+    features = markers_genes,
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+Signatures
+
+```{r}
+# Pseudobulk of my single-cell data
+pseudobulk = create_sc_pseudobulk(metacells_seurat, cells_labels = "Annotation", sample_labels = "sample_time", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
+
+# Create a signature using Multideconv 
+metacell_metadata<-metacells_seurat@meta.data
+signatures = create_sc_signatures(metacells[["Counts"]], 
+                                  metacell_metadata, 
+                                  cells_labels = "Annotation", 
+                                  sample_labels = "sample_time", 
+                                  bulk_rna = pseudobulk, 
+                                  cell_markers = markers_gene, 
+                                  name_signature = "CITE_CLL_subset", 
+                                  credentials.mail = "augustine.blanc-boekholt@inserm.fr", 
+                                  credentials.token = "614b135494faade1a53c2ebc62b55829",
+                                  methods_sig = c("BSeqsc"))
+
+# Verify the signature
+#1) deconvolution pseudobulk 
+deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
+                               normalized = FALSE, methods = c("Epidish", "DeconRNASeq", "DWLS","CBSX"),
+                               signatures_select = c("BSeqSC-CITE_CLL_subset-scRNAseq"),
+                               return = TRUE, 
+                               credentials.mail = "augustine.blanc-boekholt@inserm.fr",
+                               credentials.token = "614b135494faade1a53c2ebc62b55829",
+                               file_name = "pseudobulk")
+
+#2) # Counting real cell proportion 
+cells_groundtruth <- table(metacells_seurat$sample_time, metacells_seurat$Annotation)
+cells_groundtruth <- prop.table(cells_groundtruth, margin = 1)
+cells_groundtruth <- as.data.frame.matrix(cells_groundtruth)
+colnames(cells_groundtruth) <- dplyr::recode(
+  colnames(cells_groundtruth),
+  "B cells" = "B.cells",
+  "Macrophage" = "Macrophages.cells",
+  "Monocyte" = "Monocytes",
+  "Neutrophil" = "Neutrophils",
+  "NK" = "NK.cells",
+  "T cells" = "T.cells",
+  "CD4 T" = "CD4.T",
+  "CD8 T" = "CD8.T"
+)
+
+#3) Compute deconvolution benchmark
+benchmark = compute.benchmark(deconv_pseudo, 
+                              cells_groundtruth, 
+                              corr_type = "pearson",
+                              scatter = TRUE, 
+                              plot = TRUE, 
+                              pval = 0.05, 
+                              file_name = "Deconvolution", 
+                              width = 10, 
+                              height = 5)
+```
+
+## 2) Create custom signature combination 2 methods
+
+```{r}
+## starTracer for bridge pop 
+data_B <- FindVariableFeatures(data_B, selection.method = "vst", nfeatures = 2000)
+
+res <- searchMarker(
+  x = data_B, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 40,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = Annotation)
+
+markers<-res[["exprs.markers"]]
+markers<-as.data.frame(markers)
+markers_genes<-rownames(markers)
+
+# Split marker genes by cluster
+top_markers_df <- res$para_frame[res$para_frame$gene %in% res$genes.markers, ]
+nrow(top_markers_df)
+length(res$genes.markers)
+# List by cluster
+markers_gene_B <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
+str(markers_gene)
+sapply(markers_gene_B, length)
+
+
+data_T <- FindVariableFeatures(data_T, selection.method = "vst", nfeatures = 2000)
+
+res <- searchMarker(
+  x = data_T, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 40,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = Annotation)
+
+markers<-res[["exprs.markers"]]
+markers<-as.data.frame(markers)
+markers_genes<-rownames(markers)
+
+# Split marker genes by cluster
+top_markers_df <- res$para_frame[res$para_frame$gene %in% res$genes.markers, ]
+nrow(top_markers_df)
+length(res$genes.markers)
+# List by cluster
+markers_gene <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
+str(markers_gene)
+sapply(markers_gene, length)
+
+
+
+# Final list 
+final_list <- markers_gene_B[1:4]
+used_genes <- unlist(final_list)
+
+for (cell_type in names(markers_gene)) {
+     unique_genes <- setdiff(markers_gene[[cell_type]], used_genes)
+     final_list[[cell_type]] <- unique_genes
+     used_genes <- c(used_genes, unique_genes)
+}
+final_list <-final_list[-8]
+```
+
+## 3) Deconvolution of CLL bulk dataset with custom signature
+
+#### PBMC: Dataset CLL-map (Knisbacher, B. A., et al. 2022)
+
+708 samples + clinical data
+
+```{r}
+# Bulk Data for the deconvolution 
+data_bulk<-read.table(params$Data_bulk, header=T)
+data_bulk<-data_bulk[,-1]
+cols_to_remove <- c("CRC.0007","CRC.0011","CRC.0028", "CRC.0033", "DFCI.5053", "JB.0010", "GCLL.0136")
+data_bulk <- data_bulk[, !colnames(data_bulk) %in% cols_to_remove]
+data_bulk$variance <- apply(data_bulk[, -1], 1, var)
+# keep gene with the higher variance
+data_bulk <- data_bulk %>%
+  group_by(Description) %>%
+  slice_max(variance, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  select(-variance)
+data_bulk <-data.frame(data_bulk)
+genes <- data_bulk$Description
+data_bulk$Description <- NULL
+rownames(data_bulk) <- genes
+data_bulk[] <- lapply(data_bulk, as.numeric)
+data_bulk <- as.matrix(data_bulk)
+
+# Clinical data 
+clinical<-read.table(params$Clinical, sep="\t", header=TRUE, fill = TRUE)
+clinical$participant_id<-gsub("-", ".", clinical$participant_id)
+
+id<-intersect(colnames(data_bulk),clinical$participant_id)
+
+clinical<-subset(clinical, participant_id %in% id)
+data_bulk <- data_bulk[, colnames(data_bulk) %in% id]
+```
+
+```{r}
+# Deconvolution 
+deconv_bulk = compute.deconvolution(raw.counts = data_bulk,
+                               normalized = TRUE, 
+                               methods = c("Epidish","DWLS", "CBSX"),
+                               signatures_select = c("BSeqSC-CITE_CLL-scRNAseq"),
+                               return = TRUE, credentials.mail = "marcelo.hurtado@inserm.fr",
+                               credentials.token = "b72981d4d0554bcfffc37472ccd8588d",
+                               file_name = "Deconvolution_bulk_CLL")
+
+deconv_subgroups = compute.deconvolution.analysis(deconvolution = deconv_bulk,
+                                                  corr = 0.7,
+                                                  seed = 123,
+                                                  file_name = "Bulk_CLL",
+                                                  return = TRUE)
+
+deconv_cite<-deconv_bulk[,colnames(deconv_bulk) %in% c("DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL.scRNAseq_Bridge", "Epidish_BSeqSC.CITE_CLL.scRNAseq_Bridge","DeconRNASeq_BSeqSC.CITE_CLL.scRNAseq_Bridge")]
+correlation_bridge<-cor(deconv_cite,use = "complete.obs")
+colnames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL.scRNAseq_", ".", colnames(correlation_bridge))
+rownames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL.scRNAseq_", ".", rownames(correlation_bridge))
+```
+
+```{r}
+# Heatmap proportion 
+pheatmap(t(deconv_bulk), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE, annotation_col = annotation)
+# Heatmap z-score proportion 
+mat_z <- t(scale(t(deconv_bulk)))
+pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE, annotation_col = annotation)
+
+
+# Without B cells pop 
+deconv_bcells<-deconv_bulk[, !colnames(deconv_bulk) %in% c("DWLS_BSeqSC.CITE_CLL.scRNAseq_B.cells","CBSX_BSeqSC.CITE_CLL.scRNAseq_B.cells", "Epidish_BSeqSC.CITE_CLL.scRNAseq_B.cells","DeconRNASeq_BSeqSC.CITE_CLL.scRNAseq_B.cells")]
+# Heatmap z-score proportion 
+mat_z <- t(scale(t(deconv_bcells)))
+rownames(clinical) <- clinical$participant_id
+annotation <- clinical[colnames(t(mat_z)), c("IGL_expression", "vital_status", "tumor_molecular_subtype", "cll_epitype","IGHV_mut","treatment_status_at_samp")]
+pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = FALSE, annotation_col = annotation)
+
+
+# Comparison clinical data 
+# Fusion clinical data and deconv results 
+deconv_bulk$participant_id<-rownames(deconv_bulk)
+data<-merge(clinical, deconv_bulk, by="participant_id")
+# Mean 3 deconv methods 
+data$Bridge_mean<-rowMeans(data[, c("DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL.scRNAseq_Bridge", "Epidish_BSeqSC.CITE_CLL.scRNAseq_Bridge")])
+  
+# treated and untreated, alive and dead, mutation, rai (cancer stage)
+comparisons <- list(c("Treated", "Untreated"))
+plot<-ggplot(data, aes(x = treatment_status_at_samp, y = Bridge_mean)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test", size=6) + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=16), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 18),axis.title.y = element_text(size = 18), legend.title = element_text(size = 18),
+legend.text = element_text(size = 18) ) + xlab("Treatment status") + ylab("Intermediate population deconvolution")
+plot
+
+# Survival curve
+# Define OS_event, where status = 1 for death/event, 0 for censored 
+data$OS_event <- ifelse(data$vital_status == "alive","0","1")
+
+# Kaplan-Meirl curve (Are the survival curves for the two groups significantly different? test log-rank)
+data$Bridge_group <- ifelse(data$Bridge_mean >= median(data$Bridge_mean),"High","Low")
+data$Bridge_group <- ifelse(data$DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge >= median(data$DWLS_BSeqSC.CITE_CLL.scRNAseq_Bridge),"High","Low")
+
+surv_obj <- Surv(time = data$os_days,event = data$os)
+fit <- survfit(surv_obj ~ Bridge_group, data = data)
+ggsurvplot(fit, data = data,
+    pval = TRUE,
+    risk.table = TRUE,
+    conf.int = TRUE,
+    palette = c("#2E9FDF", "#E7B800"))
+
+# Cox model (Is the proportion of Intermediate population associated with the risk of death?)
+cox <- coxph(Surv(os_days, os) ~ Bridge_mean, data = data)
+summary(cox)
+ggforest(cox, data = data)
+cox.zph(cox)
+plot(cox.zph(cox))
+
+cox_spline <- coxph(
+  Surv(os_days, os) ~ ns(Bridge_mean, df = 3),
+  data = data)
+```
+
+```{r}
+data2$Bridge_group <- ifelse(data2$Bridge_mean >= median(data2$Bridge_mean),"High","Low")
+
+data2$death_days_from_samp<-as.numeric(data2$death_days_from_samp)
+data2$OS_event<-as.numeric(data2$OS_event)
+surv_obj <- Surv(time = data2$os_days,event = data2$os)
+fit <- survfit(surv_obj ~ Bridge_group, data = data2)
+ggsurvplot(fit, data = data2,
+    pval = TRUE,
+    risk.table = TRUE,
+    conf.int = TRUE,
+    palette = c("#2E9FDF", "#E7B800"))
+
+
+q <- quantile(data$Bridge_mean, c(1/3, 2/3), na.rm = TRUE)
+
+data2 <- subset(
+  data,
+  Bridge_mean <= q[1] | Bridge_mean >= q[2]
+)
+
+data2$Bridge_group <- ifelse(
+  data2$Bridge_mean <= q[1],
+  "Low",
+  "High"
+)
+
+fit <- survfit(Surv(os_days, os) ~ Bridge_group, data = data2)
+
+ggsurvplot(
+  fit,
+  data = data2,
+  risk.table = TRUE,
+  pval = TRUE,
+  conf.int = TRUE
+)
+```
+
+#### Deconvolution LN CD19+
+
+After STAR (FastQ –\> Count matrix)
+
+```{r}
+# COUNT MATRIX
+library(GenomicFeatures)   # BiocManager::install("GenomicFeatures")
+library(rtracklayer)
+library(txdbmaker)
+
+# Gene lentgh GTF
+txdb <- makeTxDbFromGFF("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/Homo_sapiens.GRCh38.116.gtf", format = "gtf")
+exons_by_gene <- exonsBy(txdb, by = "gene")
+gene_len <- sum(width(reduce(exons_by_gene)))   # reduce() = fusion exons
+gene_len <- vapply(
+  exons_by_gene,
+  function(x) sum(width(reduce(x))),
+  numeric(1))
+
+# Count matrix
+counts <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/count_matrix.txt", header = TRUE, row.names = 1, sep = "\t", check.names = FALSE)
+
+# Align
+common <- intersect(rownames(counts), names(gene_len))
+cat(length(common), "genes out", nrow(counts), "found in the GTF\n")
+counts <- counts[common, ]
+len<- gene_len[common]
+
+# TPM
+library(scuttle)
+tpm_matrix <- calculateTPM(counts, lengths = len)
+colSums(tpm_matrix)
+
+# Ensembl ID to gene name 
+gtf <- import("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/Homo_sapiens.GRCh38.116.gtf")
+genes <- as.data.frame(gtf[gtf$type == "gene"])
+annot <- unique(genes[, c("gene_id", "gene_name", "gene_biotype")])
+# Keep only protein coding gene 
+library(dplyr)
+annot<-subset(annot, gene_biotype == 'protein_coding')
+annot<- annot %>% filter(!is.na(gene_name))
+tpm_matrix<-data.frame(tpm_matrix)
+tpm_matrix$Genes<-rownames(tpm_matrix)
+tpm_filt<-merge(tpm_matrix, annot, by.x='Genes', by.y='gene_id')
+
+# Remove duplicated gene names 
+sum(duplicated(tpm_filt$gene_name))
+tpm_filt <- aggregate(
+  tpm_filt[, -which(names(tpm_filt) == "gene_name")],
+  by = list(gene = tpm_filt$gene_name),
+  FUN = max)
+
+tpm_filt <- tpm_filt[, !names(tpm_filt) %in% c("Genes", "gene_biotype")]
+
+# Add sample name and not the SRR name
+samples <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/SraRunTable.csv", header = TRUE, sep = ",", check.names = FALSE)
+samples_name <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/Sample_name.txt", header = F, sep = "\t", check.names = FALSE)
+colnames(samples_name) <-c("Sample Name", "Samples")
+library(stringr)
+samples_name$`Sample Name` <- str_trim(samples_name$`Sample Name`, side = "right")
+samples <- merge(samples, samples_name, by="Sample Name")
+library(dplyr)
+dict_name <- setNames(samples$Samples, samples$Run)
+tpm_filt <- tpm_filt %>%
+  rename_with(~ ifelse(.x %in% names(dict_name), dict_name[.x], .x))
+
+write.table(tpm_filt, "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/count_tpm_filt.tsv", sep = "\t", quote = FALSE, col.names = T, row.names=F)
+```
+
+```{r}
+rownames(tpm_filt) <- tpm_filt$gene
+tpm_filt <- tpm_filt[, !names(tpm_filt) %in% c("gene")]
+
+# Deconvolution 
+deconv_bulk = compute.deconvolution(raw.counts = tpm_filt,
+                               normalized = F, 
+                               methods = c("Epidish","DWLS", "CBSX", "DeconRNASeq"),
+                               signatures_select = c("BSeqSC-CITE_CLL_subset-scRNAseq"),
+                               return = TRUE, credentials.mail = "augustine.blanc-boekholt@inserm.fr",
+                               credentials.token = "614b135494faade1a53c2ebc62b55829",
+                               file_name = "Deconvolution_bulk_CLL")
+
+deconv_subgroups = compute.deconvolution.analysis(deconvolution = deconv_bulk,
+                                                  corr = 0.7,
+                                                  seed = 123,
+                                                  file_name = "Bulk_CLL_LN",
+                                                  return = TRUE)
+
+deconv_cite<-deconv_bulk[,colnames(deconv_bulk) %in% c("DWLS_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge", "Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","DeconRNASeq_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge")]
+correlation_bridge<-cor(deconv_cite,use = "complete.obs")
+colnames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", colnames(correlation_bridge))
+rownames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", rownames(correlation_bridge))
+
+deconv_cite<-deconv_bulk[,colnames(deconv_bulk) %in% c("DWLS_BSeqSC.CITE_CLL_subset.scRNAseq_B.cells","CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_B.cells", "Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_B.cells","DeconRNASeq_BSeqSC.CITE_CLL_subset.scRNAseq_B.cells")]
+correlation_bridge<-cor(deconv_cite,use = "complete.obs")
+colnames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", colnames(correlation_bridge))
+rownames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", rownames(correlation_bridge))
+
+deconv_cite<-deconv_bulk[,colnames(deconv_bulk) %in% c("DWLS_BSeqSC.CITE_CLL_subset.scRNAseq_Macrophages.cells","CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Macrophages.cells", "Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_Macrophages.cells","DeconRNASeq_BSeqSC.CITE_CLL_subset.scRNAseq_Macrophages.cells")]
+correlation_bridge<-cor(deconv_cite,use = "complete.obs")
+colnames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", colnames(correlation_bridge))
+rownames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", rownames(correlation_bridge))
+colnames(correlation_bridge)<-gsub("Macrophages.cells", "Macro", colnames(correlation_bridge))
+rownames(correlation_bridge)<-gsub("Macrophages.cells", "Macro", rownames(correlation_bridge))
+```
+
+```{r}
+pbmc_samples<-rownames(deconv_bulk)[grepl("PB", rownames(deconv_bulk))]
+ln_samples<-rownames(deconv_bulk)[grepl("LN", rownames(deconv_bulk))]
+pbmc<-subset(deconv_bulk, rownames(deconv_bulk) %in% pbmc_samples)
+ln<-subset(deconv_bulk, rownames(deconv_bulk) %in% ln_samples)
+
+summary(pbmc$CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge)
+summary(ln$CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge)
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggpubr)
+
+# Boxplots
+deconv_long <- deconv %>%
+    pivot_longer(cols = c("DWLS_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","DeconRNASeq_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge"),names_to = "Method",values_to = "Proportion")
+
+deconv_long$Method <- gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge", "", deconv_long$Method)
+
+ggplot(deconv_long, aes(x = Sample_type, y = Proportion, fill = Sample_type)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+  geom_jitter(width = 0.2, alpha = 0.5, size = 1.5) +
+  scale_fill_manual(values = c("PB" = "lightblue", "LN" = "darkblue")) +
+  stat_compare_means(comparisons = list(c("PB", "LN")), method = "wilcox.test", label = "p.signif",
+    tip.length = 0.03) +
+  facet_wrap(~ Method, scales = "fixed") +
+  labs(title = "Comparison of the percentages of the intermediate population obtained by \ndeconvolution between CD19+ PBMCs and CD19+ lymph nodes",x = "Sample Type",y = "% intermediaite population",fill = "Sample Type") +scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  theme_minimal() +
+  theme(legend.position = "none",strip.text = element_text(size = 10) )
+
+
+# Heatmap
+
+```
+
+## Enrichment with AUCell
+
+```{r}
+DefaultAssay(data_cite) <- "RNA"
+Idents(data_cite) <- data_cite$Annotation
+data_cite <- subset(data_cite, subset = Annotation %in% c("B cells","T cells","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
+```
+
+Seurat
+
+```{r}
+# Calculate the top markers
+Idents(data_cite) <- "Annotation"
+markers <- FindAllMarkers(data_cite, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
+# Filter significant markers
+top_markers <- markers[markers$p_val_adj < 0.05, ]
+# Split marker genes by cluster
+top_markers_list <- split(top_markers$gene, top_markers$cluster)
+
+# Evaluate/Checking specificity of the signatures 
+fc_col <- intersect(c("avg_log2FC", "logFC", "avg_logFC"), names(top_markers))[1]
+
+markers_scored <- top_markers %>%
+  mutate(
+    fc = .data[[fc_col]],
+    specificity = (pct.1 - pct.2) * pmax(fc, 0),
+    expr_diff = pct.1 - pct.2,
+    support = pct.1 * fc,
+    robust = ifelse(p_val_adj < 0.05 & pct.1 > 0.25, TRUE, FALSE)
+  ) %>%
+  arrange(cluster, desc(specificity), desc(fc), desc(expr_diff))
+
+best_markers <- markers_scored %>%
+  group_by(cluster) %>%
+  slice_head(n = 40) %>%
+  ungroup()
+# Split marker genes by cluster
+top_markers_list <- split(best_markers$gene, best_markers$cluster)
+
+
+DotPlot(object = data_cite,
+    features = unique(best_markers$gene),
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+```{r}
+geneSets<-top_markers_list[["Bridge"]]
+counts <- GetAssayData(data_cite, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_cite.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+data_cite <- AddMetaData(data_cite, metadata = AUC)
+
+data<-subset(data_cite, subset=Annotation %in% c("B cells", "Bridge", "Macrophage"))
+
+#Violin plot
+comparisons <- list(
+  c("B cells", "Bridge"),
+  c("Bridge", "Macrophage"),
+  c("B cells", "Macrophage"))
+plot<-ggplot(data@meta.data, aes(x = Annotation, y = geneSet, fill = Annotation)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test") + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.01, color = "red", linetype = "dashed", size = 0.5) +
+  xlab("Cell type") + ylab("AUC (signature transdifferenciation)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/phago_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+```
+
+StarTracer
+
+```{r}
+ 
+data_cite <- FindVariableFeatures(data_cite, selection.method = "vst", nfeatures = 2000)
+
+res <- searchMarker(
+  x = data_cite, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 20,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = Annotation)
+
+markers<-res[["exprs.markers"]]
+markers<-as.data.frame(markers)
+markers_genes<-rownames(markers)
+
+# Split marker genes by cluster
+top_markers_df <- res$para_frame[res$para_frame$gene %in% res$genes.markers, ]
+nrow(top_markers_df)
+length(res$genes.markers)
+# List by cluster
+markers_gene <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
+str(markers_gene)
+sapply(markers_gene, length)
+
+# Plots
+DotPlot(object = data_cite,
+    features = markers_genes,
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+```{r}
+geneSets<-markers_gene[["Bridge"]]
+counts <- GetAssayData(data_cite, slot = "counts")
+cells_rankings <- AUCell_buildRankings(
+  counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_cite.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+data_cite <- AddMetaData(data_cite, metadata = AUC)
+
+data<-subset(data_cite, subset=Annotation %in% c("B cells", "Bridge", "Macrophage"))
+
+#Violin plot
+comparisons <- list(
+  c("B cells", "Bridge"),
+  c("Bridge", "Macrophage"),
+  c("B cells", "Macrophage"))
+plot<-ggplot(data@meta.data, aes(x = Annotation, y = geneSet, fill = Annotation)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test") + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.01, color = "red", linetype = "dashed", size = 0.5) +
+  xlab("Cell type") + ylab("AUC (signature transdifferenciation)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/phago_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+```
+
+# Deconvolution MeDuSA
+
+Trajectory with slinghot
+
+```{r}
+library(MeDuSA)
+library(Seurat)
+library(dplyr)
+library(slingshot)
+library(ggplot2)
+library(harmony)
+source("functions.R")
+
+# Trajectory with Slingshot
+
+data = readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+Idents(data) <- data$Annotation
+
+#Pseudotime Slinghsot
+# Remove clusters that are not connect to the main trajectory.    
+scdata = data[,!Idents(data) %in% c('CD8 T','CD4 T','T','NK','DC','Neutrophil','Platelet','Erythroblast','Monocyte')] # Monocytes ??
+scdata$sample_time <- paste(scdata$patient, scdata$timepoint, sep = "_")
+#remove(data)
+scdata <- run_dim_red(scdata)
+scdata <- scdata %>%
+  RunUMAP(reduction = "harmony",  dims = 1:15)
+
+# Annotate cell trajectory using the slingshot
+umap = as.data.frame(Embeddings(scdata,'umap'))
+scdata$celltype_time <- paste(scdata$Annotation, scdata$timepoint, sep = "_")
+Idents(scdata) <- scdata$celltype_time
+umap$ct = as.vector(Idents(scdata))
+
+#scdata <-FindClusters(scdata,resolution = 2)
+sds = getLineages(umap[,1:2], umap$ct, start.clus = 'B intermediate_D1', end.clus = 'Macrophage_D14') # or D1 B naive ?? # faire un clustring et utiliser le numero du cluster
+#sds = getLineages(umap[,1:2], umap$ct, end.clus = 'Macrophage') # or D1 B naive ?? # faire un clustring et utiliser le numero du cluster
+sds = getCurves(sds)
+path = as.data.frame(sds@metadata$curves$Lineage1$s)
+pseudo_time = sds@metadata$curves$Lineage1$lambda
+pseudo_time = pseudo_time/max(pseudo_time)
+
+# Add the cell-type and cell-state trajectory into the meta data. 
+scdata$cell_type = scdata$Annotation
+scdata$cell_trajectory = pseudo_time[colnames(scdata)]
+
+# Visualize the cell-state trajectory
+colors = c("#9e0142", "#d53e4f", "#f46d43", "#fdae61", "#fee08b", "#ffffbf", "#e6f598", "#abdda4", "#66c2a5", "#3288bd", "#5e4fa2")
+colors = colors[seq(length(colors),1,-1)]
+p1 = ggplot(umap,aes(x=umap_1,y=umap_2))+
+  geom_point(aes(col=pseudo_time),size=0.5)+
+  xlab('PATH-1')+
+  ylab('PATH-2')+
+  theme(legend.position = 'right',
+        legend.justification = "left",
+        panel.border = element_blank(), axis.line = element_line(size = 0.8))+
+  #annotate('text',x=-2,y=-9,label='GMPs',size=5)+
+  scale_color_gradientn(colours = colors,name='Pseudotime',labels = scales::number_format(accuracy = 0.1))
+p1
+ggsave("/home/ablanc/work/NetBIO2/Trajcetory/trjactory_slingshot.jpeg", p1, width = 1500, height = 2000, units = "px")
+```
+
+Validate deconvolution
+
+```{r}
+devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
+
+#scdata = readRDS("/home/ablanc/work/NetBIO2/Data/CLL_Seurat_merge_p2p3.rds")
+Idents(data) <- data$Annotation
+# Remove clusters that are not connect to the main trajectory.    
+scdata = data[,!Idents(data) %in% c('CD8 T','CD4 T','T','NK','DC','Neutrophil','Platelet','Erythroblast','Monocyte')] # Monocytes ??
+
+scdata <- run_dim_red(scdata)
+scdata <- scdata %>%
+  RunUMAP(reduction = "harmony",  dims = 1:15)
+scdata$sample_time <- paste(scdata$patient, scdata$timepoint, sep = "_")
+
+bulk = create_sc_pseudobulk(scdata, cells_labels = "Annotation", sample_labels = "sample_time", normalized = FALSE, file_name = "Pseudobulk_deconvolution") # pseudobulk 
+# separate timepoint and patient so 5x2=10 pseudobulks samples
+
+bulk = sweep(bulk,2,colSums(bulk),'/')*1e+4
+scdata@assays[["RNA"]]@layers[["counts"]] = sweep(scdata@assays[["RNA"]]@layers[["counts"]],2,colSums(scdata@assays[["RNA"]]@layers[["counts"]]),'/')*1e+4
+
+MeDuSA_obj = MeDuSA(bulk, scdata, markerGene = NULL, span = 0.35, select.ct = "B intermediate",
+		  resolution = 50, smooth = TRUE, fractional = TRUE)	
+```
+
+```{r}
+# Estimate cell-state abundance from the scRNA-seq data 
+pseudotime = scdata$cell_trajectory
+sampleID = scdata$sample_time
+pseudotime = pseudotime[names(sampleID)]
+abundance_expect = sapply(unique(sampleID),function(id){
+  pseudotime_temp = sort(pseudotime[which(sampleID == id)])
+  pseudotime_temp = pseudotime_temp
+  count_temp = hist(pseudotime_temp,breaks = seq(0,1,(1/40)))$counts
+  abundance_temp  =  count_temp/sum(count_temp)
+  return(abundance_temp)
+})
+rownames(abundance_expect) = paste0('bin',seq(1,nrow(abundance_expect)))
+abundance_expect = abundance_expect[, colnames(abundance_expect) %in% colnames(bulk)]
+
+# Compare the cell-state abundance estimated from bulk data to that from scRNA-seq data
+abundance_estimate = MeDuSA_obj@Estimation$cell_state_abundance
+state = MeDuSA_obj@Estimation$TimeBin
+rownames(abundance_estimate) = state
+rownames(abundance_expect) = state
+
+commonId = intersect(colnames(abundance_expect),colnames(abundance_estimate))
+abundance_expect = abundance_expect[,commonId]
+abundance_estimate = abundance_estimate[,commonId]
+dat = data.frame('MeDuSA' = c(abundance_estimate),'Slingshot' = c(abundance_expect))
+p2 = ggplot(dat,aes(x=Slingshot,y=MeDuSA))+
+  geom_point(col='#feb24c')+
+  geom_smooth(method = 'lm',col='black',se=F)+
+  xlab('scRNA-seq (slingshot)')
+ylab('MeDuSA')
+print(p2)
+
+cor_global <- cor(dat$Slingshot,dat$MeDuSA,method = "spearman")
+cor_global
+```
+
+# TF activity of CEBPA
+
+```{r}
+library(viper)
+library(edgeR)
+library(org.Hs.eg.db)
+library(AnnotationDbi)
+library(limma)
+library(ggplot2)
+library(ggrepel)
+
+grn<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_pbmc_bulk.txt", header=F)
+grn<-grn[-1,]
+grn<-subset(grn, select=c(V1, V2, V3))
+path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/network_for_viper.txt")
+write.table(grn, path, sep = "\t", row.names = FALSE, quote = FALSE, col.names = FALSE)
+
+data_bulk<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/matrix_pbmc.txt", header=T,row.names = 1)
+
+data_bulk <- as.matrix(data_bulk)
+
+path<-c("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/GRN_pbmc_bulk.txt")
+# Sign/ corelation between genes expression and activity
+regulon <- aracne2regulon(path, data_bulk,  format = "adj")
+
+# TF activity
+tf_activity <- viper(
+    bulk,
+    regulon,
+    method = "scale",
+    minsize = 5)
+```
+
+```{r}
+library(ggplot2)
+library(ggpubr)
+library(survival)
+library(survminer)
+library(splines)
+library(dplyr)
+
+# CEBPA activity : score per samples
+cebpa <- data.frame(sample_id = colnames(tf_activity),
+                    CEBPA = as.numeric(tf_activity["CEBPA", ]))
+ 
+clin <- read.delim("~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.tsv", header = TRUE, sep = "\t",quote = "", comment.char = "",fill = TRUE, check.names = FALSE, stringsAsFactors = FALSE, na.strings = c("", "NA", "N/A"))
+clin$participant_id<-gsub("-", ".", clin$participant_id)
+
+dim(clin)
+str(clin)
+
+# Same IDs
+mean(cebpa$sample_id %in% clin$participant_id)
+
+data <- merge(clin, cebpa, by.x = "participant_id", by.y = "sample_id")
+dim(data)
+
+# Box plot comparing 2 conditions
+comparisons <- list(c("Untreated", "Treated"))
+
+p1 <- ggplot(data, aes(x = treatment_status_at_samp, y = CEBPA)) +
+  geom_violin(trim = FALSE, alpha = 0.6) +
+  geom_boxplot(width = 0.1, outlier.shape = NA) +
+  stat_compare_means(comparisons = comparisons, method = "wilcox.test", size = 6) +
+  theme_classic() +
+  xlab("Tumor molecular subtype") + ylab("CEBPA activity")
+p1
+
+
+# Survival curve
+data$OS_event <- ifelse(data$vital_status == "alive", 0, 1)
+
+# median for thresolh 
+data$CEBPA_group <- ifelse(data$CEBPA >= median(data$CEBPA, na.rm = TRUE), "High", "Low")
+data$CEBPA_group <- factor(data$CEBPA_group, levels = c("Low", "High"))
+
+# 0 for thresolh 
+data$CEBPA_group <- ifelse(data$CEBPA >= 1, "High", "Low")
+data$CEBPA_group <- factor(data$CEBPA_group, levels = c("Low", "High"))
+
+
+fit <- survfit(Surv(os_days, OS_event) ~ CEBPA_group, data = data)
+
+ggsurvplot(fit, data = data,
+           pval = TRUE, risk.table = TRUE, conf.int = TRUE,
+           palette = c("#2E9FDF", "#E7B800"),
+           xlab = "Time (days)", legend.title = "CEBPA activity")
+
+```
+
+```{r}
+# Terciles
+q <- quantile(data$CEBPA, probs = c(1/3, 2/3), na.rm = TRUE)
+
+data$CEBPA_tert <- cut(data$CEBPA,
+                       breaks = c(-Inf, unname(q), Inf),
+                       labels = c("Low", "Mid", "High"),
+                       include.lowest = TRUE)
+data$CEBPA_tert <- factor(data$CEBPA_tert, levels = c("Low", "Mid", "High"))
+
+# Events
+data$OS_event <- ifelse(data$vital_status == "alive", 0, 1)
+
+table(data$CEBPA_tert, useNA = "ifany")
+
+# Kaplan-Meier with terciles
+fit <- survfit(Surv(os_days, OS_event) ~ CEBPA_tert, data = data)
+
+ggsurvplot(fit, data = data,
+           pval = TRUE,
+           risk.table = TRUE,
+           conf.int = FALSE,
+           palette = c("#2E9FDF", "grey60", "#E7B800"),
+           xlab = "Time (days)",
+           legend.title = "CEBPA activity",
+           legend.labs = c("Low", "Mid", "High"))
+
+
+library(survival)
+fit_cox <- coxph(Surv(os_days, OS_event) ~ pspline(CEBPA, df = 4), data = data)
+termplot(fit_cox, se = TRUE, col.res = "black")
+```
+
+```{r}
+data_bulk<-read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/cllmap_rnaseq_tpms_full.tsv", header=T,row.names = 1)
+
+data_bulk <- as.matrix(data_bulk)
+# Remove the redundant samples and the treated samples
+remove_1<-c("CRC.0007", "CRC.0011", "CRC.0028", "CRC.0033", "DFCI.5053", "JB.0010", "GCLL.0136")
+list <- unique(c(remove_1))
+data_bulk <- data_bulk[, !colnames(data_bulk) %in% list]
+data_bulk <- data_bulk %>%
+  dplyr::rename(gene = Description)
+
+# Filter the genes (beggining 57k genes)
+# Remove gene with 0 for all samples
+# Remove duplicated gene names 
+sum(duplicated(data_bulk$gene))
+data_bulk <- aggregate(
+    data_bulk[, -which(names(data_bulk) == "gene")],
+    by = list(gene = data_bulk$gene),
+    FUN = max)
+rownames(data_bulk) <- data_bulk$gene
+
+bulk <- bulk %>%
+     relocate(gene, .before = 1)
+bulk<-bulk[,-1]
+```
+
+```{r}
+library(survival)
+library(survminer)
+library(ggplot2)
+
+# CEBPA and PAX5 extraction
+tf_sub <- data.frame(
+    sample_id = colnames(tf_activity),
+    CEBPA     = as.numeric(tf_activity["CEBPA", ]),
+    PAX5      = as.numeric(tf_activity["PAX5", ])
+)
+
+# Clinical data
+clin <- read.delim(
+    "~/Documents/Singlecell-R/Scripts/Data/Dataset CLL-map (Knisbacher, B. A., et al. 2022)/participants.tsv", 
+    header = TRUE, 
+    sep = "\t", 
+    quote = "", 
+    comment.char = "", 
+    fill = TRUE, 
+    check.names = FALSE, 
+    stringsAsFactors = FALSE, 
+    na.strings = c("", "NA", "N/A")
+)
+
+clin$participant_id <- gsub("-", ".", clin$participant_id)
+
+# Data merging
+data <- merge(clin, tf_sub, by.x = "participant_id", by.y = "sample_id")
+
+data$OS_event <- ifelse(data$vital_status == "alive", 0, 1)
+data$os_days  <- as.numeric(data$os_days)
+
+# filtering NA
+data_clean <- data[!is.na(data$os_days) & !is.na(data$OS_event) & !is.na(data$CEBPA) & !is.na(data$PAX5), ]
+
+# Transdifferenciation score(CEBPA High & PAX5 Low)
+med_cebpa <- median(data_clean$CEBPA, na.rm = TRUE)
+med_pax5  <- median(data_clean$PAX5, na.rm = TRUE)
+
+data_clean$transdiff_score <- ifelse(
+    data_clean$CEBPA > med_cebpa & data_clean$PAX5 < med_pax5, 
+    "Transdifferentiated (CEBPA High / PAX5 Low)", 
+    "Classic B-cell"
+)
+
+data_clean$transdiff_score <- factor(
+    data_clean$transdiff_score, 
+    levels = c("Classic B-cell", "Transdifferentiated (CEBPA High / PAX5 Low)")
+)
+
+table(data_clean$transdiff_score)
+
+#Kaplan-Meier
+fit_trans <- survfit(Surv(os_days, OS_event) ~ transdiff_score, data = data_clean)
+
+# Plot
+ggsurvplot(
+    fit_trans, 
+    data = data_clean, 
+    pval = TRUE,
+    risk.table = TRUE,
+    legend.title = "Cellular Profile",
+    legend.labs = c("CEBPA down + PAX5 up", "CEBPA up + PAX5 down"),
+    palette = c("#2E9FDF", "#E7B800"),
+    xlab = "Time (days)",
+    title = "Impact of PAX5 and CEBPA activity Profile on Overall Survival"
+)
+
+library(survival)
+
+#TF activity index
+data_clean$transdiff_index <- data_clean$CEBPA - data_clean$PAX5
+
+# Cox model with Spline 
+fit_cox <- coxph(
+  Surv(os_days, OS_event) ~ pspline(transdiff_index, df = 4), 
+  data = data_clean
+)
+
+# Log-Hazard
+termplot(
+  fit_cox, 
+  se = TRUE, 
+  col.term = "#D55E00", 
+  col.se = "#2E9FDF", 
+  xlab = "Transdifferentiation Index (CEBPA - PAX5)", 
+  ylab = "Log Hazard Ratio"
+)
+abline(h = 0, lty = 2, col = "gray")
+```
+
+# Verification CD19+ Bridge
+
+```{r}
+data = readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+Idents(data) <- data$Annotation
+
+# Remove clusters that are not connect to the main trajectory.    
+scdata = data[,!Idents(data) %in% c('CD8 T','CD4 T','T','NK','DC','Neutrophil','Platelet','Erythroblast','Monocyte')] # Monocytes ??
+#remove(data)
+scdata <- run_dim_red(scdata)
+scdata <- scdata %>%
+  RunUMAP(reduction = "harmony",  dims = 1:15)
+
+# Check the CD19+ on the bridge pop
+VlnPlot(scdata, pt.size=0, features = "CD19.1", assay = "ADT",group.by = "Annotation")
+
+# Percentage of CD19+ cells in the bridge 
+adt <- FetchData(
+  scdata,
+  vars = "CD19.1",
+  assay = "ADT",
+  layer = "data")
+
+adt$Annotation <- scdata$Annotation
+bridge <- adt %>%
+  filter(Annotation == "Bridge")
+
+pct_cd19 <- mean(bridge$adt_CD19.1 > 1) * 100
+pct_cd19
+
+# CD19+ across pseudotime
+cd19 <- FetchData(scdata,vars = "CD19.1",assay = "ADT",layer = "data")
+
+# Pseudotime and celltype annotation
+cd19$Pseudotime <- scdata$cell_trajectory
+cd19$Annotation <- scdata$Annotation
+cd19_bridge <- cd19 %>%
+  filter(Annotation == "Bridge",!is.na(Pseudotime) )
+
+# Visualisation
+ggplot(cd19_bridge, aes(x = Pseudotime, y = adt_CD19.1)) +
+  geom_point(alpha = 0.3, size = 0.8) +
+  geom_smooth(method = "loess", se = TRUE, color = "#D55E00") +
+  labs(
+    x = "Pseudotime (Slinshot)",
+    y = "CD19 protein abundance",
+    title = "CD19 protein abundance along pseudotime in Intermediate population") +
+  theme_classic()
+
+ggplot(cd19_bridge, aes(x = Pseudotime, y = adt_CD19.1)) +
+  geom_point(alpha = 0.3, size = 0.8) +
+  geom_smooth(method = "loess", se = TRUE, color = "#D55E00") +
+  labs(x = "Pseudotime (Slingshot)",
+    y = "CD19 protein abundance",
+    title = "CD19 protein abundance along pseudotime in Intermediate population") +
+  theme_classic() +
+  theme(plot.title = element_text(size = 15, hjust = 0.5),
+    axis.title.x = element_text(size = 15),
+    axis.title.y = element_text(size = 15),
+    axis.text.x = element_text(size = 13),
+    axis.text.y = element_text(size = 13))
+```
+
+Test
+
+```{r}
+# Deconv on B and bridge and macro
+data<-subset(data, subset= Annotation)
+# Deconv on B and Bridge 
+
+```
