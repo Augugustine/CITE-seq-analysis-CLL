@@ -30,6 +30,7 @@ data_cite<-readRDS(params$Data_CITEseq)
 #data_cite<-subset(data_cite, subset = Annotation != "Erythroblast")
 data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data_cite$Annotation)
 data_cite$Annotation<-ifelse(data_cite$Annotation %in% c("CD4 T", "CD8 T", "T"), "T cells", data_cite$Annotation)
+data_cite$sample_time <- paste(data_cite$patient, data_cite$timepoint, sep = "_")
 ```
 
 ## 1) Create custom signatures based on the CITE-seq data (Patients 2 and 3) for the "intermediate population".
@@ -507,8 +508,11 @@ write.table(tpm_filt, "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Dat
 ```
 
 ```{r}
-rownames(tpm_filt) <- tpm_filt$gene
-tpm_filt <- tpm_filt[, !names(tpm_filt) %in% c("gene")]
+devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
+
+tpm_filt <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/count_tpm_filt.tsv", header = TRUE, row.names = 1, sep = "\t", check.names = FALSE)
+#rownames(tpm_filt) <- tpm_filt$gene
+#tpm_filt <- tpm_filt[, !names(tpm_filt) %in% c("gene")]
 
 # Deconvolution 
 deconv_bulk = compute.deconvolution(raw.counts = tpm_filt,
@@ -558,6 +562,10 @@ library(ggplot2)
 library(ggpubr)
 
 # Boxplots
+deconv<-deconv_bulk
+deconv$Sample_type<-ifelse(grepl("PB", rownames(deconv))=="TRUE", "PB", "LN")
+deconv$Patient<-substr(rownames(deconv), 1, 7)
+  
 deconv_long <- deconv %>%
     pivot_longer(cols = c("DWLS_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","DeconRNASeq_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge"),names_to = "Method",values_to = "Proportion")
 
@@ -570,13 +578,118 @@ ggplot(deconv_long, aes(x = Sample_type, y = Proportion, fill = Sample_type)) +
   stat_compare_means(comparisons = list(c("PB", "LN")), method = "wilcox.test", label = "p.signif",
     tip.length = 0.03) +
   facet_wrap(~ Method, scales = "fixed") +
-  labs(title = "Comparison of the percentages of the intermediate population obtained by \ndeconvolution between CD19+ PBMCs and CD19+ lymph nodes",x = "Sample Type",y = "% intermediaite population",fill = "Sample Type") +scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  labs(title = "Comparison of the fraction of the intermediate population obtained by \ndeconvolution between CD19+ PBMCs and CD19+ lymph nodes",x = "Sample Type",y = "Fraction intermediaite population",fill = "Sample Type") +scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
   theme_minimal() +
   theme(legend.position = "none",strip.text = element_text(size = 10) )
 
 
-# Heatmap
+# Paired plot
+library(tidyverse)
+library(ggpubr)
 
+deconv_long$Sample_type <- factor(deconv_long$Sample_type, levels = c("LN", "PB"))
+deconv_long$Patient <- factor(deconv_long$Patient)
+pvals <- deconv_long %>%
+  select(Patient, Sample_type, Method, Proportion) %>%
+  pivot_wider(names_from = Sample_type, values_from = Proportion) %>%
+  group_by(Method) %>%
+  summarise(p = wilcox.test(PB, LN, paired = TRUE)$p.value, .groups = "drop") %>%
+  mutate(label = paste0("p = ", signif(p, 2)))
+
+ggplot(deconv_long, aes(x = Sample_type, y = Proportion,group = Patient, color = Patient)) +
+  geom_line(alpha = 0.7) +geom_point(size = 2) +
+  geom_text(data = pvals, aes(x = 1.5, y = Inf, label = label),vjust = 1.5, inherit.aes = FALSE, size = 3.5) +
+  facet_wrap(~ Method, scales = "fixed") +
+  labs(title = "Paired plot fraction of Intermediate population: LN vs PB (paired by patient)",
+       x = "Sample type", y = "Fraction intermediate population") +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
+  theme_minimal() +theme(legend.position = "none",strip.text = element_text(size = 10))
+
+
+# Heatmap
+library(pheatmap)
+colnames(deconv_bulk)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", colnames(deconv_bulk))
+annotation <- data.frame(Sample_type = ifelse(grepl("PB", rownames(deconv)), "PB", "LN"))
+rownames(annotation) <- rownames(deconv)
+annotation_colors <- list(Sample_type = c("PB" = "#0072B2","LN" = "#D55E00"))
+pheatmap(t(deconv_bulk), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = TRUE, annotation_col=annotation, annotation_colors=annotation_colors, border_color = NA)
+# Heatmap z-score proportion 
+mat_z <- t(scale(t(deconv_bulk)))
+pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = F, annotation_col=annotation, annotation_colors=annotation_colors, border_color = NA)
+```
+
+## Correlation between CEBPa activity and Bridge proportion deconvolution
+
+```{r}
+# Infer TFs activity using the CLL network
+library(viper)
+data_log<-log2(tpm_filt+1)
+data_log <- as.matrix(data_log)
+regulon<-readRDS("/home/a.blanc-boekholt/Documents/NetREM/regulon_grn_CLL.rds")
+tf_aracne <- viper(data_log, regulon, method = "none", minsize = 5)
+
+# Correlation 
+cebpa <- tf_aracne["CEBPA", , drop = FALSE] %>%
+    t() %>%
+    as.data.frame() %>%
+    rownames_to_column("Sample") %>%
+    mutate(Sample = gsub("-", ".", Sample))
+
+bridge <- deconv_bulk %>%
+    rownames_to_column("Sample") %>%
+    select(Sample, ends_with(".Bridge")) %>%
+    pivot_longer(-Sample, names_to = "Method", values_to = "Bridge") %>%
+    mutate(Method = sub("\\.Bridge$", "", Method))
+
+df <- inner_join(cebpa, bridge, by = "Sample") %>%
+    mutate(Patient = sub("_.*", "", Sample),Sample_type = factor(str_extract(Sample, "PB|LN"), levels = c("PB", "LN")))
+nrow(df)
+
+# Scatter plot
+ggplot(df, aes(x = CEBPA, y = Bridge, color = Sample_type)) +
+    geom_point(size = 2.2, alpha = 0.8) +
+    geom_smooth(method = "lm", se = TRUE, alpha = 0.15) +
+    stat_cor(data = filter(df, Sample_type == "PB"), method = "pearson", cor.coef.name = "R", size = 3.3,
+           label.x.npc = 1, label.y.npc = 0.12, hjust = 1) +
+  stat_cor(data = filter(df, Sample_type == "LN"),method = "pearson", cor.coef.name = "R", size = 3.3,
+           label.x.npc = 1, label.y.npc = 0.02, hjust = 1) +
+    scale_color_manual(values = c("PB" = "lightblue3", "LN" = "darkblue")) + facet_wrap(~ Method, scales = "free_y") +labs(title="CEBPa activity and Intermediate population proportion correlation (Pearson)",x = "CEBPa activity", y = "Proportion Intermediate population",color = "Sample type") +
+    theme_minimal()
+
+# correlation values
+cors <- df %>%
+    group_by(Method, Sample_type) %>%
+    summarise(R = cor(CEBPA, Bridge, method = "pearson"),
+              p   = cor.test(CEBPA, Bridge, method = "pearson", exact = FALSE)$p.value,
+              .groups = "drop") %>%
+    mutate(p_adj = p.adjust(p, method = "BH"))
+cors
+
+
+# Fusion all deconv methods (mean)
+library(tidyverse)
+df_cons <- df %>%
+    group_by(Method) %>%
+    mutate(Bridge_z = as.numeric(scale(Bridge))) %>%
+    group_by(Sample, Patient, Sample_type, CEBPA) %>%
+    summarise(Bridge_consensus = mean(Bridge_z), .groups = "drop")
+# Pearson
+cors <- df_cons %>%
+    group_by(Sample_type) %>%
+    summarise(R = cor(CEBPA, Bridge_consensus, method = "pearson"),
+              p   = cor.test(CEBPA, Bridge_consensus, method = "pearson", exact = FALSE)$p.value,
+              .groups = "drop") %>%
+    mutate(label = paste0(Sample_type, ": R = ", round(R, 2), ", p = ", signif(p, 2)),
+           vjust = ifelse(Sample_type == "LN", -0.5, -2))
+
+ggplot(df_cons, aes(x = CEBPA, y = Bridge_consensus, color = Sample_type)) +
+    geom_point(size = 2.2, alpha = 0.8) +
+    geom_smooth(method = "lm", se = TRUE, alpha = 0.15) +
+    geom_text(data = cors,aes(x = Inf, y = -Inf, label = label, vjust = vjust, color = Sample_type),
+              hjust = 1.05, size = 3.5, inherit.aes = FALSE, show.legend = FALSE) +
+    scale_color_manual(values = c("PB" = "lightblue3", "LN" = "darkblue")) +
+    scale_y_continuous(expand = expansion(mult = c(0.2, 0.05))) +
+    labs(x = "CEBPA activity",y = "Intermediate population (consensus z-score, 4 methods)",color = "Sample type") +theme_minimal()
 ```
 
 ## Enrichment with AUCell
