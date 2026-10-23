@@ -298,7 +298,7 @@ ggsave("PAX5.jpeg", plot, width = 3000, height = 2000, units = "px")
 
 ```
 
-Phagocytosis and extracellular vessicules Signature
+Phagocytosis and extracellular vesicles Signature
 
 ```{r}
 phago <- AnnotationDbi::select(
@@ -1352,4 +1352,162 @@ full_obj$Annotation[bridge_cells] <- "Bridge"
 table(full_obj$Annotation)
 DimPlot(full_obj, group.by = "Annotation", reduction = "umap")
 #saveRDS(full_obj, file = "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+```
+
+# Patient 2 and 3 merged
+
+```{r}
+source("functions.R")
+library(harmony)
+data<-readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+data$Annotation<-ifelse(data$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data$Annotation)
+data<-subset(data, subset=Annotation %in% c("B cells", "Bridge", "Macrophage", "Monocyte"))
+data <- run_dim_red(data)
+data <- data %>%
+    RunUMAP(reduction = "harmony",  dims = 1:15)
+```
+
+### EVs signatures
+
+```{r}
+library(org.Hs.eg.db)
+library(AUCell)
+ev<- AnnotationDbi::select(org.Hs.eg.db, keys= "GO:1903561",columns = c("ENTREZID", "SYMBOL"), keytype = "GO")
+
+ev <- unique(na.omit(ev))
+ev <- unique(ev$SYMBOL)
+
+genes<-ev
+geneSets <- list(geneSet1=genes)
+geneSets
+
+counts <- GetAssayData(data, slot = "counts")
+cells_rankings <- AUCell_buildRankings(counts, plotStats = FALSE)
+cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+
+png("~/Documents/Singlecell-R/Scripts/Plots/thresholds.png", width = 1200, height = 1000)
+par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
+cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
+dev.off()
+
+# AUCell score = signature activity per cell
+AUC<-getAUC(cells_AUC)
+AUC<-t(AUC)
+#Color the cell with higher AUC score than the thresholds
+thre<-cells_assignment[["geneSet1"]][["aucThr"]][["selected"]] 
+# Add the signature activity in teh seurat object
+data <- AddMetaData(data, metadata = AUC)
+
+#Violin plot
+comparisons <- list(c("B cells", "Bridge"),c("Bridge", "Macrophage"),c("B cells", "Macrophage"))
+plot<-ggplot(data@meta.data, aes(x = Annotation, y = geneSet1, fill = Annotation)) + 
+  geom_violin(trim = FALSE, alpha = 0.6) + 
+  geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test") + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.064, color = "red", linetype = "dashed", size = 0.5) +
+  xlab(" ") + ylab("AUC (Extracellular vesicles)")
+plot
+ggsave("~/Documents/Singlecell-R/Scripts/Plots/ev.jpeg", plot, width = 3000, height = 2000, units = "px")
+
+# statistical test if the intermediate population is less than the active AUC thresold 
+data_B<-subset(data, subset=B_cells=="Bridge")
+auc_bridge<-data_B$geneSet1
+auc_bridge<-t(auc_bridge)
+wilcox.test(auc_bridge, mu = 0.076, alternative = "less")
+
+# Barplot, proportions
+data$EV_status <- ifelse(data$geneSet1 > 0.064, "Enriched", "Not enriched")
+
+res <- data@meta.data %>%
+    group_by(Annotation) %>%
+    summarise(n_cells= n(),n_enriched = sum(EV_status == "Enriched"),pct_in_type = 100 * n_enriched / n_cells,median_AUC = median(geneSet1),.groups = "drop") %>%
+    mutate(pct_of_enriched = 100 * n_enriched / sum(n_enriched)) %>%
+    arrange(desc(pct_in_type))
+
+ggplot(res, aes(x = reorder(Annotation, pct_in_type), y = pct_in_type)) +
+    geom_col(fill = "steelblue") + coord_flip() + labs(x = NULL, y = "% of cells above AUCell threshold") +
+    theme(axis.text.x = element_text(size=14), axis.text.y=element_text(size = 16), axis.title.x = element_text(size = 16))+theme_minimal()
+```
+
+### Entropy 
+
+```{r}
+library(dplyr)
+library(slingshot)
+library(ggplot2)
+source("functions.R")
+library(harmony)
+library(slingshot)
+
+data<-readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+data$Annotation<-ifelse(data$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data$Annotation)
+data<-subset(data, subset=Annotation %in% c("B cells", "Bridge", "Macrophage"))
+data <- run_dim_red(data)
+data <- data %>%
+    RunUMAP(reduction = "harmony",  dims = 1:15)
+
+
+# Trajectory with Slingshot
+
+Idents(data) <- data$Annotation
+data$sample_time <- paste(data$patient, data$timepoint, sep = "_")
+
+# Annotate cell trajectory using the slingshot
+umap = as.data.frame(Embeddings(data,'umap'))
+data$celltype_time <- paste(data$Annotation, data$timepoint, sep = "_")
+Idents(data) <- data$celltype_time
+umap$ct = as.vector(Idents(data))
+
+#data <-FindClusters(data,resolution = 2)
+sds = getLineages(umap[,1:2], umap$ct, start.clus = 'B cells_D1', end.clus = 'Macrophage_D14') # or D1 B naive ?? # faire un clustring et utiliser le numero du cluster
+#sds = getLineages(umap[,1:2], umap$ct, end.clus = 'Macrophage') # or D1 B naive ?? # faire un clustring et utiliser le numero du cluster
+sds = getCurves(sds)
+path = as.data.frame(sds@metadata$curves$Lineage1$s)
+pseudo_time = sds@metadata$curves$Lineage1$lambda
+pseudo_time = pseudo_time/max(pseudo_time)
+
+# Add the cell-type and cell-state trajectory into the meta data
+data$cell_type = data$Annotation
+data$cell_trajectory = pseudo_time[colnames(data)]
+
+# Visualize the cell-state trajectory
+colors = c("#9e0142", "#d53e4f", "#f46d43", "#fdae61", "#fee08b", "#ffffbf", "#e6f598", "#abdda4", "#66c2a5", "#3288bd", "#5e4fa2")
+colors = colors[seq(length(colors),1,-1)]
+ggplot(umap,aes(x=umap_1,y=umap_2))+
+  geom_point(aes(col=pseudo_time),size=0.5)+
+  xlab('PATH-1')+
+  ylab('PATH-2')+
+  theme(legend.position = 'right',
+        legend.justification = "left",
+        panel.border = element_blank(), axis.line = element_line(size = 0.8))+
+  #annotate('text',x=-2,y=-9,label='GMPs',size=5)+
+  scale_color_gradientn(colours = colors,name='Pseudotime',labels = scales::number_format(accuracy = 0.1))
+
+
+# Celltype across time
+df_plot <- data.frame(pseudotime = data$cell_trajectory, celltype = data$Annotation)
+ggplot(df_plot, aes(x = pseudotime, y = celltype, color = celltype)) +
+  geom_jitter(height = 0.15,width = 0,size = 1.5,alpha = 0.8) +
+  scale_color_manual(values = c("B cells" = "#F8766D","Bridge" = "#619CFF","Macrophage" = "#F564E3")) +
+  labs(x = "Slingshot pseudotime",y = NULL,title = "Cellular trajectory") +
+  theme_classic() +
+  theme(legend.position = "none",axis.text.y = element_text(size = 10),plot.title = element_text(hjust = 0.5, face = "bold"))
+
+```
+
+```{r}
+# entropy
+library(entropy)
+counts <- GetAssayData(data, assay = "RNA", layer = "counts")
+counts <- as(counts, "CsparseMatrix")
+
+nz <- split(counts@x, factor(rep(seq_len(ncol(counts)), diff(counts@p)),
+                             levels = seq_len(ncol(counts))))
+
+data$entropy_ML <- vapply(nz, entropy, numeric(1), method = "ML", unit = "log2")
+```
+
+### CEBPa activity
+
+```{r}
+
 ```
