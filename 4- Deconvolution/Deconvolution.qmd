@@ -1225,11 +1225,7 @@ scdata <- scdata %>%
 VlnPlot(scdata, pt.size=0, features = "CD19.1", assay = "ADT",group.by = "Annotation")
 
 # Percentage of CD19+ cells in the bridge 
-adt <- FetchData(
-  scdata,
-  vars = "CD19.1",
-  assay = "ADT",
-  layer = "data")
+adt <- FetchData(scdata, vars = "CD19.1", assay = "ADT",layer = "data")
 
 adt$Annotation <- scdata$Annotation
 bridge <- adt %>%
@@ -1271,11 +1267,228 @@ ggplot(cd19_bridge, aes(x = Pseudotime, y = adt_CD19.1)) +
     axis.text.y = element_text(size = 13))
 ```
 
-Test
+Deconvolution on B and Bridge
 
 ```{r}
-# Deconv on B and bridge and macro
-data<-subset(data, subset= Annotation)
-# Deconv on B and Bridge 
+data = readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+data$Annotation<-ifelse(data$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data$Annotation)
+data <- subset(data, subset = Annotation %in% c("B cells","Bridge"))
+Idents(data) <- data$Annotation
+data <- run_dim_red(data)
+data <- data %>%
+  RunUMAP(reduction = "harmony",  dims = 1:15)
 
+# Keep the CD19+ cells in the Bridge 
+cd19 <- FetchData(data,vars = "CD19.1",assay = "ADT",layer = "data")
+keep<-colnames(data)[data$Annotation != "Bridge" | cd19[colnames(data), "adt_CD19.1"]>1]
+data<-subset(data, cells=keep)
+VlnPlot(data, pt.size=0, features = "CD19.1", assay = "ADT",group.by = "Annotation")
+```
+
+Signature StarTracer
+
+```{r}
+library(starTracer)
+DefaultAssay(data) <- "RNA"
+Idents(data) <- data$Annotation
+
+data <- FindVariableFeatures(data, selection.method = "vst", nfeatures = 2000)
+
+res <- searchMarker(
+  x = data, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 100,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = Annotation)
+
+markers<-res[["exprs.markers"]]
+markers<-as.data.frame(markers)
+markers_genes<-rownames(markers)
+
+# Split marker genes by cluster
+top_markers_df <- res$para_frame[res$para_frame$gene %in% res$genes.markers, ]
+nrow(top_markers_df)
+length(res$genes.markers)
+# List by cluster
+markers_gene <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
+str(markers_gene)
+sapply(markers_gene, length)
+
+# Plots
+DotPlot(object = data,
+    features = markers_genes,
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+Custom signature multideconv
+
+```{r}
+data$sample_time <- paste(data$patient, data$timepoint, sep = "_")
+# Create metacells because ~110k cells 
+metacells = create_metacells(data,
+                             labels_column = "Annotation", 
+                             samples_column = "sample_time", 
+                             exclude_cells = NULL,
+                             min_cells = 50, 
+                             k = 15, 
+                             max_shared = 15, 
+                             n_workers = 1, 
+                             min_meta = 10)
+
+metacells_seurat = Seurat::CreateSeuratObject(metacells[["Counts"]], meta.data = metacells[["Metadata"]])
+metacells_seurat <- NormalizeData(metacells_seurat, normalization.method = "LogNormalize")
+```
+
+```{r}
+# Pseudobulk of my single-cell data
+pseudobulk = create_sc_pseudobulk(metacells_seurat, cells_labels = "Annotation", sample_labels = "sample_time", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
+
+# Create a signature using Multideconv 
+metacell_metadata<-metacells_seurat@meta.data
+signatures = create_sc_signatures(metacells[["Counts"]], 
+                                  metacell_metadata, 
+                                  cells_labels = "Annotation", 
+                                  sample_labels = "sample_time", 
+                                  bulk_rna = pseudobulk, 
+                                  cell_markers = markers_gene, 
+                                  name_signature = "CITE_CLL_Bridge_B", 
+                                  credentials.mail = "augustine.blanc-boekholt@inserm.fr", 
+                                  credentials.token = "614b135494faade1a53c2ebc62b55829",
+                                  methods_sig = c("BSeqsc"))
+
+# Verify the signature
+#1) deconvolution pseudobulk 
+deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
+                               normalized = FALSE, methods = c("Epidish", "DeconRNASeq", "DWLS","CBSX"),
+                               signatures_select = c("BSeqSC-CITE_CLL_Bridge_B-scRNAseq"),
+                               return = TRUE, 
+                               credentials.mail = "augustine.blanc-boekholt@inserm.fr",
+                               credentials.token = "614b135494faade1a53c2ebc62b55829",
+                               file_name = "pseudobulk")
+
+#2) # Counting real cell proportion 
+cells_groundtruth <- table(metacells_seurat$sample_time, metacells_seurat$Annotation)
+cells_groundtruth <- prop.table(cells_groundtruth, margin = 1)
+cells_groundtruth <- as.data.frame.matrix(cells_groundtruth)
+colnames(cells_groundtruth) <- dplyr::recode(
+  colnames(cells_groundtruth),
+  "B cells" = "B.cells","Macrophage" = "Macrophages.cells",
+  "Monocyte" = "Monocytes","Neutrophil" = "Neutrophils",
+  "NK" = "NK.cells","T cells" = "T.cells",
+  "CD4 T" = "CD4.T","CD8 T" = "CD8.T")
+
+#3) Compute deconvolution benchmark
+benchmark = compute.benchmark(deconv_pseudo, cells_groundtruth, corr_type = "pearson",
+                              scatter = TRUE, plot = TRUE, pval = 0.05, 
+                              file_name = "Deconvolution_bridge_cd19", 
+                              width = 10, height = 5)
+```
+
+Deconvolution bulk data
+
+```{r}
+tpm_filt <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/count_tpm_filt.tsv", header = TRUE, row.names = 1, sep = "\t", check.names = FALSE)
+#rownames(tpm_filt) <- tpm_filt$gene
+#tpm_filt <- tpm_filt[, !names(tpm_filt) %in% c("gene")]
+
+# Deconvolution 
+deconv_bulk = compute.deconvolution(raw.counts = tpm_filt,
+                               normalized = F, 
+                               methods = c("Epidish","DWLS", "CBSX", "DeconRNASeq"),
+                               signatures_select = c("BSeqSC-CITE_CLL_subset-scRNAseq"),
+                               return = TRUE, credentials.mail = "augustine.blanc-boekholt@inserm.fr",
+                               credentials.token = "614b135494faade1a53c2ebc62b55829",
+                               file_name = "Deconvolution_bulk_CLL")
+
+deconv_subgroups = compute.deconvolution.analysis(deconvolution = deconv_bulk,
+                                                  corr = 0.7,
+                                                  seed = 123,
+                                                  file_name = "Bulk_CLL_LN",
+                                                  return = TRUE)
+
+deconv_cite<-deconv_bulk[,colnames(deconv_bulk) %in% c("DWLS_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge", "Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","DeconRNASeq_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge")]
+correlation_bridge<-cor(deconv_cite,use = "complete.obs")
+colnames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", colnames(correlation_bridge))
+rownames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", rownames(correlation_bridge))
+
+deconv_cite<-deconv_bulk[,colnames(deconv_bulk) %in% c("DWLS_BSeqSC.CITE_CLL_subset.scRNAseq_B.cells","CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_B.cells", "Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_B.cells","DeconRNASeq_BSeqSC.CITE_CLL_subset.scRNAseq_B.cells")]
+correlation_bridge<-cor(deconv_cite,use = "complete.obs")
+colnames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", colnames(correlation_bridge))
+rownames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", rownames(correlation_bridge))
+```
+
+```{r}
+pbmc_samples<-rownames(deconv_bulk)[grepl("PB", rownames(deconv_bulk))]
+ln_samples<-rownames(deconv_bulk)[grepl("LN", rownames(deconv_bulk))]
+pbmc<-subset(deconv_bulk, rownames(deconv_bulk) %in% pbmc_samples)
+ln<-subset(deconv_bulk, rownames(deconv_bulk) %in% ln_samples)
+
+summary(pbmc$CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge)
+summary(ln$CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge)
+
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggpubr)
+
+# Boxplots
+deconv<-deconv_bulk
+deconv$Sample_type<-ifelse(grepl("PB", rownames(deconv))=="TRUE", "PB", "LN")
+deconv$Patient<-substr(rownames(deconv), 1, 7)
+  
+deconv_long <- deconv %>%
+    pivot_longer(cols = c("DWLS_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","DeconRNASeq_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge"),names_to = "Method",values_to = "Proportion")
+
+deconv_long$Method <- gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge", "", deconv_long$Method)
+
+ggplot(deconv_long, aes(x = Sample_type, y = Proportion, fill = Sample_type)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+  geom_jitter(width = 0.2, alpha = 0.5, size = 1.5) +
+  scale_fill_manual(values = c("PB" = "lightblue", "LN" = "darkblue")) +
+  stat_compare_means(comparisons = list(c("PB", "LN")), method = "wilcox.test", label = "p.signif",
+    tip.length = 0.03) +
+  facet_wrap(~ Method, scales = "fixed") +
+  labs(title = "Comparison of the fraction of the intermediate population obtained by \ndeconvolution between CD19+ PBMCs and CD19+ lymph nodes",x = "Sample Type",y = "Fraction intermediaite population",fill = "Sample Type") +scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  theme_minimal() +
+  theme(legend.position = "none",strip.text = element_text(size = 10) )
+
+
+# Paired plot
+library(tidyverse)
+library(ggpubr)
+
+deconv_long$Sample_type <- factor(deconv_long$Sample_type, levels = c("LN", "PB"))
+deconv_long$Patient <- factor(deconv_long$Patient)
+pvals <- deconv_long %>%
+  select(Patient, Sample_type, Method, Proportion) %>%
+  pivot_wider(names_from = Sample_type, values_from = Proportion) %>%
+  group_by(Method) %>%
+  summarise(p = wilcox.test(PB, LN, paired = TRUE)$p.value, .groups = "drop") %>%
+  mutate(label = paste0("p = ", signif(p, 2)))
+
+ggplot(deconv_long, aes(x = Sample_type, y = Proportion,group = Patient, color = Patient)) +
+  geom_line(alpha = 0.7) +geom_point(size = 2) +
+  geom_text(data = pvals, aes(x = 1.5, y = Inf, label = label),vjust = 1.5, inherit.aes = FALSE, size = 3.5) +
+  facet_wrap(~ Method, scales = "fixed") +
+  labs(title = "Paired plot fraction of Intermediate population: LN vs PB (paired by patient)",
+       x = "Sample type", y = "Fraction intermediate population") +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
+  theme_minimal() +theme(legend.position = "none",strip.text = element_text(size = 10))
+
+
+# Heatmap
+library(pheatmap)
+colnames(deconv_bulk)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", colnames(deconv_bulk))
+annotation <- data.frame(Sample_type = ifelse(grepl("PB", rownames(deconv)), "PB", "LN"))
+rownames(annotation) <- rownames(deconv)
+annotation_colors <- list(Sample_type = c("PB" = "#0072B2","LN" = "#D55E00"))
+pheatmap(t(deconv_bulk), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = TRUE, annotation_col=annotation, annotation_colors=annotation_colors, border_color = NA)
+# Heatmap z-score proportion 
+mat_z <- t(scale(t(deconv_bulk)))
+pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = F, annotation_col=annotation, annotation_colors=annotation_colors, border_color = NA)
 ```
