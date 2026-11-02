@@ -23,7 +23,7 @@ library(ggpubr)
 library(splines)
 library(starTracer)
 devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
-#source("functions.R")
+source("functions.R")
 
 # CITE seq data patients 2 and 3 merged --> for the Intermediate population signatures 
 data_cite<-readRDS(params$Data_CITEseq)
@@ -767,8 +767,7 @@ comparisons <- list(
   c("Bridge", "Macrophage"),
   c("B cells", "Macrophage"))
 plot<-ggplot(data@meta.data, aes(x = Annotation, y = geneSet, fill = Annotation)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test") + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
-axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.01, color = "red", linetype = "dashed", size = 0.5) +
-  xlab("Cell type") + ylab("AUC (signature transdifferenciation)")
+axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.01, color = "red", linetype = "dashed", size = 0.5) +xlab("Cell type") + ylab("AUC (signature transdifferenciation)")
 plot
 ggsave("~/Documents/Singlecell-R/Scripts/Plots/phago_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
 ```
@@ -1270,19 +1269,19 @@ ggplot(cd19_bridge, aes(x = Pseudotime, y = adt_CD19.1)) +
 Deconvolution on B and Bridge
 
 ```{r}
-data = readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
-data$Annotation<-ifelse(data$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data$Annotation)
-data <- subset(data, subset = Annotation %in% c("B cells","Bridge"))
-Idents(data) <- data$Annotation
-data <- run_dim_red(data)
-data <- data %>%
+data_sc = readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
+data_sc$Annotation<-ifelse(data_sc$Annotation %in% c("B intermediate", "B naive", "B memory", "B"), "B cells", data_sc$Annotation)
+data_sc <- subset(data_sc, subset = Annotation %in% c("B cells","Bridge"))
+Idents(data_sc) <- data_sc$Annotation
+data_sc <- run_dim_red(data_sc)
+data_sc <- data_sc %>%
   RunUMAP(reduction = "harmony",  dims = 1:15)
 
 # Keep the CD19+ cells in the Bridge 
-cd19 <- FetchData(data,vars = "CD19.1",assay = "ADT",layer = "data")
-keep<-colnames(data)[data$Annotation != "Bridge" | cd19[colnames(data), "adt_CD19.1"]>1]
-data<-subset(data, cells=keep)
-VlnPlot(data, pt.size=0, features = "CD19.1", assay = "ADT",group.by = "Annotation")
+cd19 <- FetchData(data_sc,vars = "CD19.1",assay = "ADT",layer = "data")
+keep<-colnames(data_sc)[data_sc$Annotation != "Bridge" | cd19[colnames(data_sc), "adt_CD19.1"]>=1.4]
+data<-subset(data_sc, cells=keep)
+VlnPlot(data, pt.size=0, features = "CD19.1", assay = "ADT",group.by = "Annotation")+geom_hline(yintercept = 1, linewidth = 0.5, color = "black",linetype = "dashed")
 ```
 
 Signature StarTracer
@@ -1299,7 +1298,7 @@ res <- searchMarker(
   thresh.1 = 0.5,
   thresh.2 = NULL,
   method = "pos", 
-  num = 100,
+  num = 150,
   gene.use = NULL,
   meta.data = NULL,
   ident.use = Annotation)
@@ -1313,13 +1312,70 @@ top_markers_df <- res$para_frame[res$para_frame$gene %in% res$genes.markers, ]
 nrow(top_markers_df)
 length(res$genes.markers)
 # List by cluster
-markers_gene <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
-str(markers_gene)
-sapply(markers_gene, length)
+markers_gene_star <- split(as.character(top_markers_df$gene), top_markers_df$max.X)
+str(markers_gene_star)
+sapply(markers_gene_star, length)
 
 # Plots
 DotPlot(object = data,
-    features = markers_genes,
+    features = markers_gene_star,
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+```{r}
+# Calculate the top markers
+Idents(data) <- "Annotation"
+markers <- FindAllMarkers(data, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.25, max.cells.per.ident = 1000)
+# Filter significant markers
+top_markers <- markers[markers$p_val_adj < 0.05, ]
+# Split marker genes by cluster
+top_markers_list <- split(top_markers$gene, top_markers$cluster)
+
+# Evaluate/Checking specificity of the signatures 
+fc_col <- intersect(c("avg_log2FC", "logFC", "avg_logFC"), names(top_markers))[1]
+
+markers_scored <- top_markers %>%
+  mutate(
+    fc = .data[[fc_col]],
+    specificity = (pct.1 - pct.2) * pmax(fc, 0),
+    expr_diff = pct.1 - pct.2,
+    support = pct.1 * fc,
+    robust = ifelse(p_val_adj < 0.05 & pct.1 > 0.25, TRUE, FALSE)
+  ) %>%
+  arrange(cluster, desc(specificity), desc(fc), desc(expr_diff))
+
+best_markers <- markers_scored %>%
+  group_by(cluster) %>%
+  slice_head(n = 80) %>%
+  ungroup()
+# Split marker genes by cluster
+markers_gene <- split(best_markers$gene, best_markers$cluster)
+
+DotPlot(object = data,
+    features = markers_gene,
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+```
+
+```{r}
+markers_merged <- Map(union, markers_gene, markers_gene_star)
+common_genes <- intersect(
+  markers_merged[["Bridge"]],
+  markers_merged[["B cells"]])
+
+markers_merged[["Bridge"]] <- setdiff(
+  markers_merged[["Bridge"]],
+  common_genes)
+
+markers_merged[["B cells"]] <- setdiff(
+  markers_merged[["B cells"]],
+  common_genes)
+
+DotPlot(object = data,
+    features = markers_merged,
     group.by = "Annotation") +
   RotatedAxis()+labs(y = NULL, x = "Genes") +
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
@@ -1355,8 +1411,8 @@ signatures = create_sc_signatures(metacells[["Counts"]],
                                   cells_labels = "Annotation", 
                                   sample_labels = "sample_time", 
                                   bulk_rna = pseudobulk, 
-                                  cell_markers = markers_gene, 
-                                  name_signature = "CITE_CLL_Bridge_B", 
+                                  cell_markers = markers_gene_star, 
+                                  name_signature = "CITE_CLL_subset", 
                                   credentials.mail = "augustine.blanc-boekholt@inserm.fr", 
                                   credentials.token = "614b135494faade1a53c2ebc62b55829",
                                   methods_sig = c("BSeqsc"))
@@ -1364,8 +1420,8 @@ signatures = create_sc_signatures(metacells[["Counts"]],
 # Verify the signature
 #1) deconvolution pseudobulk 
 deconv_pseudo = compute.deconvolution(raw.counts = pseudobulk,
-                               normalized = FALSE, methods = c("Epidish", "DeconRNASeq", "DWLS","CBSX"),
-                               signatures_select = c("BSeqSC-CITE_CLL_Bridge_B-scRNAseq"),
+                               normalized = FALSE, methods = c("Epidish","DWLS","CBSX"),
+                               signatures_select = c("BSeqSC-CITE_CLL_subset-scRNAseq"),
                                return = TRUE, 
                                credentials.mail = "augustine.blanc-boekholt@inserm.fr",
                                credentials.token = "614b135494faade1a53c2ebc62b55829",
@@ -1399,7 +1455,7 @@ tpm_filt <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Da
 # Deconvolution 
 deconv_bulk = compute.deconvolution(raw.counts = tpm_filt,
                                normalized = F, 
-                               methods = c("Epidish","DWLS", "CBSX", "DeconRNASeq"),
+                               methods = c("Epidish","DWLS", "CBSX"),
                                signatures_select = c("BSeqSC-CITE_CLL_subset-scRNAseq"),
                                return = TRUE, credentials.mail = "augustine.blanc-boekholt@inserm.fr",
                                credentials.token = "614b135494faade1a53c2ebc62b55829",
@@ -1442,7 +1498,7 @@ deconv$Sample_type<-ifelse(grepl("PB", rownames(deconv))=="TRUE", "PB", "LN")
 deconv$Patient<-substr(rownames(deconv), 1, 7)
   
 deconv_long <- deconv %>%
-    pivot_longer(cols = c("DWLS_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","DeconRNASeq_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge"),names_to = "Method",values_to = "Proportion")
+    pivot_longer(cols = c("CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge","Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge"),names_to = "Method",values_to = "Proportion")
 
 deconv_long$Method <- gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge", "", deconv_long$Method)
 
@@ -1482,13 +1538,84 @@ ggplot(deconv_long, aes(x = Sample_type, y = Proportion,group = Patient, color =
 
 
 # Heatmap
+deconv_bulk<-deconv_bulk[,colnames(deconv_bulk) %in% c("CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_B.cells","CBSX_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge", "Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_B.cells", "Epidish_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge")]
 library(pheatmap)
 colnames(deconv_bulk)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", colnames(deconv_bulk))
 annotation <- data.frame(Sample_type = ifelse(grepl("PB", rownames(deconv)), "PB", "LN"))
 rownames(annotation) <- rownames(deconv)
 annotation_colors <- list(Sample_type = c("PB" = "#0072B2","LN" = "#D55E00"))
-pheatmap(t(deconv_bulk), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = TRUE, annotation_col=annotation, annotation_colors=annotation_colors, border_color = NA)
+pheatmap(t(deconv_bulk), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = F, annotation_col=annotation, annotation_colors=annotation_colors, border_color = NA)
 # Heatmap z-score proportion 
 mat_z <- t(scale(t(deconv_bulk)))
 pheatmap(t(mat_z), cluster_rows = TRUE, cluster_cols = TRUE, show_colnames = F, annotation_col=annotation, annotation_colors=annotation_colors, border_color = NA)
+```
+
+```{r}
+ggplot(deconv_long, aes(x = Sample_type, y = Proportion, fill = Sample_type)) +
+  geom_violin(alpha = 0.7, trim = FALSE) +
+  geom_jitter(width = 0.2, alpha = 0.5, size = 1.5) +
+  scale_fill_manual(values = c("PB" = "lightblue", "LN" = "darkblue")) +
+  stat_compare_means(comparisons = list(c("PB", "LN")), method = "wilcox.test", label = "p.signif",
+    tip.length = 0.03) +facet_wrap(~ Method, scales = "fixed") +
+  labs(title = "Comparison of the fraction of the intermediate population obtained by \ndeconvolution between CD19+ PBMCs and CD19+ lymph nodes",
+    x = "Sample Type", y = "Fraction intermediate population",fill = "Sample Type") +
+  scale_y_continuous(limits = c(0, 0.22), expand = c(0, 0)) +
+  theme_minimal() +theme(legend.position = "none",strip.text = element_text(size = 10))
+```
+
+Correlation with TF activity
+
+```{r}
+# calculate TF activity 
+library(viper)
+tpm_filt <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/count_tpm_filt.tsv", header = TRUE, row.names = 1, sep = "\t", check.names = FALSE)
+data_log<-log2(tpm_filt+1)
+data_matrix <- as.matrix(data_log)
+regulon<-readRDS("/home/a.blanc-boekholt/Documents/NetREM/regulon_grn_CLL.rds")
+tf_aracne <- viper(data_matrix, regulon, method = "none", minsize = 5)
+
+
+library(dplyr)
+library(tidyr)
+library(tibble)
+
+# activity CEPBA
+cebpa <- tibble(sample = gsub("-", ".", colnames(tf_aracne)),CEBPa_activity = as.numeric(tf_aracne["SPI1", ]))
+
+# Deconv results
+deconv_long <- deconv_bulk %>%
+  as.data.frame() %>%
+  rownames_to_column("sample") %>%
+  pivot_longer(-sample, names_to = "col", values_to = "proportion") %>%
+  separate(col, into = c("method", "celltype"), sep = "\\.", extra = "merge")
+
+# Keep Bridge
+df <- deconv_long %>%
+  filter(celltype == "Bridge") %>%
+  left_join(cebpa, by = "sample") %>%
+  mutate(Sample_type = factor(sub("^CLL\\.C\\d+_(PB|LN)_CD19$", "\\1", sample),levels = c("PB", "LN")),
+    patient= sub("^CLL\\.(C\\d+)_.*$", "\\1", sample))
+
+#Plot
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(tidyr)
+
+df$method<- factor(df$method, levels = c("CBSX", "Epidish"))
+df$Sample_type <- factor(df$Sample_type, levels = c("PB", "LN"))
+
+cols <- c(PB = "#9DBFCC", LN = "#00008B")
+
+ggplot(df, aes(x = CEBPa_activity, y = proportion, color = Sample_type)) +
+  geom_point(size = 2.5, alpha = 0.9) +
+  geom_smooth(aes(fill = Sample_type), method = "lm", se = TRUE,linewidth = 0.9, alpha = 0.15, show.legend = FALSE) +
+  stat_cor(method = "pearson",aes(label = paste(after_stat(r.label), after_stat(p.label), sep = "~`,`~")),
+           label.x.npc = "left", label.y.npc = "top",hjust = 0, size = 3.5, show.legend = FALSE) +
+  facet_wrap(~ method, scales = "free_y", ncol = 2) +
+  scale_color_manual(values = cols, name = "Sample type") +scale_fill_manual(values = cols) +
+  labs(title = "CEBPa activity and Intermediate population proportion correlation (Pearson)",
+       x = "CEBPa activity", y = "Proportion Intermediate population") +
+  theme_minimal(base_size = 13) +
+  theme(strip.text = element_text(size = 11),plot.title = element_text(size = 14),panel.grid.minor = element_blank())
 ```
