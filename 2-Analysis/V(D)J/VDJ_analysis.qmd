@@ -1,8 +1,8 @@
 ---
 title: "V(D)J analysis"
 params: 
-  patient: "p2" # format p2 or p3
-  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2.rds"
+  patient: "p3" # format p2 or p3
+  file: "~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_merge_p2p3.rds"
   folder_trust4: "~/Documents/Singlecell-R/Scripts/Matrix/VDJ_TRUST4/"
   output: "~/Documents/Singlecell-R/Scripts/Plots/"
 format: html
@@ -377,11 +377,129 @@ ggsave(paste0(params$output,"vdj_clono_cdr3_umap_light_myel_",params$patient,".j
 
 clone_matrix <- table(data_myel$Annotation, 
                      ifelse(data_myel$junction_aa_L %in% cdr3, data_myel$junction_aa_L, "Other"))
-mat <- clone_matrix[, colnames(clone_matrix) != "Other"]
+mat <- clone_matrix[, colnames(clone_matrix) != "Others"]
 mat_log <- log1p(mat)
 mat_log <- mat_log[apply(mat_log, 1, var) > 0, ]
-plot<-pheatmap(mat_log,scale = "row",main = "Main CDR3 per clusters on B and myeloid population",angle_col = 45,fontsize = 18,fontsize_row = 16,fontsize_col = 16)
+plot<-pheatmap(mat_log,scale = "row",main = "Relative enrichment of VDJ clones across B and myeloid population",angle_col = "45",fontsize = 18,fontsize_row = 16,fontsize_col = 16)
 ggsave(paste0(params$output,"vdj_clono_cdr3_heatmap_myel_",params$patient,".jpeg"), plot, width = 4000, height = 2500, units = "px")
+```
+
+Patient merged
+
+```{r}
+# change name clones 
+data$vdj_clone<-paste(data$cdr3_L, data$patient, sep="_")
+library(dplyr)
+clones_uniques <- unique(data$vdj_clone)
+
+mapping_df <- data.frame(vdj_clone = clones_uniques) %>%
+  mutate(suffix = sub(".*_([A-Za-z0-9]+)$", "\\1", vdj_clone),
+    base_clone = sub("_[A-Za-z0-9]+$", "", vdj_clone),
+    is_other = grepl("other", base_clone, ignore.case = TRUE)
+  ) %>%
+  group_by(suffix) %>%
+  mutate(clone_num = if_else(is_other, NA_integer_, as.integer(factor(base_clone))),
+    new_name = case_when(
+      is_other ~ paste0("Others"),
+      TRUE ~ paste0("Clone ", match(base_clone, unique(base_clone[!is_other])), " ", suffix))
+  ) %>%
+  ungroup()
+
+data$vdj_clone_renamed <- mapping_df$new_name[match(data$vdj_clone, mapping_df$vdj_clone)]
+
+head(unique(data.frame(Ancien = data$vdj_clone, Nouveau = data$vdj_clone_renamed)))
+# Name bridge 
+data$Annotation<-ifelse(data$Annotation == "Bridge", "Intermediate population", data$Annotation)
+
+# Enrichment score 
+clone_matrix <- table(data$Annotation, data$vdj_clone_renamed)
+mat <- clone_matrix[, colnames(clone_matrix) != "Others"]
+mat_log <- log1p(mat)
+mat_log <- mat_log[apply(mat_log, 1, var) > 0, ]
+plot<-pheatmap(mat_log,scale = "row",main = "Relative enrichment of VDJ clones across cellular populations",angle_col = "45",fontsize = 18,fontsize_row = 16,fontsize_col = 16)
+ggsave("vdj_clono_cdr3_heatmap_myel_merged.jpeg", plot, width = 4000, height = 2500, units = "px")
+
+# barplot proportion 
+
+meta<- data@meta.data
+meta <- meta %>%
+  mutate(
+    clonotype = as.character(vdj_clone_renamed),
+    timepoint = as.character(timepoint),
+    cluster = as.character(seurat_clusters),
+    celltype = as.character(Annotation))
+
+prop <-meta %>%
+  filter(!celltype %in% c("Monocyte", "B memory")) %>%
+  mutate(timepoint = factor(timepoint, levels = c("D1", "D4", "D8", "D11", "D14")))
+
+# Color 
+library(ggplot2)
+library(dplyr)
+library(RColorBrewer)
+library(stringr)
+
+prop$celltype <- str_wrap(prop$celltype, width = 12)
+
+all_clones <- unique(prop$clonotype)
+get_patient <- function(x) { sub(".*\\s+([A-Za-z0-9]+)$", "\\1", x) }
+get_num <- function(x) {
+  num <- sub("Clone (\\d+).*", "\\1", x)
+  if(grepl("Others", x)) return(999) 
+  as.numeric(num)
+}
+
+df_order <- data.frame(clonotype = all_clones, stringsAsFactors = FALSE) %>%
+  mutate(
+    patient = get_patient(clonotype),
+    is_other = grepl("Others", clonotype),
+    clone_num = sapply(clonotype, get_num)
+  ) %>%
+  arrange(patient, is_other, clone_num)
+
+prop$clonotype <- factor(prop$clonotype, levels = df_order$clonotype)
+
+sorted_clones <- df_order$clonotype
+is_other_vec <- grepl("Others", sorted_clones)
+other_clones <- sorted_clones[is_other_vec]
+real_clones <- sorted_clones[!is_other_vec]
+
+clono_color <- c()
+if(length(other_clones) > 0) {
+  other_colors <- rep("grey80", length(other_clones))
+  names(other_colors) <- other_clones
+  clono_color <- c(clono_color, other_colors)
+}
+
+df_real <- df_order %>% filter(!is_other)
+
+for(pat in unique(df_real$patient)) {
+  pat_clones <- df_real$clonotype[df_real$patient == pat]
+  n_clones <- length(pat_clones)
+    if(pat == "P2") {
+    shades <- if(n_clones <= 9) brewer_pal(palette = "Blues")(n_clones) else colorRampPalette(brewer_pal(palette = "Blues")(9))(n_clones)
+  } else if(pat == "P3") {
+    shades <- if(n_clones <= 9) brewer_pal(palette = "Reds")(n_clones) else colorRampPalette(brewer_pal(palette = "Reds")(9))(n_clones)
+  } else {
+    shades <- colorRampPalette(c("#00441b", "#a1d99b"))(n_clones)
+  }
+  names(shades) <- pat_clones
+  clono_color <- c(clono_color, shades)
+}
+
+clono_color <- clono_color[levels(prop$clonotype)]
+
+plot<-ggplot(prop, aes(x = timepoint, fill = clonotype)) +
+  geom_bar(position = "fill", color = "black", linewidth = 0.1) + 
+  scale_y_continuous(labels = scales::number) +
+  scale_fill_manual(values = clono_color) +
+  facet_wrap(~ celltype, nrow = 1) +
+  theme_minimal(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+    strip.text = element_text(size = 11, face = "bold", lineheight = 0.9) # Ajuste l'affichage des titres sur 
+  ) +labs(y = "Fraction", fill = "Clonotype",title = "Clonal composition over time and cell type")
+plot
+ggsave("vdj_prop_cell_time_myel_merged.jpeg", plot, width = 2600, height = 1500, units = "px")
 ```
 
 ```{r}
@@ -611,7 +729,6 @@ mat <- enrich %>%
   ) %>%
   column_to_rownames("clonotype") %>%
   as.matrix()
-
 
 plot<-pheatmap(mat,main = "Fisher's test : clone-cluster enrichment",fontsize = 14,fontsize_row = 12, fontsize_col = 16, angle_col = 45, cluster_cols = TRUE, cluster_rows = TRUE, show_rownames = TRUE, show_colnames = TRUE)
 ggsave(paste0(params$output,"vdj_heatmap_enrich_myel_",params$patient,".jpeg"), plot, width = 3000, height = 1500, units = "px")
