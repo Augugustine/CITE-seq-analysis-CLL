@@ -516,6 +516,70 @@ both_tumor <- sum(cna_entire.pop == "tumor" & cna_myeloid.pop == "tumor")
 table( cna_myeloid.pop,cna_entire.pop)
 ```
 
+Merged patient
+
+```{r}
+# UMAP and barplot proportion
+my_cols <- c("tumor" = "#E41A1C","normal" = "grey")
+
+p <- DimPlot(data, reduction = "umap", cols = my_cols, pt.size = 1, group.by = "compartment_opt") + 
+  NoAxes() +  theme_classic()+
+  #theme_pubr() + 
+  theme(axis.title = element_blank(),axis.text = element_blank(),axis.ticks = element_blank(),axis.line = element_blank())+ggtitle("Annotation of tumor cell by CNA Numbat")
+
+umap_coords <- Embeddings(data, reduction = "umap")
+xmin <- min(umap_coords[, 1])
+xmax <- max(umap_coords[, 1])
+ymin <- min(umap_coords[, 2])
+ymax <- max(umap_coords[, 2])
+
+x_offset <- (xmax - xmin) * 0.05
+y_offset <- (ymax - ymin) * 0.05
+len_x <- (xmax - xmin) * 0.20
+len_y <- (ymax - ymin) * 0.20
+
+p_final <- p + 
+  geom_segment(aes(x = xmin - x_offset, y = ymin - y_offset, xend = xmin - x_offset + len_x, yend = ymin - y_offset),arrow = arrow(length = unit(0.15, "cm"), type = "closed"), color = "black", linewidth = 0.2, inherit.aes = FALSE) +
+  geom_segment(aes(x = xmin - x_offset, y = ymin - y_offset, xend = xmin - x_offset, yend = ymin - y_offset + len_y),arrow = arrow(length = unit(0.15, "cm"), type = "closed"), color = "black", linewidth = 0.2, inherit.aes = FALSE) +
+  annotate("text", x = xmin - x_offset + (len_x / 2), y = ymin - (y_offset * 2.2), 
+    label = "UMAP_1", size = 3, fontface = "bold") +
+  annotate("text", x = xmin - (x_offset * 2.2), y = ymin - y_offset + (len_y / 2), 
+    label = "UMAP_2", size = 3, fontface = "bold", angle = 90)
+
+print(p_final)
+ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/umap_merged_cna.png", p_final, width = 2000, height = 1200, units = "px")
+
+# Proportion 
+library(ggplot2)
+library(dplyr)
+df <- data@meta.data
+tumor_prop <- df %>%
+  group_by(Annotation, compartment_opt) %>%
+  summarise(n = n(), .groups = "drop") %>%
+  group_by(Annotation) %>%
+  mutate(prop = n / sum(n) * 100)
+
+totals <- df %>%
+  count(Annotation)
+
+tumor_colors <- c(
+  "tumor"  = "#E41A1C",
+  "normal" = "#377EB8" )
+
+p1 <- ggplot(tumor_prop, aes(x = Annotation, y = prop, fill = compartment_opt)) +
+  geom_bar(stat = "identity", position = "stack", color = "black", linewidth = 0.2) + 
+    #geom_text(data = totals, aes(x = Annotation, y = 105, label = paste0("n=", n)), inherit.aes = FALSE, size = 3.5) +
+    scale_y_continuous(limits = c(0, 110), labels = function(x) paste0(x, "%")) +
+    scale_fill_manual(values = tumor_colors) +
+  theme_classic(base_size = 14) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "right") +
+  ylab("Cell proportion (%)") +xlab("") +labs(fill = " ")
+
+print(p1)
+ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/prop_merged_cna.png", p1, width = 2000, height = 1200, units = "px")
+```
+
 ## inferCNV
 
 Object preparation
@@ -619,9 +683,9 @@ infercnv_obj = infercnv::run(infercnv_obj,
 Heatmap
 
 ```{r}
-infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","infercnv_scPred_myel","run.final.infercnv_obj"))
+infercnv_obj <- readRDS(file.path(params$output,"infercnv_p2","run.final.infercnv_obj"))
 options(bitmapType="Xlib")
-plot_cnv(infercnv_obj, out_dir = params$output, output_filename = "infercnv_ref_scpred_myel", plot_chr_scale = FALSE)
+plot_cnv(infercnv_obj, out_dir = params$output, output_filename = "infercnv_ref_scpred", plot_chr_scale = FALSE)
 ```
 
 Score
@@ -637,13 +701,14 @@ ggplot(df, aes(x = score)) +
 
 ```{r}
 data_infer<-infercnv::add_to_seurat(
-  infercnv_output_path = "~/Documents/Singlecell-R/Scripts/Plots/infercnv_p2/infercnv_scPred_myel/",
+  infercnv_output_path = "~/Documents/Singlecell-R/Scripts/Plots/infercnv_p2/infercnv_scPred/",
   seurat_obj = data_ref,
   top_n = 10
 )
 
 # Keep only our dataset 
-data_infer<-subset(data_infer, subset = Annotation %in% c("B","B intermediate","B memory","B naive","Bridge","Macrophage","Monocyte"))
+celltype<-unique(data$Annotation)
+data_infer<-subset(data_infer, subset = Annotation %in% celltype)
 data_infer<-run_dim_red(data_infer)
 
 
@@ -661,8 +726,8 @@ FeaturePlot(data_infer,
             cols = c("lightgrey","blue","red"))
 
 FeaturePlot(data_infer,
-            features = c("proportion_scaled_loss_chr11",
-                         "proportion_scaled_dupli_chr11"),
+            features = c("proportion_scaled_loss_chr21",
+                         "proportion_scaled_dupli_chr21"),
             ncol = 3,reduction="umap",
             cols = c("lightgrey","blue","red"))
 
@@ -719,7 +784,7 @@ ggplot(data_infer@meta.data,aes(x = timepoint, y = global_cnv_score, fill = time
 # WARINNG : Relatif tumor score, normalize based on the normal pop score 
 ```
 
-Nouveau test score
+Score based on the distance matrix
 
 ```{r}
 # per subclusters
@@ -764,19 +829,29 @@ cell_distance <- setNames(
 
 data_infer$CNV_subcluster_score <-cell_distance[colnames(data_infer)]
 
-FeaturePlot(data_infer_sub,
+FeaturePlot(data_infer,
     features = "CNV_subcluster_score",
     min.cutoff = "q05",
     max.cutoff = "q95")
 
-data_infer$Annotation <- dplyr::recode(
-  data_infer$Annotation,
+data_infer_ref<-infercnv::add_to_seurat(
+  infercnv_output_path = "~/Documents/Singlecell-R/Scripts/Plots/infercnv_p2/infercnv_scPred/",
+  seurat_obj = data_ref,
+  top_n = 10
+)
+data_infer_ref$CNV_subcluster_score <-cell_distance[colnames(data_infer_ref)]
+
+data_infer_ref$Annotation <- dplyr::recode(
+  data_infer_ref$Annotation,
   "B cell" = "Ref B cells",
-  "cMono" = "Ref monocyte", "ncMono" = "Ref monocyte", "Bridge"="Intermediate population", "B"="B cells", "B memory"="B cells","B intermediate"="B cells", "B naive"="B cells")
-VlnPlot(data_infer,
+  "cMono" = "Ref monocyte", "ncMono" = "Ref monocyte", "CD8 T cell"="Ref CD8 T", "CD4 T cell"="Ref CD4 T", "NK cell"="Ref NK", "pDC"="Ref DC", "cDC"="Ref DC", "Plasma cell"="Ref plasma", "Bridge"="Intermediate population", "B"="B cells", "B memory"="B cells","B intermediate"="B cells", "B naive"="B cells")
+data_no_T_DC <- subset(data_infer_ref, subset = !Annotation %in% c("T", "DC", "Platelet","Erythroblast","Ref Plasma"))
+VlnPlot(data_no_T_DC,
     features = "CNV_subcluster_score",
     group.by = "Annotation", pt.size = 0)
-ggplot(data_infer@meta.data,aes(x = timepoint, y = CNV_subcluster_score, fill = timepoint))+geom_boxplot() +facet_wrap(~Annotation) +theme_bw()
+
+
+ggplot(data_no_T_DC@meta.data,aes(x = timepoint, y = CNV_subcluster_score, fill = timepoint))+geom_boxplot() +facet_wrap(~Annotation) +theme_bw()
 ```
 
 Clones based on the CNVs
