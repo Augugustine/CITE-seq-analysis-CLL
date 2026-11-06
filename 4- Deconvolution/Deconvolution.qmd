@@ -1502,17 +1502,18 @@ deconv_long <- deconv %>%
 
 deconv_long$Method <- gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_Bridge", "", deconv_long$Method)
 
-ggplot(deconv_long, aes(x = Sample_type, y = Proportion, fill = Sample_type)) +
+plot<-ggplot(deconv_long, aes(x = Sample_type, y = Proportion, fill = Sample_type)) +
   geom_boxplot(alpha = 0.7, outlier.shape = NA) +
   geom_jitter(width = 0.2, alpha = 0.5, size = 1.5) +
   scale_fill_manual(values = c("PB" = "lightblue", "LN" = "darkblue")) +
   stat_compare_means(comparisons = list(c("PB", "LN")), method = "wilcox.test", label = "p.signif",
     tip.length = 0.03) +
   facet_wrap(~ Method, scales = "fixed") +
-  labs(title = "Comparison of the fraction of the intermediate population obtained by \ndeconvolution between CD19+ PBMCs and CD19+ lymph nodes",x = "Sample Type",y = "Fraction intermediaite population",fill = "Sample Type") +scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+  labs(title = "Comparison of the fraction of the intermediate population obtained by \ndeconvolution between CD19+ PBMCs and CD19+ lymph nodes",x = "Sample Type",y = "Fraction intermediate population",fill = "Sample Type") +scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
   theme_minimal() +
   theme(legend.position = "none",strip.text = element_text(size = 10) )
-
+plot
+ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/boxplot_deconv_CD19.png", plot, width = 2100, height = 1100, units = "px")
 
 # Paired plot
 library(tidyverse)
@@ -1620,7 +1621,7 @@ ggplot(df, aes(x = CEBPa_activity, y = proportion, color = Sample_type)) +
 
 # Boxplot CEBPA activity between LN and PB
 df_sub<-subset(df, method=="Epidish")
-ggplot(df_sub, aes(x = Sample_type, y = CEBPa_activity, fill = Sample_type)) +
+plot<-ggplot(df_sub, aes(x = Sample_type, y = CEBPa_activity, fill = Sample_type)) +
   geom_boxplot(alpha = 0.7, outlier.shape = NA) +
   geom_jitter(width = 0.2, alpha = 0.5, size = 1.5) +
   scale_fill_manual(values = c("PB" = "lightblue", "LN" = "darkblue")) +
@@ -1630,6 +1631,8 @@ ggplot(df_sub, aes(x = Sample_type, y = CEBPa_activity, fill = Sample_type)) +
   labs(title = "Comparison of TF activity between CD19+ PBMCs and CD19+ lymph nodes",x = "Sample Type",y = "Fraction intermediaite population",fill = "Sample Type") +scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
   theme_minimal() +
   theme(legend.position = "none",strip.text = element_text(size = 10) )
+plot
+
 ```
 
 DEG between LN and PB
@@ -1658,7 +1661,7 @@ res <- res %>%
     mutate(sig = case_when(adj.P.Val < fdr_thr & logFC >  fc_thr ~ "Up in LN",
             adj.P.Val < fdr_thr & logFC < -fc_thr ~ "Up in PB",TRUE ~ "NS"))
 
-tf_to_label <- c("CEBPA", "CEBPB", "CEBPD","FOS", "TBX21", "IRF8", "NFKB1", "PAX5", "MAF","IRF4","SPI1","MYCN","HNF4G", "GATA2", "RUNX1","ETV6","MAFG","BACH2", "BCL6")
+tf_to_label <- c("CEBPA", "CEBPB", "CEBPD","FOS", "TBX21", "IRF8", "NFKB1", "PAX5", "MAF","IRF4","SPI1","MYCN","HNF4G", "GATA2", "RUNX1","ETV6","MAFG","BACH2", "NANOG")
 
 top10 <- res %>%
   filter(sig != "NS") %>%
@@ -1671,12 +1674,13 @@ labels_df <- bind_rows(top10, listed) %>%
   distinct(TF, .keep_all = TRUE) %>%
   mutate(label_type = ifelse(TF %in% tf_to_label, "Liste d'intérêt", "Top 10"))
 
-ggplot(res, aes(x = logFC, y = -log10(adj.P.Val), color = sig)) +
+plot<-ggplot(res, aes(x = logFC, y = -log10(adj.P.Val), color = sig)) +
   geom_point(alpha = 0.7, size = 1.8) +
   geom_vline(xintercept = c(-fc_thr, fc_thr), linetype = "dashed", color = "grey50") +
   geom_hline(yintercept = -log10(fdr_thr), linetype = "dashed", color = "grey50") +
   geom_text_repel(data = labels_df,aes(label = TF, fontface = ifelse(label_type == "Liste d'intérêt", "plain", "plain")),size = 3.5, color = "black", box.padding = 0.5,max.overlaps = Inf, show.legend = FALSE) +
   scale_color_manual(values = c("Up in LN" = "#FFC594","Up in PB" = "lightblue","NS" = "grey70")) +
   labs(x = "Activity difference (LN - PB)",y = "-log10(FDR)", color = NULL,title = "Differential activity of TFs: LN vs PB (paired)") +theme_classic(base_size = 12)
-
+plot
+ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/volcano_CD19.png", plot, width = 2000, height = 1500, units = "px")
 ```
