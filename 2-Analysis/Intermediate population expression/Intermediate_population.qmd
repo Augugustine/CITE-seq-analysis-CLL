@@ -1696,7 +1696,7 @@ VlnPlot(data, pt.size=0, features = "CD19.1", assay = "ADT",group.by = "Annotati
 pseudobulk = create_sc_pseudobulk(data, cells_labels = "Annotation", sample_labels = "sample_time", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
 ```
 
-### Specific proteins markers 
+### Specific proteins markers
 
 COMET single-cell tool (Delaney, C., et al. Mol Syst Biol, 2019): the aim would be to identify markers specific to this population so that it can be purified using FACS. The aim would be to identify not just one marker, but a combination of markers.
 
@@ -1706,6 +1706,8 @@ Need 3 files in txt or tsv: expression matrix, the visualization coordinates, an
 library(Seurat)
 library(harmony)
 source("functions.R")
+library(org.Hs.eg.db)
+devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
 
 # Data: Myeloid and CLL cells 
 data<-readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
@@ -1715,20 +1717,39 @@ data <- run_dim_red(data)
 data <- data %>%
     RunUMAP(reduction = "harmony",  dims = 1:15)
 
+# Metacells
+# Create metacells because ~110k cells 
+data$sample_time <- paste(data$patient, data$timepoint, sep = "_")
+metacells = create_metacells(data,labels_column = "Annotation",  samples_column = "sample_time", 
+                             exclude_cells = NULL, min_cells = 50, k = 15, 
+                             max_shared = 15, n_workers = 1, min_meta = 10)
+
+metacells_seurat = Seurat::CreateSeuratObject(metacells[["Counts"]], meta.data = metacells[["Metadata"]])
+#metacells_seurat <- NormalizeData(metacells_seurat, normalization.method = "LogNormalize")
+
+# Keep the Genes coding for proteins surface markers
+# GO cells: external side of plasma membrane
+markers<- AnnotationDbi::select(org.Hs.eg.db, keys= "GO:0009897", columns = c("ENTREZID", "SYMBOL", "UNIPROT", "ENSEMBLPROT"), keytype = "GO")
+list_markers<-data.frame(unique(markers$SYMBOL))
+write.table(list_markers, "~/Documents/Singlecell-R/Scripts/Matrix/list_markers.txt", sep="\t", col.names = F, row.names = F, quote=F)
+data_prot<-subset(metacells_seurat, features=unique(markers$SYMBOL))
+
 # Expression matrix: genes in rows and cell ID in column 
-matrix<-GetAssayData(data, slot = "counts")
-write.tsv(matrix, "~/Documents/Singlecell-R/Scripts/Matrix/markers.txt")
+matrix<-GetAssayData(data_prot, slot = "counts")
+write.table(as.matrix(matrix), "~/Documents/Singlecell-R/Scripts/Matrix/matrix.txt", sep="\t", col.names = T, row.names = T, quote=F)
+write.table(as.matrix(matrix), "~/Documents/Singlecell-R/Scripts/Matrix/matrix.txt",
+            sep = "\t", col.names = NA, row.names = TRUE, quote = FALSE)
 # UMAP coordinates: column 1 cell Id and column 2 and 3 the coordinates 
 meta<-data@reductions[["umap"]]
 vis<-meta@cell.embeddings
-write.tsv(vis, "~/Documents/Singlecell-R/Scripts/Matrix/vis.txt")
+write.table(vis, "~/Documents/Singlecell-R/Scripts/Matrix/vis.txt", sep="\t", col.names = F, row.names = T, quote=F)
 
 # clusters: column 1 cell ID and column 2 the celltype or clusters 
-meta<-data@meta.data
+meta<-metacells_seurat@meta.data
 cluster<-subset(meta, select=c("Annotation"))
 write.table(cluster, "~/Documents/Singlecell-R/Scripts/Matrix/cluster.txt", sep="\t", col.names = F, row.names = T, quote=F)
 ```
 
 ```{bash}
-Comet tabmarker.txt tabvis.txt tabcluster.txt output/ -vi
+Comet tabmarker.txt tabvis.txt tabcluster.txt output/ -skipvis True
 ```
