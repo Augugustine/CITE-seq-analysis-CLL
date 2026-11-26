@@ -692,7 +692,9 @@ ggplot(df_cons, aes(x = CEBPA, y = Bridge_consensus, color = Sample_type)) +
     labs(x = "CEBPA activity",y = "Intermediate population (consensus z-score, 4 methods)",color = "Sample type") +theme_minimal()
 ```
 
-## Enrichment with AUCell
+## Enrichment 
+
+With AUCell and ssGSEA
 
 ```{r}
 DefaultAssay(data_cite) <- "RNA"
@@ -775,7 +777,8 @@ ggsave("~/Documents/Singlecell-R/Scripts/Plots/phago_p2.jpeg", plot, width = 300
 StarTracer
 
 ```{r}
- 
+library(starTracer) 
+Idents(data_cite) <- data_cite$Annotation
 data_cite <- FindVariableFeatures(data_cite, selection.method = "vst", nfeatures = 2000)
 
 res <- searchMarker(
@@ -783,7 +786,7 @@ res <- searchMarker(
   thresh.1 = 0.5,
   thresh.2 = NULL,
   method = "pos", 
-  num = 20,
+  num = 150,
   gene.use = NULL,
   meta.data = NULL,
   ident.use = Annotation)
@@ -809,39 +812,127 @@ DotPlot(object = data_cite,
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
 ```
 
+ssGSEA
+
 ```{r}
-geneSets<-markers_gene[["Bridge"]]
-counts <- GetAssayData(data_cite, slot = "counts")
-cells_rankings <- AUCell_buildRankings(
-  counts, plotStats = FALSE)
-cells_AUC <- AUCell_calcAUC(geneSets, cells_rankings)
+library(ssGSEA2)
 
-png("~/Documents/Singlecell-R/Scripts/Plots/thresholds_cite.png", width = 1200, height = 1000)
-par(cex = 3, cex.axis = 1.6, cex.lab = 1.4,cex.main = 1.8)
-cells_assignment <- AUCell_exploreThresholds(cells_AUC, plotHist=TRUE, assign=TRUE)
-dev.off()
+# Transform the file format 
+# count matrix into gct file
+tpm_filt <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/count_tpm_filt.tsv", header = TRUE, row.names = 1, sep = "\t", check.names = FALSE)
+tpm_filt <-log2(tpm_filt+1)
+n_genes <- nrow(tpm_filt)
+n_samples <- ncol(tpm_filt)
+gct_df <- data.frame( Name = rownames(tpm_filt), Description = rep("na", n_genes), tpm_filt, check.names = FALSE)
+con <- file("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Count_matrix_cd19.gct", open = "w")
+writeLines("#1.2", con)
+writeLines(paste(n_genes, n_samples, sep = "\t"), con)
+write.table(gct_df, con, sep = "\t", quote = FALSE, row.names = FALSE)
+close(con)
 
-# AUCell score = signature activity per cell
-AUC<-getAUC(cells_AUC)
-AUC<-t(AUC)
-#Color the cell with higher AUC score than the thresholds
-thre<-cells_assignment[["geneSet"]][["aucThr"]][["selected"]] 
-# Add the signature activity in teh seurat object
-data_cite <- AddMetaData(data_cite, metadata = AUC)
+# signature into gmt file
+signature <- markers_gene$Bridge
+gmt <- data.frame(signature_name = "Intermediate population", description = "NA", genes = I(list(signature)))
 
-data<-subset(data_cite, subset=Annotation %in% c("B cells", "Bridge", "Macrophage"))
+write.table(data.frame("Intermediate population","NA", t(signature)),
+  file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Signature_intermediate_pop.gmt",sep = "\t",quote = FALSE,row.names = FALSE,col.names = FALSE)
 
-#Violin plot
-comparisons <- list(
-  c("B cells", "Bridge"),
-  c("Bridge", "Macrophage"),
-  c("B cells", "Macrophage"))
-plot<-ggplot(data@meta.data, aes(x = Annotation, y = geneSet, fill = Annotation)) + geom_violin(trim = FALSE, alpha = 0.6) + geom_boxplot(width = 0.1, outlier.shape = NA) + stat_compare_means(comparisons = comparisons, method = "wilcox.test") + theme_classic() + theme(axis.text.x = element_text(angle = 45, hjust = 1, size=14), axis.text.y=element_text(size = 14), axis.title.x = element_text(size = 16),
-axis.title.y = element_text(size = 16) ) + geom_hline(yintercept = 0.01, color = "red", linetype = "dashed", size = 0.5) +
-  xlab("Cell type") + ylab("AUC (signature transdifferenciation)")
+res = run_ssGSEA2("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Count_matrix_cd19.gct",
+                  output.prefix = "signature_bridge",
+                  gene.set.databases = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Signature_intermediate_pop.gmt",
+                  output.directory = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/ssGSEA",
+                  sample.norm.type = "none", 
+                  weight = 0.75, 
+                  correl.type = "rank", 
+                  statistic = "area.under.RES",
+                  output.score.type = "ES", 
+                  nperm = 1000, 
+                  min.overlap = 5, 
+                  extended.output = TRUE, 
+                  global.fdr = FALSE,
+                  log.file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/run.log")
+
+
+# Download results
+score <- read.delim("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/ssGSEA/signature_bridge-scores.gct", skip = 2, sep = "\t", header = TRUE, check.names = FALSE)
+en_score<-t(score[,121:178])
+colnames(en_score)<-"enrichment"
+en_score<-as.data.frame(en_score)
+```
+
+```{r}
+en_score$Sample_type<-ifelse(grepl("PB", rownames(en_score))=="TRUE", "PB", "LN")
+en_score$Patient<-substr(rownames(en_score), 1, 7)
+en_score_LN<-subset(en_score, Sample_type=="LN")
+en_score_PB<-subset(en_score, Sample_type=="PB")
+summary(en_score_LN$enrichment)
+summary(en_score_PB$enrichment)
+```
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(ggpubr)
+
+plot<-ggplot(en_score, aes(x = Sample_type, y = enrichment, fill = Sample_type)) +
+    geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+    geom_jitter(width = 0.2, alpha = 0.5, size = 1.5) +
+    scale_fill_manual(values = c("PB" = "lightblue", "LN" = "darkblue")) +
+    stat_compare_means(comparisons = list(c("PB", "LN")), method = "wilcox.test", label = "p.signif",
+                       tip.length = 0.03) +
+    labs(title = "Enrichment score of the intermediate population\n signature between CD19+ PBMCs and CD19+ lymph nodes",x = "Sample Type",y = "Intermediate population signature\n enrichment score ",fill = "Sample Type") +scale_y_continuous(expand = expansion(mult = c(0.05, 0.15)))+
+    theme_minimal() +
+    theme(legend.position = "none",strip.text = element_text(size = 10) )
 plot
-ggsave("~/Documents/Singlecell-R/Scripts/Plots/phago_p2.jpeg", plot, width = 3000, height = 2000, units = "px")
+ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/boxplot_enrichment_CD19.png", plot, width = 2100, height = 1100, units = "px")
 
+
+# Paired plot
+library(tidyverse)
+library(ggpubr)
+
+en_score$Sample_type <- factor(en_score$Sample_type, levels = c("LN", "PB"))
+en_score$Patient <- factor(en_score$Patient)
+pvals <- en_score %>%
+  select(Patient, Sample_type, enrichment) %>%
+  pivot_wider(names_from = Sample_type, values_from = enrichment) %>%
+  summarise(p = wilcox.test(PB, LN, paired = TRUE)$p.value, .groups = "drop") %>%
+  mutate(label = paste0("p = ", signif(p, 2)))
+
+plot<-ggplot(en_score, aes(x = Sample_type, y = enrichment,group = Patient, color = Patient)) +
+  geom_line(alpha = 0.7) +geom_point(size = 2) +
+  geom_text(data = pvals, aes(x = 1.5, y = Inf, label = label),vjust = 1.5, inherit.aes = FALSE, size = 3.5) +
+  labs(title = "Paired plot enrichment score Intermediate population: \nLN vs PB (paired by patient)",
+       x = "Sample type", y = "Enrichment score Intermediate population\n signature") +
+  scale_y_continuous(expand = expansion(mult = c(0.05, 0.15))) +
+  theme_minimal() +theme(legend.position = "none",strip.text = element_text(size = 10))
+plot
+ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/pairplot_enrichment_CD19.png", plot, width = 2100, height = 1100, units = "px")
+
+```
+
+```{r}
+# Comparison between deconvolution and enrichment 
+# LN
+en_score_LN$Patient <- gsub("-", ".", en_score_LN$Patient)
+en_score_LN$Method<-"Enrichment"
+ln_decon<-subset(deconv_long, Sample_type=="LN"&Method=="Epidish", select=c("Patient", "Proportion"))
+ln_decon$Method<-"Deconvolution (Epidish)"
+comparison <- bind_rows(
+  en_score_LN %>% rename(Value = enrichment),
+  ln_decon %>% rename(Value = Proportion))
+
+factor <- 4500
+
+plot<-ggplot(comparison, aes(x = Method, group = Patient, color = Patient)) +
+    geom_line(aes(y = Value * ifelse(Method == "Deconvolution (Epidish)", factor, 1)),alpha = 0.7) +
+    geom_point(aes(y = Value * ifelse(Method == "Deconvolution (Epidish)", factor, 1)),size = 2) +
+    scale_y_continuous(name = "Enrichment score",sec.axis = sec_axis(~ . / factor, name = "Proportion"),
+        expand = expansion(mult = c(0.05, 0.15))) +labs(title = "Intermediate population: Enrichment vs Deconvolution",subtitle = "LN samples paired by patient",x = NULL) +
+    theme_minimal() +
+    theme(legend.position = "none",axis.text.x = element_text(size = 11))
+ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/pairplot_enrichment_deconv.png", plot, width = 2100, height = 1100, units = "px")
 ```
 
 # Deconvolution MeDuSA
@@ -1230,7 +1321,7 @@ adt$Annotation <- scdata$Annotation
 bridge <- adt %>%
   filter(Annotation == "Bridge")
 
-pct_cd19 <- mean(bridge$adt_CD19.1 > 1) * 100
+pct_cd19 <- mean(bridge$adt_CD19.1 > 1.4) * 100
 pct_cd19
 
 # CD19+ across pseudotime
