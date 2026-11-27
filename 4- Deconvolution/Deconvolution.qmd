@@ -692,54 +692,23 @@ ggplot(df_cons, aes(x = CEBPA, y = Bridge_consensus, color = Sample_type)) +
     labs(x = "CEBPA activity",y = "Intermediate population (consensus z-score, 4 methods)",color = "Sample type") +theme_minimal()
 ```
 
-## Enrichment 
+## Enrichment
 
 With AUCell and ssGSEA
 
 ```{r}
 DefaultAssay(data_cite) <- "RNA"
+data_cite <- subset(data_cite, subset = Annotation %in% c("B cells","Monocyte","Macrophage","Bridge"))
 Idents(data_cite) <- data_cite$Annotation
-data_cite <- subset(data_cite, subset = Annotation %in% c("B cells","T cells","NK","Neutrophil","Monocyte","Erythroblast","Macrophage","Bridge"))
 ```
 
 Seurat
 
 ```{r}
-# Calculate the top markers
-Idents(data_cite) <- "Annotation"
-markers <- FindAllMarkers(data_cite, assay = "RNA", slot = "data", only.pos = TRUE, min.pct = 0.25, logfc.threshold = 0.8, max.cells.per.ident = 1000)
-# Filter significant markers
-top_markers <- markers[markers$p_val_adj < 0.05, ]
-# Split marker genes by cluster
-top_markers_list <- split(top_markers$gene, top_markers$cluster)
 
-# Evaluate/Checking specificity of the signatures 
-fc_col <- intersect(c("avg_log2FC", "logFC", "avg_logFC"), names(top_markers))[1]
-
-markers_scored <- top_markers %>%
-  mutate(
-    fc = .data[[fc_col]],
-    specificity = (pct.1 - pct.2) * pmax(fc, 0),
-    expr_diff = pct.1 - pct.2,
-    support = pct.1 * fc,
-    robust = ifelse(p_val_adj < 0.05 & pct.1 > 0.25, TRUE, FALSE)
-  ) %>%
-  arrange(cluster, desc(specificity), desc(fc), desc(expr_diff))
-
-best_markers <- markers_scored %>%
-  group_by(cluster) %>%
-  slice_head(n = 40) %>%
-  ungroup()
-# Split marker genes by cluster
-top_markers_list <- split(best_markers$gene, best_markers$cluster)
-
-
-DotPlot(object = data_cite,
-    features = unique(best_markers$gene),
-    group.by = "Annotation") +
-  RotatedAxis()+labs(y = NULL, x = "Genes") +
-  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
 ```
+
+AUCell
 
 ```{r}
 geneSets<-top_markers_list[["Bridge"]]
@@ -786,7 +755,7 @@ res <- searchMarker(
   thresh.1 = 0.5,
   thresh.2 = NULL,
   method = "pos", 
-  num = 150,
+  num = 50,
   gene.use = NULL,
   meta.data = NULL,
   ident.use = Annotation)
@@ -810,6 +779,103 @@ DotPlot(object = data_cite,
     group.by = "Annotation") +
   RotatedAxis()+labs(y = NULL, x = "Genes") +
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
+# signature into gmt file
+signature <- markers_gene$Bridge
+gmt <- data.frame(signature_name = "Intermediate population", description = "NA", genes = I(list(signature)))
+
+write.table(data.frame("Intermediate population","NA", t(signature)),
+  file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Signature_intermediate_pop.gmt",sep = "\t",quote = FALSE,row.names = FALSE,col.names = FALSE)
+```
+
+Signature validation
+
+```{r}
+#devtools::load_all("/home/a.blanc-boekholt/Documents/Singlecell-R/multideconv")
+set.seed(42)
+n_reps <- 3
+data$sample_time <- paste(data$patient, data$timepoint, sep = "_")
+meta <- data@meta.data
+meta$.cell <- rownames(meta)
+meta$.strata <- paste(meta$sample_time, meta[[ "Annotation" ]], sep = "___")
+
+meta <- meta[sample(nrow(meta)), ]
+meta$.rep <- ave(seq_len(nrow(meta)), meta$.strata, FUN = function(x) {
+  rep(seq_len(n_reps), length.out = length(x))
+})
+
+meta <- meta[match(colnames(data), meta$.cell), ]
+data$sample_time_rep <- paste(data$sample_time, paste0("rep", meta$.rep), sep = "_")
+
+pseudobulk = create_sc_pseudobulk(data, cells_labels = "Annotation", sample_labels = "sample_time_rep", normalized = TRUE, file_name = "Pseudobulk_deconvolution")
+cells_groundtruth <- table(data$sample_time_rep, data$Annotation)
+cells_groundtruth <- prop.table(cells_groundtruth, margin = 1)
+cells_groundtruth <- as.data.frame.matrix(cells_groundtruth)
+cells_groundtruth$sample<-rownames(cells_groundtruth)
+cells_groundtruth <-cells_groundtruth[,c("Bridge", "sample")]
+
+# Run enrichment score 
+tpm_filt <-log2(pseudobulk+1)
+n_genes <- nrow(tpm_filt)
+n_samples <- ncol(tpm_filt)
+gct_df <- data.frame( Name = rownames(tpm_filt), Description = rep("na", n_genes), tpm_filt, check.names = FALSE)
+con <- file("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Count_matrix_pseudobulk.gct", open = "w")
+writeLines("#1.2", con)
+writeLines(paste(n_genes, n_samples, sep = "\t"), con)
+write.table(gct_df, con, sep = "\t", quote = FALSE, row.names = FALSE)
+close(con)
+
+res = run_ssGSEA2("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Count_matrix_pseudobulk.gct",
+                  output.prefix = "signature_bridge_pseudobulk",
+                  gene.set.databases = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Signature_intermediate_pop.gmt",
+                  output.directory = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/ssGSEA",
+                  sample.norm.type = "none", 
+                  weight = 0.75, 
+                  correl.type = "rank", 
+                  statistic = "area.under.RES",
+                  output.score.type = "ES", 
+                  nperm = 1000, 
+                  min.overlap = 5, 
+                  extended.output = TRUE, 
+                  global.fdr = FALSE,
+                  log.file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/run.log")
+
+
+# Download results
+score <- read.delim("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/ssGSEA/signature_bridge_pseudobulk-scores.gct", skip = 2, sep = "\t", header = TRUE, check.names = FALSE)
+en_score<-t(score[,65:94])
+colnames(en_score)<-"enrichment"
+en_score<-as.data.frame(en_score)
+en_score$sample<-rownames(en_score)
+
+# Plot
+df<-merge(en_score, cells_groundtruth, by="sample")
+plot<-ggplot(df, aes(x = enrichment, y = Bridge)) +
+  geom_point(size = 2.5, alpha = 0.9) +
+  geom_smooth(method = "lm", se = TRUE,linewidth = 0.9, alpha = 0.15, show.legend = FALSE) +
+  stat_cor(method = "pearson",aes(label = paste(after_stat(r.label), after_stat(p.label), sep = "~`,`~")),
+           label.x.npc = "left", label.y.npc = "top",hjust = 0, size = 3.5, show.legend = FALSE) +
+  scale_color_manual(values = cols, name = "Sample type") +scale_fill_manual(values = cols) +
+  labs(title = "Intermediate population proportion and Enrichment score Intermediate population \nsignature correlation (Pearson)",
+       x = "Enrichment score Intermediate population", y = "Intermediate proportion") +
+  theme_minimal(base_size = 13) +
+  theme(strip.text = element_text(size = 11),plot.title = element_text(size = 14),panel.grid.minor = element_blank())
+plot
+```
+
+```{r}
+# Signature visualisation 
+data <- AddModuleScore(
+  object = data,
+  features = signature,
+  name = "Sig_score")
+
+FeaturePlot(
+  object = data,
+  features = "Sig_score1",
+  reduction = "umap",
+  order = TRUE
+)
 ```
 
 ssGSEA
@@ -830,13 +896,7 @@ writeLines(paste(n_genes, n_samples, sep = "\t"), con)
 write.table(gct_df, con, sep = "\t", quote = FALSE, row.names = FALSE)
 close(con)
 
-# signature into gmt file
-signature <- markers_gene$Bridge
-gmt <- data.frame(signature_name = "Intermediate population", description = "NA", genes = I(list(signature)))
-
-write.table(data.frame("Intermediate population","NA", t(signature)),
-  file = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Signature_intermediate_pop.gmt",sep = "\t",quote = FALSE,row.names = FALSE,col.names = FALSE)
-
+#Run ssGSEA
 res = run_ssGSEA2("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Count_matrix_cd19.gct",
                   output.prefix = "signature_bridge",
                   gene.set.databases = "/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Matrix/Signature_intermediate_pop.gmt",
@@ -912,6 +972,8 @@ ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/pairplot_enr
 
 ```
 
+Comparison between deconvolution and enrichment
+
 ```{r}
 # Comparison between deconvolution and enrichment 
 # LN
@@ -933,6 +995,91 @@ plot<-ggplot(comparison, aes(x = Method, group = Patient, color = Patient)) +
     theme_minimal() +
     theme(legend.position = "none",axis.text.x = element_text(size = 11))
 ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/pairplot_enrichment_deconv.png", plot, width = 2100, height = 1100, units = "px")
+```
+
+Correlation between the enrichment and TF activity
+
+```{r}
+# calculate TF activity 
+library(viper)
+tpm_filt <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/count_tpm_filt.tsv", header = TRUE, row.names = 1, sep = "\t", check.names = FALSE)
+data_log<-log2(tpm_filt+1)
+data_matrix <- as.matrix(data_log)
+regulon<-readRDS("/home/a.blanc-boekholt/Documents/NetREM/regulon_grn_CLL.rds")
+tf_activity <- viper(data_matrix, regulon, method = "scale", minsize = 25)
+
+library(dplyr)
+library(tidyr)
+library(tibble)
+
+# activity CEPBA
+cebpa <- tibble(sample = gsub("-", ".", colnames(tf_activity)), CEBPa_activity = as.numeric(tf_activity["CEBPA", ]))
+
+# Enrichment results
+en_score$Patient <- gsub("-", ".", en_score$Patient)
+rownames(en_score) <- gsub("-", ".", rownames(en_score))
+en_score$sample <-rownames(en_score)
+
+df<- merge(en_score, cebpa, by="sample")
+
+#Plot
+library(ggplot2)
+library(ggpubr)
+library(dplyr)
+library(tidyr)
+
+df$Sample_type <- factor(df$Sample_type, levels = c("PB", "LN"))
+
+cols <- c(PB = "#9DBFCC", LN = "#00008B")
+
+plot<-ggplot(df, aes(x = CEBPa_activity, y = enrichment, color = Sample_type)) +
+  geom_point(size = 2.5, alpha = 0.9) +
+  geom_smooth(aes(fill = Sample_type), method = "lm", se = TRUE,linewidth = 0.9, alpha = 0.15, show.legend = FALSE) +
+  stat_cor(method = "pearson",aes(label = paste(after_stat(r.label), after_stat(p.label), sep = "~`,`~")),
+           label.x.npc = "left", label.y.npc = "top",hjust = 0, size = 3.5, show.legend = FALSE) +
+  scale_color_manual(values = cols, name = "Sample type") +scale_fill_manual(values = cols) +
+  labs(title = "CEBPa activity and Enrichment score Intermediate population \nsignature correlation (Pearson)",
+       x = "CEBPa activity", y = "Enrichment score \nIntermediate population") +
+  theme_minimal(base_size = 13) +
+  theme(strip.text = element_text(size = 11),plot.title = element_text(size = 14),panel.grid.minor = element_blank())
+plot
+ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/correlation_enrichment_activity_cepba.png", plot, width = 2100, height = 1100, units = "px")
+
+# activity MYC and FOS
+
+tf <- tibble(
+  sample = gsub("-", ".", colnames(tf_activity)),
+  MYC = as.numeric(tf_activity["MYC", ]),
+  FOS = as.numeric(tf_activity["FOS", ])) %>%
+  pivot_longer(cols = c(MYC, FOS), names_to = "TF", values_to = "activity") %>%
+  mutate(TF = factor(TF, levels = c("MYC", "FOS")))
+
+en_score$Patient <- gsub("-", ".", en_score$Patient)
+rownames(en_score) <- gsub("-", ".", rownames(en_score))
+en_score$sample <- rownames(en_score)
+
+df <- merge(en_score, tf, by = "sample")
+df$Sample_type <- factor(df$Sample_type, levels = c("PB", "LN"))
+
+cols <- c(PB = "#9DBFCC", LN = "#00008B")
+
+#Plot
+plot <- ggplot(df, aes(x = activity, y = enrichment, color = Sample_type)) +
+  geom_point(size = 2.5, alpha = 0.9) +
+  geom_smooth(aes(fill = Sample_type), method = "lm", se = TRUE, linewidth = 0.9, alpha = 0.15, show.legend = FALSE) +
+  stat_cor(method = "pearson",aes(label = paste(after_stat(r.label), after_stat(p.label), sep = "~`,`~")),
+    label.x.npc = "left", label.y.npc = "top", hjust = 0, size = 3.5, show.legend = FALSE) +
+  facet_wrap(~ TF, scales = "free_x") + 
+  scale_color_manual(values = cols, name = "Sample type") +
+  scale_fill_manual(values = cols) +
+  labs(title = "MYC and FOS activity vs Enrichment score Intermediate population\nsignature correlation (Pearson)",x = "TF activity",
+    y = "Enrichment score\nIntermediate population") +theme_minimal(base_size = 13) +
+  theme(strip.text = element_text(size = 12),
+    plot.title = element_text(size = 14),
+    panel.grid.minor = element_blank(),
+    panel.spacing = unit(1.5, "lines"))
+plot
+ggsave("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Plots/correlation_enrichment_activity_MYC_FOS.png", plot, width = 2600, height = 1100, units = "px")
 ```
 
 # Deconvolution MeDuSA
@@ -1357,7 +1504,7 @@ ggplot(cd19_bridge, aes(x = Pseudotime, y = adt_CD19.1)) +
     axis.text.y = element_text(size = 13))
 ```
 
-Deconvolution on B and Bridge
+### Deconvolution on B and Bridge
 
 ```{r}
 data_sc = readRDS("~/Documents/Singlecell-R/Scripts/Matrix/CLL_Seurat_P2P3.rds")
@@ -1375,7 +1522,7 @@ data<-subset(data_sc, cells=keep)
 VlnPlot(data, pt.size=0, features = "CD19.1", assay = "ADT",group.by = "Annotation")+geom_hline(yintercept = 1, linewidth = 0.5, color = "black",linetype = "dashed")
 ```
 
-Signature StarTracer
+### Signature StarTracer
 
 ```{r}
 library(starTracer)
@@ -1472,7 +1619,7 @@ DotPlot(object = data,
   theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
 ```
 
-Custom signature multideconv
+### Custom signature multideconv
 
 ```{r}
 data$sample_time <- paste(data$patient, data$timepoint, sep = "_")
@@ -1536,7 +1683,7 @@ benchmark = compute.benchmark(deconv_pseudo, cells_groundtruth, corr_type = "pea
                               width = 10, height = 5)
 ```
 
-Deconvolution bulk data
+### Deconvolution bulk data
 
 ```{r}
 tpm_filt <- read.table("/home/a.blanc-boekholt/Documents/Singlecell-R/Scripts/Data/Dataset CLL lymph node (Sun C, et al., 2023)/count_tpm_filt.tsv", header = TRUE, row.names = 1, sep = "\t", check.names = FALSE)
@@ -1568,6 +1715,8 @@ correlation_bridge<-cor(deconv_cite,use = "complete.obs")
 colnames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", colnames(correlation_bridge))
 rownames(correlation_bridge)<-gsub("_BSeqSC.CITE_CLL_subset.scRNAseq_", ".", rownames(correlation_bridge))
 ```
+
+###  Plots
 
 ```{r}
 pbmc_samples<-rownames(deconv_bulk)[grepl("PB", rownames(deconv_bulk))]
@@ -1655,7 +1804,7 @@ ggplot(deconv_long, aes(x = Sample_type, y = Proportion, fill = Sample_type)) +
   theme_minimal() +theme(legend.position = "none",strip.text = element_text(size = 10))
 ```
 
-Correlation with TF activity
+### Correlation with TF activity
 
 ```{r}
 # calculate TF activity 
@@ -1726,7 +1875,7 @@ plot
 
 ```
 
-DEG between LN and PB
+### Differential TF activity between LN and PB
 
 ```{r}
 library(limma)
