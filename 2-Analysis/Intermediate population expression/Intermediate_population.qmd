@@ -1376,6 +1376,13 @@ data <- data %>%
     RunUMAP(reduction = "harmony",  dims = 1:15)
 ```
 
+```{r}
+VlnPlot(data, pt.size=0, features = "CD19.1", assay = "ADT",group.by = "Annotation")+geom_hline(yintercept = 1.4, linewidth = 0.5, color = "black",linetype = "dashed")
+FeaturePlot(data, features="CD19.1", assay="ADT", min.cutoff =1.4, max.cutoff =3.5, cols =c("lightgrey", "red"))
+VlnPlot(data, pt.size=0, features = "CD5.1", assay = "ADT",group.by = "Annotation")+geom_hline(yintercept = 1, linewidth = 0.5, color = "black",linetype = "dashed")
+FeaturePlot(data, features="CD5.1", assay="ADT", cols =c("lightgrey", "red"), max.cutoff =5.5)
+```
+
 ### CLL and myeloid signature
 
 ```{r}
@@ -1752,4 +1759,39 @@ write.table(cluster, "~/Documents/Singlecell-R/Scripts/Matrix/cluster.txt", sep=
 
 ```{bash}
 Comet tabmarker.txt tabvis.txt tabcluster.txt output/ -skipvis True
+```
+
+```{r}
+library(org.Hs.eg.db)
+# Keep the Genes coding for proteins surface markers
+# GO cells: external side of plasma membrane
+markers<- AnnotationDbi::select(org.Hs.eg.db, keys= "GO:0009897", columns = c("ENTREZID", "SYMBOL", "UNIPROT", "ENSEMBLPROT"), keytype = "GO")
+data_prot<-subset(data, features=unique(markers$SYMBOL))
+
+DefaultAssay(data_prot) <- "RNA"
+Idents(data_prot) <- data_prot$Annotation
+
+data_prot <- FindVariableFeatures(data_prot, selection.method = "vst", nfeatures = 2000)
+
+res <- searchMarker(
+  x = data_prot, #the input seurat object
+  thresh.1 = 0.5,
+  thresh.2 = NULL,
+  method = "pos", 
+  num = 4,
+  gene.use = NULL,
+  meta.data = NULL,
+  ident.use = Annotation)
+
+markers<-res[["exprs.markers"]]
+markers<-as.data.frame(markers)
+markers_genes<-rownames(markers)
+
+# Plots
+DotPlot(object = data_prot,
+    features = markers_genes,
+    group.by = "Annotation") +
+  RotatedAxis()+labs(y = NULL, x = "Genes") +
+  theme(axis.text.x = element_blank(), axis.ticks.x = element_blank())
+
 ```
